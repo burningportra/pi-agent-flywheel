@@ -11,7 +11,7 @@ import {
   planDocumentPrompt,
   DEEP_PLAN_MODELS,
 } from "../prompts.js";
-import { sessionArtifactPath } from "../session-artifacts.js";
+import { findSessionArtifactPath, sessionArtifactPath } from "../session-artifacts.js";
 import { getDeepPlanModels, detectAvailableModels, formatDetectedModels } from "../model-detection.js";
 import { readMemory } from "../memory.js";
 
@@ -118,8 +118,8 @@ function loadPlannerArtifacts(ctx: ExtensionContext, goal: string): DeepPlanResu
   ] as const;
 
   return plannerEntries.flatMap(([name, artifactName, model]) => {
-    const filePath = sessionArtifactPath(ctx, artifactName);
-    if (!existsSync(filePath)) {
+    const filePath = findSessionArtifactPath(ctx, artifactName);
+    if (!filePath) {
       return [];
     }
     const plan = readFileSync(filePath, "utf8").trim();

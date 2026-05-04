@@ -74,6 +74,14 @@ describe("plan workflow handoff", () => {
     expect(source).toContain("review the synthesized plan in-menu");
     expect(source).toContain("Stay inside the orchestration workflow");
   });
+
+  it("loads planner artifacts from sibling sub-agent sessions before re-prompting", () => {
+    const { readFileSync } = require("fs");
+    const { join } = require("path");
+    const source = readFileSync(join(__dirname, "plan.ts"), "utf8");
+
+    expect(source).toContain("findSessionArtifactPath(ctx, artifactName)");
+  });
 });
 
 describe("buildMultiModelPlanSubagentConfigs", () => {
