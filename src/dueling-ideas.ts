@@ -1,11 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { dirname } from "path";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { CandidateIdea, RepoProfile, ScanResult } from "./types.js";
 import { formatRepoProfile, pickRefinementModel } from "./prompts.js";
 import { detectAvailableModels } from "./model-detection.js";
 import { runDeepPlanAgents, type DeepPlanAgent, type DeepPlanResult } from "./deep-plan.js";
-import { sessionArtifactPath } from "./session-artifacts.js";
+import { findSessionArtifactPath, sessionArtifactPath } from "./session-artifacts.js";
 import { parseIdeasJSON } from "./ideation-funnel.js";
 
 export interface DuelingIdeaAgent {
@@ -35,6 +35,7 @@ export interface DuelingIdeasResult {
 const IDEAS_JSON_MARKER = "IDEAS_JSON";
 const SCORE_JSON_MARKER = "SCORE_JSON";
 const CONSENSUS_JSON_MARKER = "CONSENSUS_IDEAS_JSON";
+export const DUELING_WIZARDS_ARTIFACT_PREFIX = "dueling-wizards";
 
 function familyForModel(model: string): string {
   const lower = model.toLowerCase();
@@ -151,6 +152,58 @@ End your response with a fenced JSON array under the exact heading \`### ${IDEAS
 \`\`\`
 
 Use ultrathink. Do not score other agents yet. Do not create beads.`;
+}
+
+export function duelingIdeaArtifactName(agent: DuelingIdeaAgent): string {
+  return `${DUELING_WIZARDS_ARTIFACT_PREFIX}/WIZARD_IDEAS_${agent.type}.md`;
+}
+
+export function buildDuelingIdeaSubagentConfigs(
+  cwd: string,
+  agents: DuelingIdeaAgent[],
+  profile: RepoProfile,
+  scanResult: ScanResult | undefined,
+  existingBeadTitles: string[],
+) {
+  return agents.map((agent) => {
+    const artifactName = duelingIdeaArtifactName(agent);
+    return {
+      name: `dueling-${agent.type.toLowerCase()}-ideas`,
+      agent: "planner",
+      cwd,
+      model: agent.model,
+      task:
+        `${duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles)}\n\n` +
+        `After you finish, save your full wizard response with write_artifact using exactly this name: \`${artifactName}\`.\n` +
+        `Do not create beads. In your final response, mention that you wrote \`${artifactName}\`.`,
+    };
+  });
+}
+
+function loadDuelingIdeaArtifacts(
+  ctx: ExtensionContext,
+  agents: DuelingIdeaAgent[],
+): Record<string, string> {
+  const artifacts: Record<string, string> = {};
+  for (const agent of agents) {
+    const path = findSessionArtifactPath(ctx, duelingIdeaArtifactName(agent));
+    if (!path) continue;
+    try {
+      const text = readFileSync(path, "utf8").trim();
+      if (text) artifacts[agent.type] = text;
+    } catch {
+      // Ignore unreadable artifacts; the caller can regenerate or ask for them.
+    }
+  }
+  return artifacts;
+}
+
+export function getMissingDuelingIdeaAgents(
+  ctx: ExtensionContext,
+  agents: DuelingIdeaAgent[],
+): DuelingIdeaAgent[] {
+  const artifacts = loadDuelingIdeaArtifacts(ctx, agents);
+  return agents.filter((agent) => !artifacts[agent.type]);
 }
 
 export function duelingScorePrompt(
@@ -461,22 +514,28 @@ export async function runDuelingIdeaWizards(
   onPhase?: (message: string) => void,
 ): Promise<DuelingIdeasResult> {
   const agents = selectDuelingIdeaAgents(ctx, 3);
-  const artifactPrefix = "dueling-wizards";
+  const artifactPrefix = DUELING_WIZARDS_ARTIFACT_PREFIX;
 
   onPhase?.(`⚔️ Phase 1/7: ${agents.length} wizards generating independent ideas...`);
-  const ideaTasks: DeepPlanAgent[] = agents.map((agent) => ({
-    name: `ideas-${agent.type}`,
-    model: agent.model,
-    task: duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles),
-  }));
-  const ideaResults = await runNamedAgents(pi, ctx.cwd, ideaTasks, signal);
+  const ideaArtifacts: Record<string, string> = loadDuelingIdeaArtifacts(ctx, agents);
+  const missingIdeaAgents = agents.filter((agent) => !ideaArtifacts[agent.type]);
+  if (missingIdeaAgents.length > 0) {
+    const ideaTasks: DeepPlanAgent[] = missingIdeaAgents.map((agent) => ({
+      name: `ideas-${agent.type}`,
+      model: agent.model,
+      task: duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles),
+    }));
+    const ideaResults = await runNamedAgents(pi, ctx.cwd, ideaTasks, signal);
+    for (const agent of missingIdeaAgents) {
+      const text = ideaResults[`ideas-${agent.type}`]?.plan?.trim() || `No ideas produced by ${agent.type}.`;
+      ideaArtifacts[agent.type] = text;
+      writeArtifact(ctx, duelingIdeaArtifactName(agent), text);
+    }
+  }
 
-  const ideaArtifacts: Record<string, string> = {};
   const ideasByAgent: Record<string, CandidateIdea[]> = {};
   for (const agent of agents) {
-    const text = ideaResults[`ideas-${agent.type}`]?.plan?.trim() || `No ideas produced by ${agent.type}.`;
-    ideaArtifacts[agent.type] = text;
-    writeArtifact(ctx, `${artifactPrefix}/WIZARD_IDEAS_${agent.type}.md`, text);
+    const text = ideaArtifacts[agent.type] || `No ideas produced by ${agent.type}.`;
     const parsed = parseMarkedIdeas(text).slice(0, 15);
     ideasByAgent[agent.type] = parsed.map((idea, index) => ({ ...idea, tier: index < 5 ? "top" : "honorable" }));
   }

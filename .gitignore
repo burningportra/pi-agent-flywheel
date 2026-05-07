@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .pi-orchestrator/
+.pi-agent-flywheel/
 .firecrawl/
 *.js
 *.d.ts

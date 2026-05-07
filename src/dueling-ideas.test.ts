@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
+  buildDuelingIdeaSubagentConfigs,
+  duelingIdeaArtifactName,
   duelingIdeationPrompt,
   duelingScorePrompt,
   parseConsensusIdeas,
@@ -54,6 +56,26 @@ describe("dueling idea prompts", () => {
     expect(prompt).toContain("0 (worst) to 1000 (best)");
     expect(prompt).toContain("Be candid and adversarial");
     expect(prompt).toContain("SCORE_JSON");
+  });
+
+  it("builds interactive wizard subagent configs that persist idea artifacts", () => {
+    const configs = buildDuelingIdeaSubagentConfigs(
+      "/repo",
+      [agent, other],
+      makeProfile(),
+      undefined,
+      ["Existing bead"],
+    );
+
+    expect(configs).toHaveLength(2);
+    expect(configs[0].name).toBe("dueling-cc-ideas");
+    expect(configs[0].agent).toBe("planner");
+    expect(configs[0].cwd).toBe("/repo");
+    expect(configs[0].model).toBe(agent.model);
+    expect(configs[0].task).toContain("Dueling Idea Wizards");
+    expect(configs[0].task).toContain("write_artifact");
+    expect(configs[0].task).toContain(duelingIdeaArtifactName(agent));
+    expect(configs[0].task).toContain("Existing bead");
   });
 });
 

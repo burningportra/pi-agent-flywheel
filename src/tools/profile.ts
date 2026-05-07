@@ -295,7 +295,55 @@ export function registerProfileTool(oc: OrchestratorContext) {
           } catch { /* no beads yet */ }
         }
 
-        const { runDuelingIdeaWizards } = await import("../dueling-ideas.js");
+        const {
+          buildDuelingIdeaSubagentConfigs,
+          getMissingDuelingIdeaAgents,
+          runDuelingIdeaWizards,
+          selectDuelingIdeaAgents,
+        } = await import("../dueling-ideas.js");
+        const wizardAgents = selectDuelingIdeaAgents(ctx, 3);
+        const missingWizardAgents = ctx.hasUI ? getMissingDuelingIdeaAgents(ctx, wizardAgents) : [];
+        if (missingWizardAgents.length > 0) {
+          oc.setPhase("discovering", ctx);
+          oc.persistState();
+          const pendingConfigs = buildDuelingIdeaSubagentConfigs(
+            ctx.cwd,
+            missingWizardAgents,
+            profile,
+            scanResult,
+            existingBeadTitles,
+          );
+          const completedAgents = wizardAgents
+            .filter((agent) => !missingWizardAgents.some((missing) => missing.type === agent.type))
+            .map((agent) => `${agent.type} (${agent.model})`);
+          const statusLine = completedAgents.length > 0
+            ? `Completed wizard artifacts: ${completedAgents.join(", ")}\nPending wizards: ${missingWizardAgents.map((agent) => `${agent.type} (${agent.model})`).join(", ")}`
+            : `Pending wizards: ${missingWizardAgents.map((agent) => `${agent.type} (${agent.model})`).join(", ")}`;
+
+          return {
+            content: [{
+              type: "text",
+              text:
+                `**Workflow:** ${roadmap}\n\n` +
+                `**NEXT: Spawn interactive Dueling Idea Wizard sub-agents using \`subagent\` NOW.**\n\n` +
+                `${statusLine}\n\n` +
+                `Launch one \`subagent\` call for each pending wizard config below. ` +
+                `Each wizard runs in its own interactive pane and writes its independent ideas to a session artifact. ` +
+                `After all wizard sub-agents complete, call \`agent_flywheel_profile\` again and choose Dueling Idea Wizards to continue cross-scoring and synthesis.\n\n` +
+                `\`\`\`json\n${JSON.stringify(pendingConfigs, null, 2)}\n\`\`\``,
+            }],
+            details: {
+              profile,
+              scanResult,
+              dueling: true,
+              interactive: true,
+              awaitingWizardArtifacts: true,
+              agents: wizardAgents,
+              pendingWizardCount: pendingConfigs.length,
+            },
+          };
+        }
+
         const duel = await runDuelingIdeaWizards(
           oc.pi,
           ctx,

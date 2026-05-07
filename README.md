@@ -47,7 +47,7 @@ Then open any repository in `pi` and type:
 | **One-command flywheel** | Runs discovery, planning, approval, execution, review, and memory from `/agent-flywheel` | Start in any repo, choose an improvement, approve beads, let agents work |
 | **Bead-based execution** | Converts plans into `br` tasks with dependencies and acceptance criteria | `add-users-endpoint` depends on `extract-user-service` |
 | **Multi-model planning** | Lets multiple models propose plans, then synthesizes the strongest path | Gemini + GPT + Claude-style planning lanes when available |
-| **Dueling Idea Wizards** | Scores competing improvement ideas on a 0–1000 scale with rebuttals and blind-spot probes | Pick the most leveraged improvement before writing code |
+| **Dueling Idea Wizards** | Launches interactive wizard sub-agents, then scores competing improvement ideas on a 0–1000 scale with rebuttals and blind-spot probes | Pick the most leveraged improvement before writing code |
 | **Review gates** | Runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance review flows | Closed beads are treated as claims that require evidence |
 | **Crash recovery** | Checkpoints state after phase changes so interrupted runs can resume | Restart `/agent-flywheel` and resume from the latest checkpoint |
 | **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, MCP Agent Mail, beads, `ntm`) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
@@ -99,7 +99,7 @@ You: /agent-flywheel
 
 → Choose: profile this repo, research an external repo, or load a saved plan
 → Scan: ccc first when available, built-in profiler otherwise
-→ Discover: 3–7 ranked improvement ideas
+→ Discover: 3–7 ranked improvement ideas, optionally via interactive Dueling Idea Wizard sub-agents
 → Select: pick an idea or type your own goal
 → Plan: create beads with dependencies and acceptance criteria
 → Approve: refine the bead plan before any implementation starts
