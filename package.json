@@ -1,6 +1,6 @@
 {
   "name": "pi-agent-flywheel",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "Multi-agent orchestrator for pi — deep planning, parallel execution, guided review gates, compound memory. Based on the Agentic Coding Flywheel.",
   "repository": {
     "type": "git",

@@ -65,6 +65,7 @@ curl -s -X POST http://127.0.0.1:8765/api -H 'Content-Type: application/json' \
 - Thread ID = bead ID (e.g. "pi-agent-flywheel-3c2")
 - Use thread "general" for cross-bead coordination
 - Announce start, announce completion, respond to messages promptly
+- At the start of each work session, pick a fresh callsign instead of reusing a default like `BoldForge`; mention it in the first coordination/status note.
 - Use `bv --robot-next` to pick your next bead when idle
 
 ## Episodic Memory (MemPalace) — Optional

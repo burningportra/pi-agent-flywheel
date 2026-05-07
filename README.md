@@ -1,92 +1,500 @@
 # pi-agent-flywheel
 
-Type `/agent-flywheel` in any repo. It scans your codebase with ccc when available, falls back gracefully to the built-in profiler when it is not, can research external repos for inspiration, proposes improvements, plans the work, implements in parallel, and reviews — all in one command.
+<div align="center">
 
-## Install
+```text
+        ┌────────────────────────────────────────────────────────────┐
+        │                    pi-agent-flywheel                       │
+        │  scan → choose → plan → approve → implement → review → learn │
+        └────────────────────────────────────────────────────────────┘
+```
+
+[![CI](https://github.com/burningportra/pi-agent-flywheel/actions/workflows/ci.yml/badge.svg)](https://github.com/burningportra/pi-agent-flywheel/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub issues](https://img.shields.io/github/issues/burningportra/pi-agent-flywheel)](https://github.com/burningportra/pi-agent-flywheel/issues)
+[![GitHub stars](https://img.shields.io/github/stars/burningportra/pi-agent-flywheel)](https://github.com/burningportra/pi-agent-flywheel/stargazers)
+
+**A pi extension that turns a vague improvement goal into dependency-tracked beads, parallel agent execution, review gates, and durable learnings.**
+
+### Quick Install
 
 ```bash
 pi install git:github.com/burningportra/pi-agent-flywheel
 ```
 
-Then open any project and type `/agent-flywheel`.
+Then open any repository in `pi` and type:
 
-## What happens
-
+```text
+/agent-flywheel
 ```
+
+</div>
+
+---
+
+## TL;DR
+
+**The Problem:** Coding agents are good at individual edits, but large repo improvements still fall apart in the gaps: weak discovery, vague plans, parallel agents stepping on each other, review theater, and forgotten lessons.
+
+**The Solution:** `pi-agent-flywheel` wraps the full loop in one pi command. It profiles the repo, proposes work, turns the selected goal into beads, coordinates implementation, runs reviews and compliance audits, and records memory for the next run.
+
+### Why Use pi-agent-flywheel?
+
+| Feature | What It Does | Example |
+|---------|--------------|---------|
+| **One-command flywheel** | Runs discovery, planning, approval, execution, review, and memory from `/agent-flywheel` | Start in any repo, choose an improvement, approve beads, let agents work |
+| **Bead-based execution** | Converts plans into `br` tasks with dependencies and acceptance criteria | `add-users-endpoint` depends on `extract-user-service` |
+| **Multi-model planning** | Lets multiple models propose plans, then synthesizes the strongest path | Gemini + GPT + Claude-style planning lanes when available |
+| **Dueling Idea Wizards** | Scores competing improvement ideas on a 0–1000 scale with rebuttals and blind-spot probes | Pick the most leveraged improvement before writing code |
+| **Review gates** | Runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance review flows | Closed beads are treated as claims that require evidence |
+| **Crash recovery** | Checkpoints state after phase changes so interrupted runs can resume | Restart `/agent-flywheel` and resume from the latest checkpoint |
+| **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, agent-mail) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
+
+---
+
+## Quick Example
+
+```bash
+# 1. Install the extension once
+pi install git:github.com/burningportra/pi-agent-flywheel
+
+# 2. Open a project you want agents to improve
+cd ~/Code/my-app
+pi
+
+# 3. Start the flywheel
+/agent-flywheel
+
+# 4. Or skip discovery and give it a goal directly
+/agent-flywheel reduce flaky auth tests and add regression coverage
+
+# 5. Check progress during a run
+/agent-flywheel-status
+
+# 6. If something gets stuck, inspect prerequisites and runtime state
+/agent-flywheel-doctor
+
+# 7. Stop active orchestration if you need to take over manually
+/agent-flywheel-stop
+```
+
+Typical flow:
+
+```text
 You: /agent-flywheel
 
 → Choose: profile this repo, research an external repo, or load a saved plan
-→ Scans your repo (ccc codebase analysis first, profile/commits/history second)
-→ Proposes 3–7 improvements ranked by impact
-→ You pick one (or type your own goal)
-→ LLM creates beads (tasks) via br CLI with dependencies
-→ You approve beads (with optional refinement passes)
-→ Implements ready beads in dependency order
-→ Reviews each bead, iterates until passing
-→ Done. Learnings saved for next time.
+→ Scan: ccc first when available, built-in profiler otherwise
+→ Discover: 3–7 ranked improvement ideas
+→ Select: pick an idea or type your own goal
+→ Plan: create beads with dependencies and acceptance criteria
+→ Approve: refine the bead plan before any implementation starts
+→ Execute: implement ready beads in dependency order
+→ Review: run guided review gates and remediation loops
+→ Audit: verify closed beads against evidence, not vibes
+→ Learn: save useful session memory for the next flywheel
 ```
 
-## Key features
+---
 
-- **Multi-model planning** — Have 3 different AI models compete on your plan, then synthesize the best parts
-- **Dueling Idea Wizards discovery** — Run independent cross-model ideation, adversarial 0–1000 scoring, reveal reactions, rebuttals, steelmans, blind-spot probes, and a synthesized score-matrix report before choosing work
-- **Bead-based execution** — Tasks created as beads with dependency tracking via br CLI
-- **Automatic beads compliance audits** — after all beads are done, the final guided gates include a completion audit that verifies closed beads as claims, not facts: br doctor preflight, tiered mode selection, evidence packs, anti-theater checks, scoring, and remediation prompts
-- **Resilient CLI recovery** — `br`, `bv`, `git`, `find`, `npm`, `ubs`, and coordination probes now run through a structured exec layer with retry for transient failures and graceful degradation when tools disappear mid-session
-- **Bead template library** — Optional scaffolds for common bead shapes: `add-api-endpoint`, `refactor-module`, and `add-tests`
-- **4-agent review** — Fresh-eyes, polish, ergonomics, and reality-check reviewers run in parallel
-- **CASS memory** — Procedural memory via [cm CLI](https://github.com/Dicklesworthstone/cass_memory_system) — relevance-scored rules, anti-patterns, and cross-session learning
-- **Crash recovery** — AgentFlywheel state is checkpointed to disk after every phase transition. If your session crashes, `/agent-flywheel` will offer to resume from the last checkpoint
-- **Coordination backends** — Beads (br CLI), Sophia, and agent-mail for multi-agent coordination
+## Design Philosophy
+
+1. **Human approval before expensive autonomy**  
+   Agents can propose a plan, but implementation waits until the bead graph is readable, scoped, and approved.
+
+2. **Tasks are contracts, not vibes**  
+   A bead should include the rationale, acceptance criteria, and file scope needed by a fresh agent. Template shorthand is rejected before it can leak into execution.
+
+3. **Optional power tools, safe fallback path**  
+   `ccc`, CASS, Sophia, `br`, `bv`, `ntm`, and agent-mail can make the loop stronger, but the extension keeps moving when optional integrations are absent.
+
+4. **Parallelism needs coordination**  
+   Multi-agent work is only useful when file ownership, task dependencies, review order, and recovery paths are explicit.
+
+5. **Review should create evidence**  
+   The final audit treats “done” as a claim. The extension asks for evidence packs, checks scope drift, and pushes remediation when claims do not match the diff.
+
+---
+
+## How pi-agent-flywheel Compares
+
+| Capability | pi-agent-flywheel | Plain pi session | Manual `br`/`bv` workflow | Generic coding agent |
+|------------|-------------------|------------------|----------------------------|----------------------|
+| Repo discovery | ✅ Guided profiling + optional `ccc` | ⚠️ Manual prompts | ⚠️ Manual | ⚠️ Usually ad hoc |
+| Idea ranking | ✅ Ranked proposals + Dueling Idea Wizards | ❌ | ❌ | ❌ |
+| Dependency-tracked tasks | ✅ Creates and validates beads | ❌ | ✅ Manual | ❌ |
+| Approval gate before implementation | ✅ Built in | ⚠️ You must enforce it | ✅ If disciplined | ❌ |
+| Parallel execution support | ✅ Worktrees, swarm status, coordination hooks | ⚠️ Manual | ⚠️ Manual | ⚠️ Often unsafe |
+| Review gates | ✅ Multi-role review + compliance audit | ⚠️ Prompt manually | ⚠️ Manual | ⚠️ Varies |
+| Crash recovery | ✅ Checkpointed phases | ⚠️ Session history only | ❌ | ⚠️ Varies |
+| Memory integration | ✅ CASS/MemPalace-style hooks when available | ⚠️ Manual | ❌ | ⚠️ Varies |
+| Best for | Repo improvement loops | Single interactive tasks | Teams already fluent in beads | Small isolated edits |
+
+**Use pi-agent-flywheel when:**
+
+- You have a repo-level improvement goal, not a single obvious edit.
+- You want agents to split work into reviewable tasks before coding.
+- You need parallel work but do not want agents colliding blindly.
+- You care about post-implementation review and completion evidence.
+
+**Use something simpler when:**
+
+- You already know the exact one-line change.
+- You do not want any task-tracker state in the repository.
+- You are working in a repo where agents must never create worktrees or run local commands.
+
+---
+
+## Installation
+
+### 1. Install from GitHub with pi (recommended)
+
+```bash
+pi install git:github.com/burningportra/pi-agent-flywheel
+```
+
+Verify it loaded:
+
+```bash
+pi list | grep pi-agent-flywheel
+```
+
+Open any project and run:
+
+```text
+/agent-flywheel-status
+```
+
+Expected idle-state output is a phase/status summary rather than a missing-command error.
+
+### 2. Install from a local checkout
+
+```bash
+git clone https://github.com/burningportra/pi-agent-flywheel.git
+cd pi-agent-flywheel
+npm install
+npm run build
+pi install .
+```
+
+This is the best path if you want to edit the extension and keep using your local copy.
+
+### 3. Load temporarily for development
+
+```bash
+git clone https://github.com/burningportra/pi-agent-flywheel.git
+cd pi-agent-flywheel
+npm install
+pi -e ./src/index.ts
+```
+
+This loads the extension for that `pi` session only.
+
+### 4. Project-local install for a team repo
+
+```bash
+cd ~/Code/team-project
+pi install -l git:github.com/burningportra/pi-agent-flywheel
+```
+
+`-l` writes to `.pi/settings.json`, so the project can declare the package for everyone who opens it with pi.
+
+---
 
 ## Prerequisites
 
-- [pi](https://github.com/badlogic/pi-mono) installed
-- Node.js ≥ 18, git ≥ 2.20
-- Optional but recommended: [ccc](https://github.com/cocoindex-io/cocoindex-code) for richer codebase scanning
+| Requirement | Version | Required? | Why |
+|-------------|---------|-----------|-----|
+| [`pi`](https://github.com/badlogic/pi-mono) | Latest | Yes | Runtime that loads the extension |
+| Node.js | ≥ 18 | Yes for development/local install | TypeScript extension dependencies |
+| git | ≥ 2.20 | Yes | Worktree support and repo inspection |
+| `br` | Current | Recommended | Bead/task creation and dependency tracking |
+| `bv` | Current | Recommended | Graph-aware next-bead selection |
+| [`ccc`](https://github.com/cocoindex-io/cocoindex-code) | Current | Optional | Richer codebase scanning |
+| CASS `cm` | Current | Optional | Procedural memory retrieval/storage |
+| Sophia | Current | Optional | Structured change requests and validation |
+| agent-mail | Current | Optional | Multi-agent messaging and file reservations |
 
-Multi-model planning requires a pi subscription. Sophia and ccc are optional.
-If ccc is unavailable, `/agent-flywheel` falls back to the built-in profiler and keeps the same workflow.
-See [docs/setup.md](docs/setup.md) for detailed configuration.
+If optional tools are missing, `/agent-flywheel` reports the fallback path and continues where possible.
 
-## Commands
+---
 
-| Command | Description |
-|---------|-------------|
-| `/agent-flywheel` | Full workflow — scan/research, plan, implement, review |
-| `/agent-flywheel [goal]` | Skip discovery, plan a specific goal directly |
-| `/agent-flywheel-research <github-url>` | Research an external repo and adapt ideas into this project |
-| `/agent-flywheel-stop` | Cancel and clean up worktrees |
-| `/agent-flywheel-status` | Show current phase and progress |
-| `/agent-flywheel-doctor` | Read-only diagnostic for git, Node, br/bv, ntm, cm, agent-mail, checkpoint, and orphaned worktrees |
-| `/agent-flywheel-audit-beads` | Start a beads compliance audit to verify closed bead completion claims with evidence packs |
-| `/agent-flywheel-cleanup` | Safely remove orphaned worktrees |
-| `/agent-flywheel-swarm-status` | Show active swarm health |
-| `/agent-flywheel-swarm-stop` | Stop swarm monitoring and show landing guidance |
+## Quick Start
 
-Legacy `/orchestrate*` and `/flywheel*` aliases remain available for existing sessions.
+### Profile this repo and choose from generated ideas
 
-Preferred tool names use the `agent_flywheel_*` prefix: `agent_flywheel_profile`, `agent_flywheel_discover`, `agent_flywheel_select`, `agent_flywheel_plan`, `agent_flywheel_approve_beads`, `agent_flywheel_review`, `agent_flywheel_memory`, `agent_flywheel_verify_beads`, and `agent_flywheel_audit_beads`. Legacy `orch_*` and `flywheel_*` aliases remain registered for compatibility.
+```bash
+cd ~/Code/my-project
+pi
+```
 
-## Learn more
+Inside pi:
 
-- [Setup & Configuration](docs/setup.md) — prerequisites, ccc, subscriptions, Sophia
-- [Architecture](docs/architecture.md) — scan pipeline, context priority, bead templates, and workflow internals
+```text
+/agent-flywheel
+```
 
-## Bead template library
+Then follow the prompts:
 
-The planner includes a small built-in bead template library to speed up drafting common tasks. It exists to give the LLM a reliable starting structure for recurring work without making templates mandatory.
+1. Choose “profile this repo”.
+2. Review ranked improvement ideas.
+3. Pick one or type a custom goal.
+4. Choose standard or deep planning.
+5. Review and refine proposed beads.
+6. Approve implementation.
+7. Use status/doctor/stop commands as needed.
+
+### Plan a specific goal directly
+
+```text
+/agent-flywheel add an admin audit log for user role changes
+```
+
+### Research an external repository for ideas
+
+```text
+/agent-flywheel-research https://github.com/example/inspiring-project
+```
+
+This is useful when you want to adapt patterns from another codebase into the current project.
+
+---
+
+## Command Reference
+
+### `/agent-flywheel`
+
+Start the full scan → plan → implement → review loop.
+
+```text
+/agent-flywheel
+```
+
+Use this when you want the extension to discover improvement ideas first.
+
+### `/agent-flywheel [goal]`
+
+Skip idea discovery and plan against a specific goal.
+
+```text
+/agent-flywheel make the checkout flow resilient to Stripe webhook retries
+```
+
+### `/agent-flywheel-research <github-url>`
+
+Research an external repository and adapt useful ideas into the current project.
+
+```text
+/agent-flywheel-research https://github.com/charmbracelet/bubbletea
+```
+
+### `/agent-flywheel-status`
+
+Show the current orchestration phase and progress.
+
+```text
+/agent-flywheel-status
+```
+
+### `/agent-flywheel-doctor`
+
+Run a read-only diagnostic for runtime prerequisites and common failure points.
+
+```text
+/agent-flywheel-doctor
+```
+
+Checks include git, Node, `br`/`bv`, `ntm`, CASS `cm`, agent-mail, checkpoints, and orphaned worktrees.
+
+### `/agent-flywheel-stop`
+
+Cancel an active run and clean up active orchestration state.
+
+```text
+/agent-flywheel-stop
+```
+
+### `/agent-flywheel-cleanup`
+
+Safely remove orphaned worktrees left by interrupted runs.
+
+```text
+/agent-flywheel-cleanup
+```
+
+### `/agent-flywheel-audit-beads`
+
+Start a bead compliance audit against closed beads.
+
+```text
+/agent-flywheel-audit-beads
+```
+
+Use this when you want to verify that completed beads actually match the implementation evidence.
+
+### `/agent-flywheel-swarm-status`
+
+Show active swarm health.
+
+```text
+/agent-flywheel-swarm-status
+```
+
+### `/agent-flywheel-swarm-stop`
+
+Stop swarm monitoring and print landing guidance.
+
+```text
+/agent-flywheel-swarm-stop
+```
+
+### Legacy aliases
+
+Older sessions may still use `/orchestrate*` or `/flywheel*` commands. They remain registered for compatibility, but new docs and workflows use `/agent-flywheel*`.
+
+### Tool names exposed to pi
+
+Preferred tool names use the `agent_flywheel_*` prefix:
+
+| Tool | Purpose |
+|------|---------|
+| `agent_flywheel_profile` | Build or refresh repo profile context |
+| `agent_flywheel_discover` | Generate improvement ideas |
+| `agent_flywheel_select` | Select or refine the chosen goal |
+| `agent_flywheel_plan` | Create a bead-based implementation plan |
+| `agent_flywheel_approve_beads` | Approve/refine beads before execution |
+| `agent_flywheel_review` | Review implemented work |
+| `agent_flywheel_memory` | Retrieve/store memory context |
+| `agent_flywheel_verify_beads` | Validate bead hygiene and completion state |
+| `agent_flywheel_audit_beads` | Run completion compliance audit |
+
+Legacy `orch_*` and `flywheel_*` tool aliases remain for compatibility.
+
+---
+
+## Configuration
+
+Most configuration is discovered from your repo and pi settings. A typical project-local setup looks like this:
+
+```jsonc
+// .pi/settings.json
+{
+  "packages": [
+    "git:github.com/burningportra/pi-agent-flywheel"
+  ]
+}
+```
+
+Optional model/provider configuration lives in pi itself. In pi, run:
+
+```text
+/models
+```
+
+Then choose available models during deep planning.
+
+### Optional integration setup
+
+#### ccc codebase scanning
+
+```bash
+pipx install cocoindex-code
+cd ~/Code/my-project
+ccc init -f
+ccc index
+```
+
+#### CASS memory
+
+```bash
+npm install -g cass-memory
+cm init --starter typescript
+cm doctor --json
+```
+
+#### Sophia
+
+```bash
+pip install sophia-cli
+cd ~/Code/my-project
+sophia init
+```
+
+#### Beads and graph-aware routing
+
+```bash
+br list --json
+br ready --json
+bv --robot-next
+bv --robot-insights
+```
+
+See [`docs/setup.md`](docs/setup.md) for more detailed setup notes.
+
+---
+
+## Architecture
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                           pi command layer                            │
+│ /agent-flywheel  /agent-flywheel-status  /agent-flywheel-doctor       │
+└──────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                       AgentFlywheel state machine                     │
+│ scan → discover → select → plan → approve → execute → review → learn  │
+│ checkpoints after phase transitions for crash recovery                │
+└──────────────────────────────────────────────────────────────────────┘
+          │                 │                    │                │
+          ▼                 ▼                    ▼                ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ Scan providers  │ │ Planning agents │ │ Execution layer │ │ Review gates    │
+│ - ccc           │ │ - standard plan │ │ - br beads      │ │ - fresh eyes    │
+│ - profiler      │ │ - deep plan     │ │ - worktrees     │ │ - polish        │
+│ - git/history   │ │ - idea wizards  │ │ - cli wrapper   │ │ - ergonomics    │
+└─────────────────┘ └─────────────────┘ └─────────────────┘ │ - compliance   │
+          │                 │                    │           └─────────────────┘
+          └─────────────────┴──────────┬─────────┴──────────────────┘
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Optional coordination                         │
+│ Sophia CRs · agent-mail reservations · CASS memory · MemPalace mining │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Key files:
+
+| File | Role |
+|------|------|
+| `src/index.ts` | Extension registration and top-level command wiring |
+| `src/commands.ts` | Command handlers and orchestration entry points |
+| `src/beads.ts` | Bead helpers, validation, template hygiene checks |
+| `src/bead-templates.ts` | Built-in bead template library |
+| `src/tools/approve.ts` | Bead approval and refinement flow |
+| `src/tools/review.ts` | Per-bead review and next-bead selection |
+| `src/prompts.ts` | Planning prompts and bead instructions |
+| `src/deep-plan.ts` | Multi-model planning agents |
+| `src/cli-exec.ts` | Structured CLI execution wrapper with retry/fallback behavior |
+
+---
+
+## Bead Template Library
 
 Built-in templates:
-- `add-api-endpoint`
-- `refactor-module`
-- `add-tests`
 
-Templates are optional scaffolds. They help shape a first draft, but the final bead must be fully expanded and self-contained before it is created. Final beads should carry forward the real rationale, acceptance criteria, and `### Files:` scope directly in the description.
+| Template | Use When |
+|----------|----------|
+| `add-api-endpoint` | Adding an HTTP/API entry point with implementation and tests |
+| `refactor-module` | Restructuring an existing module while preserving behavior |
+| `add-tests` | Adding focused coverage for an existing behavior |
 
-Correct usage example:
+Templates are drafting aids, not final task syntax. Final beads must be expanded and self-contained.
 
-```txt
+Correct drafting flow:
+
+```text
 Start from template add-api-endpoint with placeholders:
 - {{endpointPath}} = /api/users
 - {{moduleName}} = user-management
@@ -99,21 +507,198 @@ Final bead id: add-users-endpoint
 Final bead title: Add users endpoint
 ```
 
-That placeholder syntax is only for drafting. The bead that gets created must resolve every `{{placeholderName}}` and must not contain template shorthand like `[Use template: ...]` or `see template`.
+The bead that gets created must not contain unresolved markers such as:
 
-Validation in `src/beads.ts` enforces this hygiene. Open beads fail validation if they still contain unresolved template artifacts such as `[Use template: ...]`, `see template`, or raw `{{placeholderName}}` markers.
+```text
+[Use template: add-api-endpoint]
+see template
+{{endpointPath}}
+```
+
+Validation in `src/beads.ts` rejects unresolved template artifacts before planning continues.
+
+---
 
 ## Development
 
 ```bash
 git clone https://github.com/burningportra/pi-agent-flywheel.git
-cd pi-agent-flywheel && npm install
+cd pi-agent-flywheel
+npm install
 npm run build
 npm test
 pi -e ./src/index.ts
 ```
 
-When changing orchestration internals, prefer the shared CLI wrapper layer in `src/cli-exec.ts` instead of adding new raw `pi.exec(...)` calls. The wrapper gives you structured failures, transient retry where appropriate, and predictable fallback behavior for user-facing flows.
+When changing orchestration internals, prefer `src/cli-exec.ts` over new raw `pi.exec(...)` calls. The wrapper gives user-facing flows structured failures, transient retry where appropriate, and predictable fallback behavior.
+
+### Package dependency policy
+
+This extension uses the current `@earendil-works/*` pi packages:
+
+```json
+{
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}
+```
+
+They are also present in `devDependencies` so local TypeScript builds and tests work outside pi.
+
+---
+
+## Troubleshooting
+
+### “Unknown command: /agent-flywheel”
+
+The extension is not installed or not enabled.
+
+```bash
+pi list | grep pi-agent-flywheel
+pi install git:github.com/burningportra/pi-agent-flywheel
+```
+
+If it is installed but disabled, run:
+
+```bash
+pi config
+```
+
+Then enable the extension resources.
+
+### “ccc not found” or codebase scanning is shallow
+
+`ccc` is optional. Install and index if you want richer scan context:
+
+```bash
+pipx install cocoindex-code
+ccc init -f
+ccc index
+```
+
+Without `ccc`, the built-in profiler still uses repository structure, commits, TODOs, and available context.
+
+### `br` or `bv` commands fail
+
+Run the doctor command first:
+
+```text
+/agent-flywheel-doctor
+```
+
+Then verify bead tooling manually:
+
+```bash
+br list --json
+br ready --json
+bv --robot-insights
+```
+
+If your repo has no bead database yet, initialize or create beads according to your local `br` workflow.
+
+### Worktrees were left behind after a crash
+
+Use the cleanup command:
+
+```text
+/agent-flywheel-cleanup
+```
+
+You can also inspect Git worktrees manually:
+
+```bash
+git worktree list
+```
+
+### Deep planning does not offer multiple models
+
+Check pi model configuration:
+
+```text
+/models
+```
+
+Deep planning needs multiple configured models. Standard planning works with one model.
+
+### `npm run build` cannot resolve pi packages
+
+Refresh dependencies:
+
+```bash
+npm install
+npm run build
+```
+
+The project expects the `@earendil-works/*` packages and `typebox` listed in `devDependencies`.
+
+---
+
+## Limitations
+
+- **It is a pi extension, not a standalone CLI.** You use it from inside `pi`.
+- **Parallel execution depends on your environment.** Worktrees, model availability, local tooling, and shell permissions determine how much autonomy is practical.
+- **Optional integrations are best-effort.** Missing `ccc`, Sophia, CASS, or agent-mail reduces capability but should not block the basic workflow.
+- **Review gates are not formal verification.** They improve discipline and evidence collection, but you still own the final merge decision.
+- **Large repo scans can be noisy.** The approval gate exists because generated plans should be edited before implementation.
+- **No npm package is documented here.** The supported install path is through `pi install` from GitHub or a local checkout.
+
+---
+
+## FAQ
+
+### Is this replacing pi?
+
+No. It is a pi package that adds `/agent-flywheel` commands and tools. You still use pi for the session, model configuration, and tool execution.
+
+### Do I need `ccc`?
+
+No. `ccc` improves scan quality, but the extension falls back to its built-in profiler if `ccc` is missing or fails.
+
+### Do I need multiple model subscriptions?
+
+No for the standard workflow. Multi-model deep planning and Dueling Idea Wizards are better with multiple models, but a single-model path remains available.
+
+### What are beads?
+
+Beads are dependency-tracked tasks managed by the `br` CLI. In this project, beads act as contracts: title, rationale, acceptance criteria, and file scope should be clear enough for a fresh agent to execute.
+
+### Can I use it in a repo that already has tasks/issues?
+
+Yes, but the extension is designed around local beads. If your repo uses another tracker, treat the bead plan as the execution breakdown and manually map it to your external issue system if needed.
+
+### Does it commit or push automatically?
+
+The workflow can guide implementation and review, but you should inspect the final diff and control commits/pushes according to your repo policy.
+
+### What happens if my pi session crashes?
+
+The extension checkpoints phase state. Restart `/agent-flywheel`; when a resumable checkpoint exists, it offers to continue from the saved state.
+
+### Why are legacy `/orchestrate*` aliases still present?
+
+Earlier versions used orchestrator/flywheel naming. The aliases avoid breaking existing sessions, but new usage should prefer `/agent-flywheel*`.
+
+---
+
+## About Contributions
+
+*About Contributions:* Please don't take this the wrong way, but I do not accept outside contributions for any of my projects. I simply don't have the mental bandwidth to review anything, and it's my name on the thing, so I'm responsible for any problems it causes; thus, the risk-reward is highly asymmetric from my perspective. I'd also have to worry about other "stakeholders," which seems unwise for tools I mostly make for myself for free. Feel free to submit issues, and even PRs if you want to illustrate a proposed fix, but know I won't merge them directly. Instead, I'll have Codex or Codex review submissions via `gh` and independently decide whether and how to address them. Bug reports in particular are welcome. Sorry if this offends, but I want to avoid wasted time and hurt feelings. I understand this isn't in sync with the prevailing open-source ethos that seeks community contributions, but it's the only way I can move at this velocity and keep my sanity.
+
+---
+
+## Learn More
+
+- [Setup & Configuration](docs/setup.md) — prerequisites, `ccc`, subscriptions, Sophia, CASS
+- [Architecture](docs/architecture.md) — scan pipeline, context priority, bead templates, workflow internals
+- [Planning & Review](docs/planning-and-review.md) — planning, approval, and review behavior
+- [Coordination & Swarm](docs/coordination-and-swarm.md) — multi-agent coordination notes
+- [Bead System](docs/bead-system.md) — bead conventions and validation
+
+---
 
 ## License
 
