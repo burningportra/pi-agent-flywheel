@@ -32,7 +32,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
 
     async execute(_toolCallId, _params, signal, onUpdate, ctx) {
       oc.setPhase("profiling", ctx);
-      ctx.ui.notify(`pi-orchestrator v${oc.version}`, 'info');
+      ctx.ui.notify(`pi-agent-flywheel v${oc.version}`, 'info');
       onUpdate?.({
         content: [{ type: "text", text: "Scanning repository..." }],
         details: {},

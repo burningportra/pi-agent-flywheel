@@ -11,7 +11,7 @@
 ## Installation
 
 ```bash
-pi install git:github.com/burningportra/pi-orchestrator
+pi install git:github.com/burningportra/pi-agent-flywheel
 ```
 
 Verify it loaded:
@@ -24,7 +24,7 @@ pi
 
 ## ccc Codebase Scanning (Optional, Recommended)
 
-pi-orchestrator tries ccc first because it provides more detailed codebase context than the built-in profiler. ccc findings are paired with the existing repo profile shape so the rest of the workflow keeps working.
+pi-agent-flywheel tries ccc first because it provides more detailed codebase context than the built-in profiler. ccc findings are paired with the existing repo profile shape so the rest of the workflow keeps working.
 
 ### What ccc changes
 
@@ -72,7 +72,7 @@ Parallel agent features (deep planning, creative brainstorm) require access to m
 
 ## Sophia Integration (Optional)
 
-[Sophia](https://github.com/sophialab/sophia) adds structured change tracking on top of git. When detected, pi-orchestrator automatically creates Change Requests (CRs) with task contracts.
+[Sophia](https://github.com/sophialab/sophia) adds structured change tracking on top of git. When detected, pi-agent-flywheel automatically creates Change Requests (CRs) with task contracts.
 
 ### What Sophia adds
 
@@ -122,8 +122,8 @@ Once installed, the orchestrator automatically:
 To hack on the extension itself:
 
 ```bash
-git clone https://github.com/burningportra/pi-orchestrator.git
-cd pi-orchestrator && npm install
+git clone https://github.com/burningportra/pi-agent-flywheel.git
+cd pi-agent-flywheel && npm install
 
 # Run pi with the local extension
 pi -e ./src/index.ts

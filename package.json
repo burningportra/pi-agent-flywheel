@@ -1,12 +1,12 @@
 {
-  "name": "pi-orchestrator",
-  "version": "1.2.10",
+  "name": "pi-agent-flywheel",
+  "version": "1.2.11",
   "description": "Multi-agent orchestrator for pi — deep planning, parallel execution, guided review gates, compound memory. Based on the Agentic Coding Flywheel.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/burningportra/pi-orchestrator.git"
+    "url": "https://github.com/burningportra/pi-agent-flywheel.git"
   },
-  "homepage": "https://github.com/burningportra/pi-orchestrator",
+  "homepage": "https://github.com/burningportra/pi-agent-flywheel",
   "keywords": [
     "pi",
     "orchestrator",

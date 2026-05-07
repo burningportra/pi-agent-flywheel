@@ -87,7 +87,7 @@ export async function runDoctorChecks(pi: ExtensionAPI, cwd: string): Promise<Do
   const checks = await Promise.all([
     timedCheck("pi_extension", async () => ({
       severity: "green",
-      message: "pi-orchestrator extension is loaded",
+      message: "pi-agent-flywheel extension is loaded",
     })),
     execCheck(pi, cwd, "git_status", "git", ["status", "--porcelain"], "Initialize git or fix the repository before running a flywheel.", { required: true, okMessage: "git repository accessible" }),
     execCheck(pi, cwd, "node_version", "node", ["--version"], "Install Node.js >= 18 and ensure node is on PATH.", { required: true }),

@@ -43,7 +43,7 @@ export default function (pi: ExtensionAPI) {
   const ORCHESTRATOR_VERSION = JSON.parse(
     readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
   ).version as string;
-  console.log(`[pi-orchestrator] v${ORCHESTRATOR_VERSION} loaded`);
+  console.log(`[pi-agent-flywheel] v${ORCHESTRATOR_VERSION} loaded`);
 
   let state: OrchestratorState = createInitialState();
   let orchestratorActive = false;
@@ -300,9 +300,9 @@ export default function (pi: ExtensionAPI) {
       const checkpoint = readCheckpoint(ctx.cwd);
       if (checkpoint && checkpoint.envelope.state.phase !== "idle" && checkpoint.envelope.state.phase !== "complete") {
         lastStateEntry = checkpoint.envelope.state;
-        console.log(`[pi-orchestrator] Restored from checkpoint: phase=${lastStateEntry.phase}${lastStateEntry.selectedGoal ? `, goal="${lastStateEntry.selectedGoal}"` : ""}`);
+        console.log(`[pi-agent-flywheel] Restored from checkpoint: phase=${lastStateEntry.phase}${lastStateEntry.selectedGoal ? `, goal="${lastStateEntry.selectedGoal}"` : ""}`);
         for (const w of checkpoint.warnings) {
-          console.warn(`[pi-orchestrator] checkpoint: ${w}`);
+          console.warn(`[pi-agent-flywheel] checkpoint: ${w}`);
         }
       }
     }
@@ -435,7 +435,7 @@ export default function (pi: ExtensionAPI) {
       }
     } catch (err) {
       // Log but don't block shutdown — best-effort cleanup
-      console.error(`[pi-orchestrator] worktree cleanup error on shutdown: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[pi-agent-flywheel] worktree cleanup error on shutdown: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       worktreePool = undefined;
       if (swarmTender) { swarmTender.stop(); swarmTender = undefined; }

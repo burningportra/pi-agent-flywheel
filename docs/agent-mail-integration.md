@@ -1,6 +1,6 @@
 # Agent Mail Integration
 
-pi-orchestrator uses [Agent Mail](https://github.com/nicobailon/agent-mail) — a local MCP server at `http://127.0.0.1:8765` — to coordinate parallel sub-agents. It provides file reservations, threaded messaging, build-slot advisory locks, and pre-commit guards so that multiple agents can work on the same codebase without stepping on each other.
+pi-agent-flywheel uses [Agent Mail](https://github.com/nicobailon/agent-mail) — a local MCP server at `http://127.0.0.1:8765` — to coordinate parallel sub-agents. It provides file reservations, threaded messaging, build-slot advisory locks, and pre-commit guards so that multiple agents can work on the same codebase without stepping on each other.
 
 All Agent Mail functions live in `src/agent-mail.ts`. The pre-commit guard scaffolding lives in `src/coordination.ts`.
 

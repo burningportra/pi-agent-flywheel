@@ -23,7 +23,7 @@ Comprehensive implementation plan for addressing the gaps identified in `docs/fl
 
 ### Problem
 
-pi-orchestrator jumps from goal selection directly to bead creation. The flywheel's core thesis is that 85% of effort belongs in plan-space, where global reasoning is cheap. Without a plan phase, architectural decisions get made in bead-space (5× rework cost) or code-space (25× rework cost).
+pi-agent-flywheel jumps from goal selection directly to bead creation. The flywheel's core thesis is that 85% of effort belongs in plan-space, where global reasoning is cheap. Without a plan phase, architectural decisions get made in bead-space (5× rework cost) or code-space (25× rework cost).
 
 The deep planning system (`src/deep-plan.ts`) partially covers this — it runs 3 competing models and synthesizes. But it produces beads directly, not an intermediate plan document that can be iterated, refined, and audited before bead conversion.
 
@@ -163,7 +163,7 @@ During `orch_approve_beads`, if bv is available, run `bv --robot-insights` and s
 
 ### Problem
 
-pi-orchestrator uses git worktrees for parallel execution (safe isolation but merge overhead). The flywheel advocates single-branch + Agent Mail file reservations (immediate conflict visibility, no merge). Both are valid — the plan is to **support both modes** so users can choose.
+pi-agent-flywheel uses git worktrees for parallel execution (safe isolation but merge overhead). The flywheel advocates single-branch + Agent Mail file reservations (immediate conflict visibility, no merge). Both are valid — the plan is to **support both modes** so users can choose.
 
 ### Design
 
@@ -249,7 +249,7 @@ For the single-branch mode (Workstream C), agent identity is natural — agents 
 
 **Gap addressed:** #9
 
-The flywheel's most common prompt is "Reread AGENTS.md so it's still fresh in your mind" after context compaction. pi-orchestrator's sub-agents are ephemeral (no compaction), so this mostly doesn't apply.
+The flywheel's most common prompt is "Reread AGENTS.md so it's still fresh in your mind" after context compaction. pi-agent-flywheel's sub-agents are ephemeral (no compaction), so this mostly doesn't apply.
 
 However, for long-running orchestration sessions where the main agent compacts, the orchestrator system prompt (injected via `before_agent_start`) should include: "If you've just experienced context compaction, re-read AGENTS.md immediately."
 
@@ -266,7 +266,7 @@ Currently, hit-me review agents have specialized roles:
 - reality-check
 - random-exploration
 
-The flywheel argues against specialist agents (invariant #6). However, pi-orchestrator's review agents are ephemeral and short-lived — specialization here is more like "different review prompts" than "specialist identities." The risk is low.
+The flywheel argues against specialist agents (invariant #6). However, pi-agent-flywheel's review agents are ephemeral and short-lived — specialization here is more like "different review prompts" than "specialist identities." The risk is low.
 
 **Design decision:** Keep the specialized review prompts (they produce better reviews) but frame them differently:
 1. Rename from role-based ("fresh-eyes agent") to prompt-based ("review with fresh-eyes prompt")
@@ -312,9 +312,9 @@ The current completion flow calls `appendMemory()` which prompts the LLM to add 
 
 **Gap addressed:** Flywheel §9 validation gates
 
-The flywheel prescribes 6 validation gates. pi-orchestrator has 7 guided gates. Map them explicitly:
+The flywheel prescribes 6 validation gates. pi-agent-flywheel has 7 guided gates. Map them explicitly:
 
-| Flywheel Gate | pi-orchestrator Gate | Status |
+| Flywheel Gate | pi-agent-flywheel Gate | Status |
 |---------------|---------------------|--------|
 | Foundation | Not explicit | Add check in profile phase |
 | Plan | New plan phase (A4) | Add with Workstream A |

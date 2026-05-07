@@ -8,7 +8,7 @@ import type { Bead, RepoProfile } from "./types.js";
 const CWD = "/fake/cwd";
 
 const profile: RepoProfile = {
-  name: "pi-orchestrator",
+  name: "pi-agent-flywheel",
   languages: ["TypeScript"],
   frameworks: ["Vitest"],
   structure: "",

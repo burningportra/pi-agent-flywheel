@@ -285,7 +285,7 @@ export function registerCommands(oc: OrchestratorContext) {
               checkpointWarnings.push("checkpoint is from a different git commit");
             }
           } catch { /* git not available or not a repo */ }
-          console.log(`[pi-orchestrator] /orchestrate: recovered from checkpoint — phase=${oc.state.phase}`);
+          console.log(`[pi-agent-flywheel] /agent-flywheel: recovered from checkpoint — phase=${oc.state.phase}`);
         }
       }
       
@@ -1560,7 +1560,7 @@ Use ultrathink. Be specific — vague suggestions are useless.`;
       ctx.ui.notify(
         `Sending feedback survey for tool: ${toolName}. ` +
         `The agent will evaluate the tool and return a structured JSON report. ` +
-        `Results will be saved to .pi-orchestrator-feedback/tools/${toolName}.jsonl`,
+        `Results will be saved to .pi-agent-flywheel-feedback/tools/${toolName}.jsonl`,
         "info"
       );
       // Register a one-time result handler by passing a parse-and-save instruction

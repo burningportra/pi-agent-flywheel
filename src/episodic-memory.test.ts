@@ -53,7 +53,7 @@ function fakePlainTextSearch(
 /**
  * Build fake plain-text `mempalace status` output matching the real CLI format.
  */
-function fakePlainTextStatus(drawerCount: number, wing = "pi-orchestrator"): string {
+function fakePlainTextStatus(drawerCount: number, wing = "pi-agent-flywheel"): string {
   return (
     "=======================================================\n" +
     `  MemPalace Status — ${drawerCount} drawers\n` +
@@ -213,7 +213,7 @@ describe("searchEpisodic", () => {
         return fakePlainTextSearch([{
           text: "We chose to use CLI wrapper",
           similarity: 0.91,
-          wing: "pi-orchestrator",
+          wing: "pi-agent-flywheel",
           room: "decisions",
         }]) as any;
       }
@@ -221,7 +221,7 @@ describe("searchEpisodic", () => {
     });
 
     const result = searchEpisodic("how to handle deps");
-    expect(result).toContain("[pi-orchestrator / decisions] (sim=0.91)");
+    expect(result).toContain("[pi-agent-flywheel / decisions] (sim=0.91)");
     expect(result).toContain("We chose to use CLI wrapper");
   });
 
@@ -232,7 +232,7 @@ describe("searchEpisodic", () => {
       throw new Error(`Unmocked: ${args?.join(" ")}`);
     });
 
-    searchEpisodic("query", { wing: "pi-orchestrator", nResults: 3 });
+    searchEpisodic("query", { wing: "pi-agent-flywheel", nResults: 3 });
 
     const searchCalls = mockExec.mock.calls.filter(
       ([, args]) => (args as string[])?.[2] === "search"
@@ -242,7 +242,7 @@ describe("searchEpisodic", () => {
     expect(args).toContain("--results");
     expect(args).toContain("3");
     expect(args).toContain("--wing");
-    expect(args).toContain("pi-orchestrator");
+    expect(args).toContain("pi-agent-flywheel");
   });
 
   it("returns empty string when results list is empty", () => {
@@ -307,21 +307,21 @@ describe("getEpisodicContext", () => {
         return fakePlainTextSearch([{
           text: "We chose to use CLI wrapper",
           similarity: 0.91,
-          wing: "pi-orchestrator",
+          wing: "pi-agent-flywheel",
           room: "decisions",
         }]) as any;
       }
       throw new Error(`Unmocked: ${args?.join(" ")}`);
     });
 
-    const ctx = getEpisodicContext("plan beads", "pi-orchestrator");
+    const ctx = getEpisodicContext("plan beads", "pi-agent-flywheel");
     expect(ctx).toMatch(/^## Past Session Examples\n/);
-    expect(ctx).toContain("[pi-orchestrator / decisions]");
+    expect(ctx).toContain("[pi-agent-flywheel / decisions]");
   });
 
   it("returns empty string when mempalace is not available", () => {
     mockExec.mockImplementation(() => { throw new Error("ENOENT"); });
-    expect(getEpisodicContext("plan beads", "pi-orchestrator")).toBe("");
+    expect(getEpisodicContext("plan beads", "pi-agent-flywheel")).toBe("");
   });
 
   it("returns empty string when search yields no results", () => {
@@ -330,7 +330,7 @@ describe("getEpisodicContext", () => {
       if (args?.[2] === "search") return fakePlainTextSearch([]) as any;
       throw new Error(`Unmocked: ${args?.join(" ")}`);
     });
-    expect(getEpisodicContext("plan beads", "pi-orchestrator")).toBe("");
+    expect(getEpisodicContext("plan beads", "pi-agent-flywheel")).toBe("");
   });
 
   it("passes projectSlug as wing to searchEpisodic", () => {
@@ -424,7 +424,7 @@ describe("getEpisodicStats", () => {
 
 describe("sanitiseSlug", () => {
   it("returns basename of path", () => {
-    expect(sanitiseSlug("/Volumes/1tb/Projects/pi-orchestrator")).toBe("pi-orchestrator");
+    expect(sanitiseSlug("/Volumes/1tb/Projects/pi-agent-flywheel")).toBe("pi-agent-flywheel");
   });
 
   it("replaces spaces with hyphens", () => {

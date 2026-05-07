@@ -56,7 +56,7 @@ describe("writeCheckpoint + readCheckpoint round-trip", () => {
     expect(result!.warnings).toEqual([]);
   });
 
-  test("creates .pi-orchestrator directory automatically", () => {
+  test("creates .pi-agent-flywheel directory automatically", () => {
     const state = makeTestState({ phase: "planning" });
     writeCheckpoint(tmpDir, state, "1.0.0");
     expect(existsSync(join(tmpDir, CHECKPOINT_DIR))).toBe(true);

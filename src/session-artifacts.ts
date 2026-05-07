@@ -17,7 +17,7 @@ export function sessionArtifactRoot(ctx: ArtifactContext): string {
     return join(dirname(sessionFile), "..", "artifacts", sessionId);
   }
 
-  return join(ctx.cwd, ".pi-orchestrator-artifacts");
+  return join(ctx.cwd, ".pi-agent-flywheel-artifacts");
 }
 
 export function sessionArtifactPath(ctx: ArtifactContext, name: string): string {

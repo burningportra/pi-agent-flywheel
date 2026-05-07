@@ -583,10 +583,10 @@ describe("implementerInstructions", () => {
 
 describe("learningsExtractionPrompt", () => {
   it("includes the goal and bead ids", () => {
-    const output = learningsExtractionPrompt("Ship prompt routing", ["pi-orchestrator-3wz", "pi-orchestrator-t8r"]);
+    const output = learningsExtractionPrompt("Ship prompt routing", ["pi-agent-flywheel-3wz", "pi-agent-flywheel-t8r"]);
     expect(output).toContain("Ship prompt routing");
-    expect(output).toContain("pi-orchestrator-3wz");
-    expect(output).toContain("pi-orchestrator-t8r");
+    expect(output).toContain("pi-agent-flywheel-3wz");
+    expect(output).toContain("pi-agent-flywheel-t8r");
   });
 
   it("includes structured reflection questions and cm add commands", () => {

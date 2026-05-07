@@ -1,6 +1,6 @@
 # Flywheel Gap Analysis
 
-Comparison of the [Agent Flywheel Complete Guide](https://agent-flywheel.com/complete-guide) against pi-orchestrator's current capabilities.
+Comparison of the [Agent Flywheel Complete Guide](https://agent-flywheel.com/complete-guide) against pi-agent-flywheel's current capabilities.
 
 ---
 
@@ -27,9 +27,9 @@ Comparison of the [Agent Flywheel Complete Guide](https://agent-flywheel.com/com
 
 **Status: ✅ Fully covered (with different emphases)**
 
-pi-orchestrator implements the full arc: scan → discover → select → plan → create beads → approve → implement → review → complete. The phase state machine (`OrchestratorPhase` in `src/index.ts`) covers 13 states with session persistence.
+pi-agent-flywheel implements the full arc: scan → discover → select → plan → create beads → approve → implement → review → complete. The phase state machine (`OrchestratorPhase` in `src/index.ts`) covers 13 states with session persistence.
 
-**Where pi-orchestrator exceeds the guide:**
+**Where pi-agent-flywheel exceeds the guide:**
 - Dual-provider scan contract (ccc + built-in fallback) — the guide assumes ccc is always available
 - Session persistence and restore across restarts
 - Live status widget showing phase/progress
@@ -40,7 +40,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: 🔴 Critical gap — no standalone plan document phase**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | 3,000-6,000 line markdown plan as primary artifact | No plan document; goes straight from idea → beads | **Critical** |
 | Multi-model competing plans (GPT Pro + Opus + Gemini + Grok) | Deep planning uses 3 models but for bead creation, not plan creation | Significant |
@@ -50,7 +50,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 | Plan-space reasoning before bead-space | Jumps from idea selection to bead creation | **Critical** |
 | Three reasoning spaces (plan/bead/code) explicitly separated | Only bead-space and code-space | Significant |
 
-**Severity: Critical** — The flywheel's core thesis is that 85% of time should be spent in plan-space. pi-orchestrator skips this entirely, going from a one-line goal description to bead creation. This means architectural decisions that should happen cheaply in plan-space get made expensively in bead-space or code-space.
+**Severity: Critical** — The flywheel's core thesis is that 85% of time should be spent in plan-space. pi-agent-flywheel skips this entirely, going from a one-line goal description to bead creation. This means architectural decisions that should happen cheaply in plan-space get made expensively in bead-space or code-space.
 
 **Suggested fix:** Add an optional "plan phase" between goal selection and bead creation. The LLM would produce a comprehensive markdown plan document, optionally run multi-model competing plans, synthesize, and iterate 2-3 rounds before converting to beads. This could be offered as a "📋 Plan first" option alongside the current "direct to beads" flow for smaller changes.
 
@@ -60,7 +60,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: 🟡 Mostly covered, one notable gap**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | Plan-to-beads as distinct translation problem | `beadCreationPrompt()` instructs LLM to create beads | ✅ |
 | Self-contained beads with embedded context | Quality gate (WHAT/WHY/HOW scoring) enforces this | ✅ |
@@ -77,7 +77,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: ✅ Well covered, exceeds in some areas**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | 4-6+ polishing rounds | Approval flow with unlimited polish rounds | ✅ |
 | Fresh eyes technique (new session) | `freshContextRefinementPrompt()` via `pi --print` | ✅ |
@@ -87,7 +87,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 | Cross-model review | `crossModelBeadReview()` in `src/bead-review.ts` | ✅ |
 | Idea-wizard 30→5→15 funnel | Idea generation uses 25-30→10-15 funnel | ✅ (variant) |
 
-**Where pi-orchestrator exceeds the guide:**
+**Where pi-agent-flywheel exceeds the guide:**
 - Automated convergence auto-stop (the guide describes manual judgment)
 - Quality checklist gate with numeric WHAT/WHY/HOW scoring
 - Graph health analysis via bv integration
@@ -99,7 +99,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: 🟡 Partially covered, significant architectural differences**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | Agent Mail + Beads + bv triangle | Agent Mail + Beads integrated; bv detected but underused | **Significant** |
 | No worktrees, single-branch model | Uses worktrees (`WorktreePool`) for parallel execution | **Significant** |
@@ -111,7 +111,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 | DCG (Destructive Command Guard) | Not integrated | Minor |
 | Single-branch git, no worktrees | Worktree-based parallel execution | **Significant** |
 
-**Severity: Significant** — The guide explicitly argues against worktrees ("I really think worktrees are a bad pattern"). pi-orchestrator's parallel execution model is built on worktrees. The guide's alternative (Agent Mail file reservations + single-branch commits) trades isolation for immediate conflict visibility.
+**Severity: Significant** — The guide explicitly argues against worktrees ("I really think worktrees are a bad pattern"). pi-agent-flywheel's parallel execution model is built on worktrees. The guide's alternative (Agent Mail file reservations + single-branch commits) trades isolation for immediate conflict visibility.
 
 **Suggested fix:**
 1. Add a coordination mode that uses Agent Mail file reservations instead of worktrees
@@ -124,7 +124,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: 🟡 Partially covered, different execution model**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | NTM/terminal mux for swarm management | `parallel_subagents` via pi's built-in sub-agent system | Different approach (✅) |
 | Swarm marching orders prompt | `swarmMarchingOrders()` in `src/prompts.ts` | ✅ |
@@ -136,7 +136,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 | Persistent agent identity via Agent Mail | Sub-agents are ephemeral (created per-bead) | Significant |
 | Account switching (CAAM) | Not integrated (handled by pi framework) | N/A |
 
-**Severity: Significant** — The fundamental model differs. The flywheel uses long-running persistent agents that coordinate via Agent Mail. pi-orchestrator uses ephemeral sub-agents spawned per-bead. Both are valid but produce different coordination dynamics.
+**Severity: Significant** — The fundamental model differs. The flywheel uses long-running persistent agents that coordinate via Agent Mail. pi-agent-flywheel uses ephemeral sub-agents spawned per-bead. Both are valid but produce different coordination dynamics.
 
 **Suggested fix:**
 1. Add staggered launch delay for parallel sub-agents
@@ -149,7 +149,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: ✅ Well covered, some differences**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | Fresh eyes review after each bead | Per-bead review with 5 parallel agents | ✅ |
 | 4 questions framework | Review agents cover correctness, edge cases, integration, quality | ✅ |
@@ -162,7 +162,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 | Organized commits | `commitStrategyInstructions()` | ✅ |
 | Landing the plane 6-step | `landingChecklistInstructions()` in guided gates | ✅ |
 
-**Where pi-orchestrator exceeds the guide:**
+**Where pi-agent-flywheel exceeds the guide:**
 - 7-step guided gates with auto/prompt modes and resumable state
 - File-conflict detection during peer review
 - Auto-skip logic for de-slopify when no docs changed
@@ -174,7 +174,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: 🟡 Covers core tools, misses ancillary ones**
 
-| Flywheel tool | pi-orchestrator | Status |
+| Flywheel tool | pi-agent-flywheel | Status |
 |---------------|-----------------|--------|
 | NTM | pi's built-in sub-agent system | ✅ Alternative |
 | Agent Mail | `src/agent-mail.ts` | ✅ Integrated |
@@ -188,7 +188,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 | DCG | Not integrated | Minor gap |
 | SLB | N/A (pi has skills system) | N/A |
 
-**Where pi-orchestrator exceeds the guide:**
+**Where pi-agent-flywheel exceeds the guide:**
 - 6 registered orchestrator tools (`orch_profile`, `orch_discover`, `orch_select`, `orch_approve_beads`, `orch_review`, `orch_memory`)
 - Pluggable scan contract with provider abstraction
 - System prompt injection via `before_agent_start` hook
@@ -200,7 +200,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 **Status: 🟡 Foundations present, recursive loops missing**
 
-| Flywheel prescribes | pi-orchestrator has | Gap |
+| Flywheel prescribes | pi-agent-flywheel has | Gap |
 |---------------------|---------------------|-----|
 | CASS 3-layer memory (episodic→working→procedural) | Full CASS integration via cm CLI | ✅ |
 | Read/write/feedback/search memory | All four operations in `src/memory.ts` | ✅ |
@@ -214,7 +214,7 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 ---
 
-## Areas Where pi-orchestrator Exceeds the Guide
+## Areas Where pi-agent-flywheel Exceeds the Guide
 
 | Feature | Details |
 |---------|---------|
@@ -233,9 +233,9 @@ pi-orchestrator implements the full arc: scan → discover → select → plan �
 
 ## Architectural Divergences (Not Gaps)
 
-These are deliberate design choices where pi-orchestrator differs from the flywheel guide. Neither approach is strictly better — they represent different trade-offs.
+These are deliberate design choices where pi-agent-flywheel differs from the flywheel guide. Neither approach is strictly better — they represent different trade-offs.
 
-| Area | Flywheel approach | pi-orchestrator approach | Trade-off |
+| Area | Flywheel approach | pi-agent-flywheel approach | Trade-off |
 |------|-------------------|--------------------------|-----------|
 | **Parallel execution** | Single branch + Agent Mail file reservations | Git worktrees for isolation | Worktrees: safer isolation, harder merge. Single-branch: immediate conflict visibility, requires discipline |
 | **Agent lifecycle** | Persistent long-running agents | Ephemeral per-bead sub-agents | Persistent: more context, needs compaction handling. Ephemeral: simpler, no compaction, fresh context each time |

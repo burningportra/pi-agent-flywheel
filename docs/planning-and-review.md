@@ -1,6 +1,6 @@
 # Planning & Review
 
-How pi-orchestrator plans work, gets reviewed, and reaches production quality.
+How pi-agent-flywheel plans work, gets reviewed, and reaches production quality.
 
 ## Where Planning Fits
 

@@ -32,7 +32,7 @@ describe("sessionArtifactRoot", () => {
         getSessionFile: () => undefined,
       },
     }));
-    expect(root).toBe("/repo/.pi-orchestrator-artifacts");
+    expect(root).toBe("/repo/.pi-agent-flywheel-artifacts");
   });
 });
 

@@ -59,8 +59,8 @@ describe("findOrphanedWorktrees", () => {
     mockExistsSync.mockReturnValue(true);
     mockReaddirSync.mockReturnValue(["step-0", "step-1"]);
     const tracked: WorktreeInfo[] = [
-      { path: "/repo/.pi-orchestrator/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
-      { path: "/repo/.pi-orchestrator/worktrees/step-1", branch: "main--worktree-step-1", stepIndex: 1 },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-1", branch: "main--worktree-step-1", stepIndex: 1 },
     ];
     const pi = createMockPi();
     const result = await findOrphanedWorktrees(pi, "/repo", tracked);
@@ -71,15 +71,15 @@ describe("findOrphanedWorktrees", () => {
     mockExistsSync.mockReturnValue(true);
     mockReaddirSync.mockReturnValue(["step-0", "step-1", "step-5"]);
     const tracked: WorktreeInfo[] = [
-      { path: "/repo/.pi-orchestrator/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
     ];
     const exec = vi.fn().mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const pi = createMockPi(exec);
 
     const result = await findOrphanedWorktrees(pi, "/repo", tracked);
     expect(result).toHaveLength(2);
-    expect(result[0].path).toBe("/repo/.pi-orchestrator/worktrees/step-1");
-    expect(result[1].path).toBe("/repo/.pi-orchestrator/worktrees/step-5");
+    expect(result[0].path).toBe("/repo/.pi-agent-flywheel/worktrees/step-1");
+    expect(result[1].path).toBe("/repo/.pi-agent-flywheel/worktrees/step-5");
   });
 
   it("detects dirty orphaned worktrees", async () => {
@@ -96,7 +96,7 @@ describe("findOrphanedWorktrees", () => {
     const result = await findOrphanedWorktrees(pi, "/repo", []);
     expect(result).toHaveLength(1);
     expect(result[0].isDirty).toBe(true);
-    expect(result[0].path).toBe("/repo/.pi-orchestrator/worktrees/step-3");
+    expect(result[0].path).toBe("/repo/.pi-agent-flywheel/worktrees/step-3");
   });
 
   it("detects branch from git worktree list", async () => {
@@ -107,7 +107,7 @@ describe("findOrphanedWorktrees", () => {
       "HEAD abc123",
       "branch refs/heads/main",
       "",
-      "worktree /repo/.pi-orchestrator/worktrees/step-2",
+      "worktree /repo/.pi-agent-flywheel/worktrees/step-2",
       "HEAD def456",
       "branch refs/heads/main--worktree-step-2",
       "",
@@ -159,7 +159,7 @@ describe("cleanupOrphanedWorktrees", () => {
     const exec = vi.fn().mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const pi = createMockPi(exec);
     const orphans: OrphanedWorktreeInfo[] = [
-      { path: "/repo/.pi-orchestrator/worktrees/step-1", isDirty: false },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-1", isDirty: false },
     ];
 
     const summary = await cleanupOrphanedWorktrees(pi, "/repo", orphans);
@@ -180,7 +180,7 @@ describe("cleanupOrphanedWorktrees", () => {
     });
     const pi = createMockPi(exec);
     const orphans: OrphanedWorktreeInfo[] = [
-      { path: "/repo/.pi-orchestrator/worktrees/step-2", isDirty: true },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-2", isDirty: true },
     ];
 
     const summary = await cleanupOrphanedWorktrees(pi, "/repo", orphans);
@@ -204,7 +204,7 @@ describe("cleanupOrphanedWorktrees", () => {
     });
     const pi = createMockPi(exec);
     const orphans: OrphanedWorktreeInfo[] = [
-      { path: "/repo/.pi-orchestrator/worktrees/step-3", branch: "main--worktree-step-3", isDirty: false },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-3", branch: "main--worktree-step-3", isDirty: false },
     ];
 
     await cleanupOrphanedWorktrees(pi, "/repo", orphans);
@@ -222,7 +222,7 @@ describe("cleanupOrphanedWorktrees", () => {
     });
     const pi = createMockPi(exec);
     const orphans: OrphanedWorktreeInfo[] = [
-      { path: "/repo/.pi-orchestrator/worktrees/step-4", isDirty: false },
+      { path: "/repo/.pi-agent-flywheel/worktrees/step-4", isDirty: false },
     ];
 
     const summary = await cleanupOrphanedWorktrees(pi, "/repo", orphans);
@@ -276,7 +276,7 @@ describe("WorktreePool.safeCleanup", () => {
       repoRoot: "/repo",
       baseBranch: "main",
       worktrees: [
-        { path: "/repo/.pi-orchestrator/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
+        { path: "/repo/.pi-agent-flywheel/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
       ],
     });
 
@@ -295,7 +295,7 @@ describe("WorktreePool.safeCleanup", () => {
       repoRoot: "/repo",
       baseBranch: "main",
       worktrees: [
-        { path: "/repo/.pi-orchestrator/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
+        { path: "/repo/.pi-agent-flywheel/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
       ],
     });
 
@@ -321,7 +321,7 @@ describe("WorktreePool.safeCleanup", () => {
       repoRoot: "/repo",
       baseBranch: "main",
       worktrees: [
-        { path: "/repo/.pi-orchestrator/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
+        { path: "/repo/.pi-agent-flywheel/worktrees/step-0", branch: "main--worktree-step-0", stepIndex: 0 },
       ],
     });
 

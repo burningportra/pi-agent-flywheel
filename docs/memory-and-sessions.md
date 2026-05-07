@@ -1,6 +1,6 @@
 # Memory & Session Management
 
-pi-orchestrator tracks knowledge across sessions using two optional memory systems (CASS and MemPalace) and manages orchestration progress through session state detection and artifact storage. This guide explains each subsystem and how they interact.
+pi-agent-flywheel tracks knowledge across sessions using two optional memory systems (CASS and MemPalace) and manages orchestration progress through session state detection and artifact storage. This guide explains each subsystem and how they interact.
 
 ## Architecture at a Glance
 
@@ -94,7 +94,7 @@ MemPalace organises sessions into a **palace → wing → room** hierarchy:
 
 The `sanitiseSlug()` helper converts a working directory path into a wing name:
 ```
-/Volumes/1tb/Projects/pi-orchestrator → "pi-orchestrator"
+/Volumes/1tb/Projects/pi-agent-flywheel → "pi-agent-flywheel"
 ```
 
 ### Mining Sessions
@@ -118,7 +118,7 @@ searchEpisodic(query: string, options?: { wing?: string; nResults?: number }): s
 
 Returns formatted results for prompt injection:
 ```
-[pi-orchestrator / decisions] (sim=0.82)
+[pi-agent-flywheel / decisions] (sim=0.82)
   We decided to use bead templates as drafting aids only...
 ```
 
@@ -190,7 +190,7 @@ sessionArtifactPath(ctx, name): string  // Full path to a named artifact
 Resolution priority:
 1. `sessionManager.getSessionDir()` + `sessionId` → `<sessionDir>/artifacts/<sessionId>/`
 2. `sessionManager.getSessionFile()` + `sessionId` → `<sessionFileParent>/../artifacts/<sessionId>/`
-3. Fallback → `<cwd>/.pi-orchestrator-artifacts/`
+3. Fallback → `<cwd>/.pi-agent-flywheel-artifacts/`
 
 Artifacts include plan documents, scan results, and any intermediate outputs that need to persist across tool calls within a single orchestration session.
 

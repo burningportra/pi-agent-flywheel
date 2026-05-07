@@ -21,7 +21,7 @@ vi.mock("./opening-ceremony.js", () => ({
 }));
 
 function makeTempDir(): string {
-  return mkdtempSync(join(tmpdir(), "pi-orchestrator-startup-"));
+  return mkdtempSync(join(tmpdir(), "pi-agent-flywheel-startup-"));
 }
 
 function buildContext(events: string[], cwd: string) {

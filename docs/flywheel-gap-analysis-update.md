@@ -80,7 +80,7 @@ The orchestrator now supports:
 - `9fee7af` — plan refinement approval flow
 
 ### Remaining difference
-The flywheel’s strongest form uses very large human-reviewed markdown plans and repeated fresh external-model rounds. pi-orchestrator now supports the same shape, but still runs within pi’s extension/tool-call model rather than a pure external planning cockpit.
+The flywheel’s strongest form uses very large human-reviewed markdown plans and repeated fresh external-model rounds. pi-agent-flywheel now supports the same shape, but still runs within pi’s extension/tool-call model rather than a pure external planning cockpit.
 
 **Assessment:** Good enough to count as resolved.
 
@@ -168,7 +168,7 @@ Added:
 
 ### What remains different
 - The flywheel prefers **persistent, long-running swarm agents**
-- pi-orchestrator still mainly uses **ephemeral subagents**
+- pi-agent-flywheel still mainly uses **ephemeral subagents**
 
 That is still a meaningful divergence, though less damaging now that single-branch mode and Agent Mail helpers exist.
 
@@ -215,7 +215,7 @@ That is still a meaningful divergence, though less damaging now that single-bran
 ### Still outside scope / unresolved
 - DCG integration is still absent
 - SLB integration is still absent
-- some flywheel tools remain outside pi-orchestrator’s scope because pi provides analogous capabilities differently
+- some flywheel tools remain outside pi-agent-flywheel’s scope because pi provides analogous capabilities differently
 
 **Assessment:** Improved, but not fully aligned with the entire flywheel toolchain.
 
@@ -276,7 +276,7 @@ These are substantially improved but still somewhat constrained by the host arch
 These are still different from the flywheel by design:
 
 ### 1. Ephemeral subagents instead of persistent swarm agents
-pi-orchestrator still favors short-lived spawned agents over continuously running named swarm sessions.
+pi-agent-flywheel still favors short-lived spawned agents over continuously running named swarm sessions.
 
 ### 2. Worktree mode still available
 The repo now supports flywheel-style single-branch coordination, but it intentionally keeps worktree mode as a first-class option.
@@ -292,10 +292,10 @@ Memory capture is improved, but auto-mining session patterns into rewritten skil
 ## Updated Bottom Line
 
 ### Before this work
-pi-orchestrator was **inspired by** the flywheel but skipped its most important middle layer: the markdown plan phase.
+pi-agent-flywheel was **inspired by** the flywheel but skipped its most important middle layer: the markdown plan phase.
 
 ### After this work
-pi-orchestrator is now **materially aligned** with the flywheel methodology:
+pi-agent-flywheel is now **materially aligned** with the flywheel methodology:
 - plan-space exists
 - plan refinement exists
 - plan-to-beads conversion exists

@@ -3,7 +3,7 @@
 This file provides guidance for AI coding agents working in this repository.
 
 ## Project Context
-pi-orchestrator is a pi extension (TypeScript) that provides `/orchestrate` — scan, plan, implement, review in one command. Key files:
+pi-agent-flywheel is a pi extension (TypeScript) that provides `/agent-flywheel` — scan, plan, implement, review in one command. Key files:
 - src/beads.ts — bead helpers (readBeads, validateBeads, template hygiene checks, etc.)
 - src/bead-templates.ts — built-in bead template library
 - src/tools/approve.ts — bead approval + refinement flow  
@@ -44,32 +44,32 @@ Both must pass after every change.
 ```bash
 # Register with agent-mail
 BOOTSTRAP=$(curl -s -X POST http://127.0.0.1:8765/api -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"macro_start_session","arguments":{"human_key":"/Users/kevtrinh/Code/pi-orchestrator","program":"pi-subagent","model":"auto","task_description":"implementing bead","file_reservation_paths":[],"inbox_limit":10}}}')
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"macro_start_session","arguments":{"human_key":"/Users/kevtrinh/Code/pi-agent-flywheel","program":"pi-subagent","model":"auto","task_description":"implementing bead","file_reservation_paths":[],"inbox_limit":10}}}')
 export AM_AGENT_NAME=$(echo "$BOOTSTRAP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result']['structuredContent']['agent']['name'])" 2>/dev/null)
 echo "I am: $AM_AGENT_NAME"
 
 # Send a message
 curl -s -X POST http://127.0.0.1:8765/api -H 'Content-Type: application/json' \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"send_message\",\"arguments\":{\"human_key\":\"/Users/kevtrinh/Code/pi-orchestrator\",\"sender_name\":\"$AM_AGENT_NAME\",\"to\":[\"all\"],\"subject\":\"Hello\",\"body\":\"My message\",\"thread_id\":\"general\",\"importance\":\"normal\"}}}"
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"send_message\",\"arguments\":{\"human_key\":\"/Users/kevtrinh/Code/pi-agent-flywheel\",\"sender_name\":\"$AM_AGENT_NAME\",\"to\":[\"all\"],\"subject\":\"Hello\",\"body\":\"My message\",\"thread_id\":\"general\",\"importance\":\"normal\"}}}"
 
 # Check inbox
 curl -s -X POST http://127.0.0.1:8765/api -H 'Content-Type: application/json' \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"fetch_inbox\",\"arguments\":{\"human_key\":\"/Users/kevtrinh/Code/pi-orchestrator\",\"agent_name\":\"$AM_AGENT_NAME\",\"limit\":20}}}"
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"fetch_inbox\",\"arguments\":{\"human_key\":\"/Users/kevtrinh/Code/pi-agent-flywheel\",\"agent_name\":\"$AM_AGENT_NAME\",\"limit\":20}}}"
 
 # Acknowledge a message
 curl -s -X POST http://127.0.0.1:8765/api -H 'Content-Type: application/json' \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"acknowledge_message\",\"arguments\":{\"human_key\":\"/Users/kevtrinh/Code/pi-orchestrator\",\"agent_name\":\"$AM_AGENT_NAME\",\"message_id\":\"MSG_ID_HERE\"}}}"
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"acknowledge_message\",\"arguments\":{\"human_key\":\"/Users/kevtrinh/Code/pi-agent-flywheel\",\"agent_name\":\"$AM_AGENT_NAME\",\"message_id\":\"MSG_ID_HERE\"}}}"
 ```
 
 ### Conventions
-- Thread ID = bead ID (e.g. "pi-orchestrator-3c2")
+- Thread ID = bead ID (e.g. "pi-agent-flywheel-3c2")
 - Use thread "general" for cross-bead coordination
 - Announce start, announce completion, respond to messages promptly
 - Use `bv --robot-next` to pick your next bead when idle
 
 ## Episodic Memory (MemPalace) — Optional
 
-pi-orchestrator supports a second memory layer alongside CASS: **MemPalace** stores verbatim session text and retrieves it via semantic search. It is fully optional — if not installed, orchestration runs unchanged.
+pi-agent-flywheel supports a second memory layer alongside CASS: **MemPalace** stores verbatim session text and retrieves it via semantic search. It is fully optional — if not installed, orchestration runs unchanged.
 
 ### Setup (one-time)
 ```bash
@@ -78,7 +78,7 @@ python -m mempalace init
 ```
 
 ### How it works
-- **Automatic mining:** When an orchestration completes two clean review rounds, the current session transcript is automatically mined into MemPalace under a wing named after the project directory (e.g. `pi-orchestrator`).
+- **Automatic mining:** When an orchestration completes two clean review rounds, the current session transcript is automatically mined into MemPalace under a wing named after the project directory (e.g. `pi-agent-flywheel`).
 - **Automatic retrieval:** When creating beads, the planner queries MemPalace for past sessions relevant to the current goal and injects verbatim excerpts as a `## Past Session Examples` section.
 - **Wing convention:** Each project gets its own wing derived from `path.basename(cwd)` with non-alphanumeric chars replaced by `-`. All sessions for a project are grouped under one wing.
 - **Room classification:** Sessions are classified into `decisions`, `preferences`, `milestones`, `problems`, `emotional` rooms via the `--extract general` flag.

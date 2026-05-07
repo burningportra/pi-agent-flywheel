@@ -185,7 +185,7 @@ export class SwarmTender {
         // Track files for conflict detection
         for (const file of files) {
           // Skip generated/ephemeral files
-          if (file.startsWith(".pi-orchestrator/")) continue;
+          if (file.startsWith(".pi-agent-flywheel/")) continue;
           const existing = allChangedFiles.get(file) ?? [];
           existing.push(stepIndex);
           allChangedFiles.set(file, existing);

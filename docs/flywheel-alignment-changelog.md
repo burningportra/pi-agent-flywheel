@@ -8,7 +8,7 @@ This is not a full architecture spec. It is a concise changelog for contributors
 
 ## What changed
 
-pi-orchestrator now supports a much more complete version of the Agent Flywheel workflow.
+pi-agent-flywheel now supports a much more complete version of the Agent Flywheel workflow.
 
 The biggest change is that the orchestrator no longer has to jump directly from a selected goal to bead creation. It now supports an intermediate **plan phase**, where the system can generate, refine, and approve a markdown plan before converting it into beads.
 
@@ -143,7 +143,7 @@ The flywheel prefers single-branch coordination, but this orchestrator now suppo
 ### Persistent swarm sessions were not introduced
 The orchestrator still mainly uses ephemeral subagents rather than long-running named swarm agents.
 
-That remains one of the largest structural differences between pi-orchestrator and a pure flywheel operator setup.
+That remains one of the largest structural differences between pi-agent-flywheel and a pure flywheel operator setup.
 
 ### The orchestrator still relies heavily on LLM-mediated tool execution
 A lot of behavior is still implemented by returning structured guidance to the agent, which then calls tools like `subagent` or `parallel_subagents`.

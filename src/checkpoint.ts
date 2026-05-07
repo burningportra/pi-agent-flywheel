@@ -1,7 +1,7 @@
 /**
  * Checkpoint persistence for crash recovery.
  *
- * Writes orchestrator state to `<cwd>/.pi-orchestrator/checkpoint.json`
+ * Writes orchestrator state to `<cwd>/.pi-agent-flywheel/checkpoint.json`
  * using atomic write-rename semantics. All I/O is non-throwing —
  * failures degrade gracefully to current session-log-only behavior.
  */
@@ -21,7 +21,7 @@ import type { CheckpointEnvelope, OrchestratorState } from "./types.js";
 
 // ─── Constants ────────────────────────────────────────────────
 
-export const CHECKPOINT_DIR = ".pi-orchestrator";
+export const CHECKPOINT_DIR = ".pi-agent-flywheel";
 export const CHECKPOINT_FILE = "checkpoint.json";
 export const CHECKPOINT_TMP = "checkpoint.json.tmp";
 export const CHECKPOINT_CORRUPT = "checkpoint.json.corrupt";
@@ -162,7 +162,7 @@ export function writeCheckpoint(
     return true;
   } catch (err) {
     console.warn(
-      `[pi-orchestrator] checkpoint write failed: ${err instanceof Error ? err.message : String(err)}`
+      `[pi-agent-flywheel] checkpoint write failed: ${err instanceof Error ? err.message : String(err)}`
     );
     return false;
   }
@@ -208,7 +208,7 @@ export function readCheckpoint(cwd: string): ReadCheckpointResult | null {
     const validation = validateCheckpoint(parsed);
     if (!validation.valid) {
       console.warn(
-        `[pi-orchestrator] checkpoint validation failed: ${validation.reason}`
+        `[pi-agent-flywheel] checkpoint validation failed: ${validation.reason}`
       );
       moveToCorrupt(cwd, mainFile);
       return null;
@@ -229,7 +229,7 @@ export function readCheckpoint(cwd: string): ReadCheckpointResult | null {
     return { envelope, warnings };
   } catch (err) {
     console.warn(
-      `[pi-orchestrator] checkpoint read failed: ${err instanceof Error ? err.message : String(err)}`
+      `[pi-agent-flywheel] checkpoint read failed: ${err instanceof Error ? err.message : String(err)}`
     );
     return null;
   }
@@ -251,7 +251,7 @@ export function clearCheckpoint(cwd: string): void {
     cleanupOrphanedTmp(cwd);
   } catch (err) {
     console.warn(
-      `[pi-orchestrator] checkpoint clear failed: ${err instanceof Error ? err.message : String(err)}`
+      `[pi-agent-flywheel] checkpoint clear failed: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 }
@@ -263,7 +263,7 @@ function moveToCorrupt(cwd: string, filePath: string): void {
     const corruptPath = checkpointCorruptPath(cwd);
     renameSync(filePath, corruptPath);
     console.warn(
-      `[pi-orchestrator] corrupt checkpoint moved to ${CHECKPOINT_CORRUPT}`
+      `[pi-agent-flywheel] corrupt checkpoint moved to ${CHECKPOINT_CORRUPT}`
     );
   } catch {
     // If we can't even rename, just try to delete

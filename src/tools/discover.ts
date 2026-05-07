@@ -83,7 +83,7 @@ export function registerDiscoverTool(oc: OrchestratorContext) {
         }
       }
       try {
-        const artifactDir = join(tmpdir(), `pi-orchestrator-discovery`);
+        const artifactDir = join(tmpdir(), `pi-agent-flywheel-discovery`);
         mkdirSync(artifactDir, { recursive: true });
         const artifactPath = join(artifactDir, `ideas-${Date.now()}.md`);
         writeFileSync(artifactPath, artifactLines.join("\n"), "utf8");

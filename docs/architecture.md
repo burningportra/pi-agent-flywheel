@@ -2,7 +2,7 @@
 
 ## Overview
 
-pi-orchestrator provides **AgentFlywheel** via `/agent-flywheel`: a structured, multi-agent workflow. It scans the codebase or researches an external repo, proposes improvements, creates beads (tasks) via the `br` CLI with dependency tracking, executes ready beads in order, reviews the results, and iterates until the user is satisfied.
+pi-agent-flywheel provides **AgentFlywheel** via `/agent-flywheel`: a structured, multi-agent workflow. It scans the codebase or researches an external repo, proposes improvements, creates beads (tasks) via the `br` CLI with dependency tracking, executes ready beads in order, reviews the results, and iterates until the user is satisfied.
 
 Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
 

@@ -31,7 +31,7 @@ describe("agent-mail reservation helpers", () => {
       { code: 0, stdout: JSON.stringify({ result: { structuredContent: { granted: ["src/agent-mail.ts"], conflicts: [] } } }), stderr: "" },
     ]);
 
-    const result = await reserveFileReservations(exec, "/repo", "GreenCastle", ["src/agent-mail.ts"], "pi-orchestrator-dcu");
+    const result = await reserveFileReservations(exec, "/repo", "GreenCastle", ["src/agent-mail.ts"], "pi-agent-flywheel-dcu");
 
     expect(result.granted).toEqual(["src/agent-mail.ts"]);
     const [cmd, args] = (exec as any).mock.calls[0];
@@ -45,7 +45,7 @@ describe("agent-mail reservation helpers", () => {
       paths: ["src/agent-mail.ts"],
       ttl_seconds: 3600,
       exclusive: true,
-      reason: "pi-orchestrator-dcu",
+      reason: "pi-agent-flywheel-dcu",
     });
   });
 

@@ -1,6 +1,6 @@
 # Current Capabilities Map
 
-Maps pi-orchestrator's existing capabilities to the 10 sections of the [Agentic Coding Flywheel](https://agent-flywheel.com/).
+Maps pi-agent-flywheel's existing capabilities to the 10 sections of the [Agentic Coding Flywheel](https://agent-flywheel.com/).
 
 ---
 

@@ -1,6 +1,6 @@
 # Bead System
 
-Beads are the task-tracking primitives in pi-orchestrator. Each bead represents one scoped unit of work — an endpoint to add, a module to refactor, tests to write — with enough context for a fresh agent to implement it without further briefing.
+Beads are the task-tracking primitives in pi-agent-flywheel. Each bead represents one scoped unit of work — an endpoint to add, a module to refactor, tests to write — with enough context for a fresh agent to implement it without further briefing.
 
 This guide covers how beads are created, validated, split, and reviewed.
 

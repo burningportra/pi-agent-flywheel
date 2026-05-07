@@ -292,12 +292,12 @@ export function parseToolFeedback(output: string, toolName: string): ToolFeedbac
   } catch { return null; }
 }
 
-/** Save tool feedback to .pi-orchestrator-feedback/tools/<toolName>.jsonl */
+/** Save tool feedback to .pi-agent-flywheel-feedback/tools/<toolName>.jsonl */
 export function saveToolFeedback(cwd: string, feedback: ToolFeedback): void {
   try {
     const { mkdirSync: mkd, appendFileSync: apf } = require("fs");
     const { join: pj } = require("path");
-    const dir = pj(cwd, ".pi-orchestrator-feedback", "tools");
+    const dir = pj(cwd, ".pi-agent-flywheel-feedback", "tools");
     mkd(dir, { recursive: true });
     const file = pj(dir, `${feedback.toolName}.jsonl`);
     apf(file, JSON.stringify(feedback) + "\n", "utf8");

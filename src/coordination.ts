@@ -71,7 +71,7 @@ export async function detectCoordinationBackend(
 
   if (agentMail && !preCommitGuardInstalled) {
     console.warn(
-      "[pi-orchestrator] Agent Mail is available but the pre-commit guard is not installed. " +
+      "[pi-agent-flywheel] Agent Mail is available but the pre-commit guard is not installed. " +
       "Run scaffoldPreCommitGuard() or set AGENT_NAME and install .git/hooks/pre-commit."
     );
   }

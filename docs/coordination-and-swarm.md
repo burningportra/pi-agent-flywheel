@@ -1,6 +1,6 @@
 # Coordination & Swarm System
 
-> How pi-orchestrator detects backends, selects strategies, composes agent swarms, and coordinates parallel work via Agent Mail.
+> How pi-agent-flywheel detects backends, selects strategies, composes agent swarms, and coordinates parallel work via Agent Mail.
 
 ## Overview
 

@@ -1,11 +1,11 @@
-# pi-orchestrator
+# pi-agent-flywheel
 
 Type `/agent-flywheel` in any repo. It scans your codebase with ccc when available, falls back gracefully to the built-in profiler when it is not, can research external repos for inspiration, proposes improvements, plans the work, implements in parallel, and reviews — all in one command.
 
 ## Install
 
 ```bash
-pi install git:github.com/burningportra/pi-orchestrator
+pi install git:github.com/burningportra/pi-agent-flywheel
 ```
 
 Then open any project and type `/agent-flywheel`.
@@ -106,8 +106,8 @@ Validation in `src/beads.ts` enforces this hygiene. Open beads fail validation i
 ## Development
 
 ```bash
-git clone https://github.com/burningportra/pi-orchestrator.git
-cd pi-orchestrator && npm install
+git clone https://github.com/burningportra/pi-agent-flywheel.git
+cd pi-agent-flywheel && npm install
 npm run build
 npm test
 pi -e ./src/index.ts
