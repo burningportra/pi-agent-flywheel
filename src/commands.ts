@@ -3,6 +3,7 @@ import { createInitialState } from './types.js';
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { brExec, resilientExec } from './cli-exec.js';
+import { prepareComplianceAuditPlan, type ComplianceAuditMode, type ComplianceRemediationPolicy } from './compliance-audit.js';
 
 /**
  * Format staleness info for open beads, showing when they were created.
@@ -175,6 +176,73 @@ function parseOrchestrateArgs(rawArgs?: string): { goalArg?: string; coordinatio
     : input;
 
   return { goalArg, coordinationMode };
+}
+
+const COMPLIANCE_AUDIT_MODES = new Set<ComplianceAuditMode>([
+  "triage",
+  "standard",
+  "comprehensive",
+  "tripwire",
+  "single-bead",
+  "re-verification",
+  "onboarding",
+  "sample",
+]);
+
+function parseComplianceAuditArgs(rawArgs?: string): {
+  mode?: ComplianceAuditMode;
+  threshold?: number;
+  remediationPolicy?: ComplianceRemediationPolicy;
+  parallelism?: number;
+  beadId?: string;
+  sampleSize?: number;
+  testExecutionOk?: boolean;
+} {
+  const args = (rawArgs ?? "").trim().split(/\s+/).filter(Boolean);
+  const out: {
+    mode?: ComplianceAuditMode;
+    threshold?: number;
+    remediationPolicy?: ComplianceRemediationPolicy;
+    parallelism?: number;
+    beadId?: string;
+    sampleSize?: number;
+    testExecutionOk?: boolean;
+  } = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const next = args[i + 1];
+    if (COMPLIANCE_AUDIT_MODES.has(arg as ComplianceAuditMode)) {
+      out.mode = arg as ComplianceAuditMode;
+    } else if (arg === "--yes-run-tests" || arg === "--test-execution-ok") {
+      out.testExecutionOk = true;
+    } else if (arg.startsWith("--threshold=")) {
+      out.threshold = Number(arg.slice("--threshold=".length));
+    } else if (arg === "--threshold" && next) {
+      out.threshold = Number(next);
+      i++;
+    } else if (arg.startsWith("--policy=")) {
+      out.remediationPolicy = arg.slice("--policy=".length) as ComplianceRemediationPolicy;
+    } else if (arg === "--policy" && next) {
+      out.remediationPolicy = next as ComplianceRemediationPolicy;
+      i++;
+    } else if (arg.startsWith("--parallelism=")) {
+      out.parallelism = Number(arg.slice("--parallelism=".length));
+    } else if (arg === "--parallelism" && next) {
+      out.parallelism = Number(next);
+      i++;
+    } else if (arg.startsWith("--sample-size=")) {
+      out.sampleSize = Number(arg.slice("--sample-size=".length));
+    } else if (arg === "--sample-size" && next) {
+      out.sampleSize = Number(next);
+      i++;
+    } else if (!arg.startsWith("--") && !out.beadId) {
+      out.beadId = arg;
+      if (!out.mode) out.mode = "single-bead";
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -2008,6 +2076,46 @@ ${description}
         "info"
       );
     },
+  });
+
+  const auditBeadsHandler = async (args: string, ctx: any) => {
+    const parsed = parseComplianceAuditArgs(args);
+    let preflight = await prepareComplianceAuditPlan(pi, ctx.cwd, parsed);
+    if (!preflight.ok) {
+      ctx.ui.notify(`❌ Beads compliance audit preflight failed at ${preflight.stage}: ${preflight.message}`, "error");
+      return;
+    }
+
+    let plan = preflight.plan;
+    if (!plan.testExecutionOk) {
+      const confirmed = await ctx.ui.confirm(
+        "Run beads compliance audit",
+        `${plan.summary}\n\nPhase 4 may run tests, fuzzers, coverage, and e2e checks. Confirm this checkout is safe for test execution?`
+      );
+      if (!confirmed) {
+        ctx.ui.notify(`${plan.summary}\n\nAudit prompt prepared, but not started because test execution was not confirmed.`, "warning");
+        return;
+      }
+      preflight = await prepareComplianceAuditPlan(pi, ctx.cwd, { ...parsed, testExecutionOk: true });
+      if (!preflight.ok) {
+        ctx.ui.notify(`❌ Beads compliance audit preflight failed at ${preflight.stage}: ${preflight.message}`, "error");
+        return;
+      }
+      plan = preflight.plan;
+    }
+
+    ctx.ui.notify(plan.summary, "info");
+    pi.sendUserMessage(plan.prompt, { deliverAs: "followUp" });
+  };
+
+  pi.registerCommand("orchestrate-audit-beads", {
+    description: "Audit closed beads for actual completion with evidence packs",
+    handler: auditBeadsHandler,
+  });
+
+  pi.registerCommand("flywheel-audit-beads", {
+    description: "Audit closed beads for actual completion (alias of /orchestrate-audit-beads)",
+    handler: auditBeadsHandler,
   });
 
   // ─── Claude agent-flywheel compatibility aliases ─────────────

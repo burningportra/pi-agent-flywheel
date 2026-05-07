@@ -4,31 +4,32 @@ import { join } from "path";
 
 // ─── S3: Gate auto-advance structural tests ─────────────────
 // These tests validate the gates.ts source structure to ensure:
-// - Auto-advance gates (self-review, test coverage, de-slopify) skip prompting
+// - Auto-advance gates (self-review, test coverage, de-slopify, compliance audit) skip prompting
 // - Prompted gates (peer review, commit, ship, landing) show select
-// - All 7 gates preserved, none removed
+// - All gates preserved, none removed
 // - Gate order and auto flags are correct
 
 const gatesSource = readFileSync(join(__dirname, "gates.ts"), "utf8");
 
 describe("gates.ts — gate definitions", () => {
-  it("has exactly 8 gates", () => {
+  it("has exactly 9 gates", () => {
     // Count gate objects in the array
     const gateMatches = gatesSource.match(/\{ emoji: "[^"]+", label: "[^"]+", desc: "[^"]+", auto: (true|false) \}/g);
     expect(gateMatches).not.toBeNull();
-    expect(gateMatches!.length).toBe(8);
+    expect(gateMatches!.length).toBe(9);
   });
 
   it("gate order is correct", () => {
     const labels = [...gatesSource.matchAll(/label: "([^"]+)"/g)].map(m => m[1]);
-    // Filter to only the gate definition labels (first 8 occurrences)
-    const gateLabels = labels.slice(0, 8);
+    // Filter to only the gate definition labels (first 9 occurrences)
+    const gateLabels = labels.slice(0, 9);
     expect(gateLabels).toEqual([
       "Fresh self-review",
       "Peer review",
       "Test coverage",
       "De-slopify",
       "UBS scan",
+      "Beads compliance audit",
       "Commit",
       "Ship it",
       "Landing checklist",
@@ -43,6 +44,7 @@ describe("gates.ts — gate definitions", () => {
     expect(autoMap["Test coverage"]).toBe(true);
     expect(autoMap["De-slopify"]).toBe(true);
     expect(autoMap["UBS scan"]).toBe(true);
+    expect(autoMap["Beads compliance audit"]).toBe(true);
     // User-prompted gates (expensive or destructive):
     expect(autoMap["Peer review"]).toBe(false);
     expect(autoMap["Commit"]).toBe(false);
@@ -80,6 +82,15 @@ describe("gates.ts — auto-advance logic", () => {
     expect(promptBlock).toContain("ctx.ui.select");
     expect(promptBlock).toContain("Skip");
     expect(promptBlock).toContain("Done");
+  });
+
+  it("compliance audit is an automatic final gate before commit", () => {
+    expect(gatesSource).toContain('label: "Beads compliance audit"');
+    expect(gatesSource.indexOf('label: "Beads compliance audit"')).toBeLessThan(gatesSource.indexOf('label: "Commit"'));
+    const complianceSection = gatesSource.slice(gatesSource.indexOf('chosen.startsWith("🧾")'));
+    expect(complianceSection).toContain("prepareComplianceAuditPlan");
+    expect(complianceSection).toContain("__regress_to_implement__");
+    expect(complianceSection).toContain("closed\\` as a claim");
   });
 
   it("de-slopify still auto-skips when no doc files", () => {

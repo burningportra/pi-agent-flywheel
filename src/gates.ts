@@ -6,6 +6,7 @@ import { readBeads, extractArtifacts as extractBeadArtifacts } from "./beads.js"
 import { agentMailTaskPreamble } from "./agent-mail.js";
 import { detectUbs } from "./coordination.js";
 import { getDomainChecklist, formatDomainReviewItems } from "./domain-knowledge.js";
+import { DEFAULT_AUDIT_THRESHOLD, prepareComplianceAuditPlan } from "./compliance-audit.js";
 
 export async function runGuidedGates(
   oc: OrchestratorContext,
@@ -40,6 +41,7 @@ export async function runGuidedGates(
     { emoji: "🧪", label: "Test coverage", desc: "check unit tests + e2e, create tasks for gaps", auto: true },
     { emoji: "✏️", label: "De-slopify", desc: "remove AI writing patterns from docs", auto: true },
     { emoji: "🔒", label: "UBS scan", desc: "run ubs on changed files, fix all issues", auto: true },
+    { emoji: "🧾", label: "Beads compliance audit", desc: "verify closed beads are truly complete", auto: true },
     { emoji: "📦", label: "Commit", desc: "logical groupings with detailed messages", auto: false },
     { emoji: "🚀", label: "Ship it", desc: "commit, tag, release, deploy, monitor CI", auto: false },
     { emoji: "🛬", label: "Landing checklist", desc: "verify session is resumable", auto: false },
@@ -240,6 +242,33 @@ export async function runGuidedGates(
         },
       ],
       details: { iterating: true, round, deSlopify: true },
+    };
+  }
+
+  if (chosen.startsWith("🧾")) {
+    const auditPreflight = await prepareComplianceAuditPlan(oc.pi, ctx.cwd, {
+      threshold: DEFAULT_AUDIT_THRESHOLD,
+      remediationPolicy: "completion-debt",
+      testExecutionOk: true,
+    });
+
+    if (!auditPreflight.ok) {
+      return {
+        content: [{
+          type: "text",
+          text: `## 🧾 Beads Compliance Audit — Round ${round}\n\n❌ Audit preflight failed at **${auditPreflight.stage}**: ${auditPreflight.message}\n\nDo not proceed to commit until the bead store is healthy or the audit failure is explicitly resolved.${regressionHint}`,
+        }],
+        details: { iterating: true, round, complianceAudit: true, preflightOk: false, stage: auditPreflight.stage },
+      };
+    }
+
+    const plan = auditPreflight.plan;
+    return {
+      content: [{
+        type: "text",
+        text: `## 🧾 Beads Compliance Audit — Round ${round}\n\nAll beads are closed, so run the final completion audit before commit/ship. This gate treats \`closed\` as a claim, not proof.\n\n${plan.summary}\n\n---\n\n${plan.prompt}\n\n---\n\n**Gate outcome:**\n- If the audit finds false-closed beads or creates completion-debt beads, do **not** pass this gate. Call \`orch_review\` with beadId \"__regress_to_implement__\" so the new/reopened bead work is handled before commit.\n- If the audit passes with no blocking false-closed findings, call \`orch_review\` with beadId \"__gates__\" and verdict \"pass\" for the next gate.${regressionHint}`,
+      }],
+      details: { iterating: true, round, complianceAudit: true, preflightOk: true, plan },
     };
   }
 

@@ -29,6 +29,7 @@ You: /orchestrate
 
 - **Multi-model planning** — Have 3 different AI models compete on your plan, then synthesize the best parts
 - **Bead-based execution** — Tasks created as beads with dependency tracking via br CLI
+- **Automatic beads compliance audits** — after all beads are done, the final guided gates include a completion audit that verifies closed beads as claims, not facts: br doctor preflight, tiered mode selection, evidence packs, anti-theater checks, scoring, and remediation prompts
 - **Resilient CLI recovery** — `br`, `bv`, `git`, `find`, `npm`, `ubs`, and coordination probes now run through a structured exec layer with retry for transient failures and graceful degradation when tools disappear mid-session
 - **Bead template library** — Optional scaffolds for common bead shapes: `add-api-endpoint`, `refactor-module`, and `add-tests`
 - **4-agent review** — Fresh-eyes, polish, ergonomics, and reality-check reviewers run in parallel
@@ -55,11 +56,12 @@ See [docs/setup.md](docs/setup.md) for detailed configuration.
 | `/orchestrate-stop` / `/flywheel-stop` | Cancel and clean up worktrees |
 | `/orchestrate-status` / `/flywheel-status` | Show current phase and progress |
 | `/flywheel-doctor` | Read-only diagnostic for git, Node, br/bv, ntm, cm, agent-mail, checkpoint, and orphaned worktrees |
+| `/orchestrate-audit-beads` / `/flywheel-audit-beads` | Start a beads compliance audit to verify closed bead completion claims with evidence packs |
 | `/orchestrate-cleanup` / `/flywheel-cleanup` | Safely remove orphaned worktrees |
 | `/orchestrate-swarm-status` / `/flywheel-swarm-status` | Show active swarm health |
 | `/orchestrate-swarm-stop` / `/flywheel-swarm-stop` | Stop swarm monitoring and show landing guidance |
 
-For Claude agent-flywheel parity, the pi tools are also registered under `flywheel_*` names in addition to the legacy `orch_*` names: `flywheel_profile`, `flywheel_discover`, `flywheel_select`, `flywheel_plan`, `flywheel_approve_beads`, `flywheel_review`, `flywheel_memory`, and `flywheel_verify_beads`.
+For Claude agent-flywheel parity, the pi tools are also registered under `flywheel_*` names in addition to the legacy `orch_*` names: `flywheel_profile`, `flywheel_discover`, `flywheel_select`, `flywheel_plan`, `flywheel_approve_beads`, `flywheel_review`, `flywheel_memory`, `flywheel_verify_beads`, and `flywheel_audit_beads`.
 
 ## Learn more
 

@@ -51,8 +51,25 @@ Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
         🧪 Test coverage → ✏️ De-slopify → 📦 Commit →
         🚀 Ship it → 🛬 Landing checklist → ✅ Done
         │
+        ├─► Automatic beads compliance audit gate: evidence-based audit of
+        │    closed bead completion claims, with scorecards + remediation prompts
+        │
         └─► 🧠 CASS memory: extract learnings for future runs
 ```
+
+## Beads Compliance Audit
+
+The guided gate loop now includes an automatic **Beads compliance audit** gate after all beads are done and before commit/ship. `/orchestrate-audit-beads` and the `orch_audit_beads` / `flywheel_audit_beads` tools expose the same audit kickoff manually.
+
+The audit entrypoint is deliberately a preflight + kickoff step, not a silent auto-fixer:
+
+- Runs `br doctor --json` first and stops if the bead store is unhealthy.
+- Reads `br stats --json` to choose Solo/Pair/Squad/Battalion/Swarm/Mega-swarm tiering with a hard 10-agent cap.
+- Auto-selects mode: single-bead when a bead ID is supplied, re-verification when an audit dir exists, sample mode for huge universes, onboarding for larger first audits, otherwise standard.
+- Produces the 10-phase audit loop instructions: inventory, spec extraction, evidence gather, compliance execution, anti-theater, test depth, synthesis, scoring, remediation, and fresh-eyes review.
+- Uses `beads_compliance_audit/` as the artifact directory and requires per-bead evidence packs before a closed bead can be considered verified.
+
+The core invariant is: bead status is a claim, not a fact. Closed beads below the configured threshold (default 700/1000) become false-closed findings and are handled by the selected remediation policy (`completion-debt`, `reopen`, or `report-only`).
 
 ## CLI Execution & Recovery Layer
 
