@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { OrchestratorContext, OrchestratorState } from "./types.js";
 import { polishInstructions, summaryInstructions, realityCheckInstructions, deSlopifyInstructions, landingChecklistInstructions, learningsExtractionPrompt } from "./prompts.js";
 import { reflectMemory } from "./memory.js";

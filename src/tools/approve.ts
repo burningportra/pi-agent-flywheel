@@ -1,5 +1,5 @@
-import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
+import { Text } from "@earendil-works/pi-tui";
 import { readFileSync } from "fs";
 import type { OrchestratorContext, Bead } from "../types.js";
 import { implementerInstructions, freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, SWARM_STAGGER_DELAY_MS, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, type BeadQualityAuditResult } from "../prompts.js";

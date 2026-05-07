@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { dirname } from "path";
 import { mkdirSync, writeFileSync } from "fs";
 import type { CandidateIdea, RepoProfile, ScanResult } from "./types.js";
@@ -442,7 +442,7 @@ function fallbackConsensusIdeas(
 }
 
 async function runNamedAgents(
-  pi: import("@mariozechner/pi-coding-agent").ExtensionAPI,
+  pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
   cwd: string,
   agents: DeepPlanAgent[],
   signal?: AbortSignal,
@@ -452,7 +452,7 @@ async function runNamedAgents(
 }
 
 export async function runDuelingIdeaWizards(
-  pi: import("@mariozechner/pi-coding-agent").ExtensionAPI,
+  pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
   ctx: ExtensionContext,
   profile: RepoProfile,
   scanResult: ScanResult | undefined,

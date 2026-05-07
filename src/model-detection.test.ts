@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectAvailableModels, getDeepPlanModels, getRefinementModel, formatDetectedModels } from "./model-detection.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // Mock ExtensionContext with modelRegistry
 function mockContext(models: Array<{ provider?: string; id: string }>): ExtensionContext {

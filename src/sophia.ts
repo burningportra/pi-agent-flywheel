@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 /** Local type — sophia owns its own step interface for CR creation. */
 interface PlanStep {
   index: number;

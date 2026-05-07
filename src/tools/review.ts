@@ -1,6 +1,6 @@
-import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { Text } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { implementerInstructions, realityCheckInstructions, randomExplorationInstructions, SWARM_STAGGER_DELAY_MS } from "../prompts.js";
 import { readMemory } from "../memory.js";

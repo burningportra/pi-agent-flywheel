@@ -10,8 +10,8 @@
  *  - parseQuestionsJSON(output)           — parse LLM output into questions
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Editor, type EditorTheme, Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Editor, type EditorTheme, Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";

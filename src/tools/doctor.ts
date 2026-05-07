@@ -1,6 +1,6 @@
-import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { OrchestratorContext } from "../types.js";
 import { readCheckpoint } from "../checkpoint.js";
 import { AGENT_MAIL_URL, agentMailRPC } from "../agent-mail.js";

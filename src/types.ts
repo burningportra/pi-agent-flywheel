@@ -111,7 +111,7 @@ export interface ScanProvider {
   id: string;
   label: string;
   scan(
-    pi: import("@mariozechner/pi-coding-agent").ExtensionAPI,
+    pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
     cwd: string,
     signal?: AbortSignal
   ): Promise<ScanResult>;
@@ -469,7 +469,7 @@ export interface HitMeResult {
  */
 export interface OrchestratorContext {
   /** The pi extension API. */
-  pi: import("@mariozechner/pi-coding-agent").ExtensionAPI;
+  pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   /** Mutable orchestrator state. */
   state: OrchestratorState;
   /** Whether the orchestrator is currently active. */
@@ -485,10 +485,10 @@ export interface OrchestratorContext {
   swarmTender?: import("./tender.js").SwarmTender;
 
   // ─── Helpers ─────────────────────────────────────────────
-  setPhase: (phase: OrchestratorPhase, ctx: import("@mariozechner/pi-coding-agent").ExtensionContext) => void;
+  setPhase: (phase: OrchestratorPhase, ctx: import("@earendil-works/pi-coding-agent").ExtensionContext) => void;
   persistState: () => void;
-  updateWidget: (ctx: import("@mariozechner/pi-coding-agent").ExtensionContext) => void;
-  runHitMeAgents: (configs: { name: string; task: string }[], cwd: string, ctx: import("@mariozechner/pi-coding-agent").ExtensionContext) => Promise<HitMeResult>;
+  updateWidget: (ctx: import("@earendil-works/pi-coding-agent").ExtensionContext) => void;
+  runHitMeAgents: (configs: { name: string; task: string }[], cwd: string, ctx: import("@earendil-works/pi-coding-agent").ExtensionContext) => Promise<HitMeResult>;
   agentMailRPC: (tool: string, args: Record<string, unknown>) => Promise<any>;
   ensureAgentMailProject: (cwd: string) => Promise<void>;
 }

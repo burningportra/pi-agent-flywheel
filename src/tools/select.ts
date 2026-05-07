@@ -1,5 +1,5 @@
-import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
+import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { formatRepoProfile, beadCreationPrompt } from "../prompts.js";
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";

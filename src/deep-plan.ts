@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "path";
 import { writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";

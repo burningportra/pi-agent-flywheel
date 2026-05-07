@@ -4,7 +4,7 @@
  * Provides structured error types, automatic retry for transient failures,
  * and graceful degradation when a CLI tool is unavailable mid-session.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ─── Types ────────────────────────────────────────────────────
 
