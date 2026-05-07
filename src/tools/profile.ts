@@ -144,6 +144,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
       discoveryChoices.push(
         "💡 Standard discovery — generate 10-15 scored ideas",
         "🔬 Deep discovery (30→5→15 funnel) — broader brainstorm with competitive winnowing",
+        "⚔️ Dueling Idea Wizards — adversarial cross-model discovery with score matrix",
         "✏️  I know what I want — enter a custom goal",
       );
       if (totalBeadCount > 0) {
@@ -267,6 +268,87 @@ export function registerProfileTool(oc: OrchestratorContext) {
             text: `**NEXT: Create beads for this goal using \`br create\` and \`br dep add\` in bash NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nStay inside the AgentFlywheel workflow: once the beads exist, return to \`agent_flywheel_approve_beads\` for bead approval before implementation.\n\n---\n\n${instructions}`,
           }],
           details: { profile, scanResult, customGoal: goal, selected: true, goal: enrichedGoal, constraints: oc.state.constraints, workflow: "direct" },
+        };
+      }
+
+      if (discoveryMode?.startsWith("⚔️")) {
+        // Dueling Idea Wizards: independent cross-model ideation → adversarial scoring → reveal → synthesis.
+        oc.setPhase("discovering", ctx);
+        oc.persistState();
+
+        let existingBeadTitles: string[] = [];
+        try {
+          const brListResult = await brExecJson<unknown[]>(oc.pi, ["list", "--json"], {
+            cwd: ctx.cwd,
+            timeout: 8000,
+          });
+          if (brListResult.ok && Array.isArray(brListResult.value)) {
+            existingBeadTitles = brListResult.value
+              .map((b: unknown) => (b as Record<string, unknown>)?.title)
+              .filter((t): t is string => typeof t === "string");
+          }
+        } catch {
+          try {
+            const { readBeads } = await import("../beads.js");
+            const beads = await readBeads(oc.pi, ctx.cwd);
+            existingBeadTitles = beads.map((b) => b.title);
+          } catch { /* no beads yet */ }
+        }
+
+        const { runDuelingIdeaWizards } = await import("../dueling-ideas.js");
+        const duel = await runDuelingIdeaWizards(
+          oc.pi,
+          ctx,
+          profile,
+          scanResult,
+          existingBeadTitles,
+          signal,
+          (message) => ctx.ui.notify(message, "info"),
+        );
+
+        if (duel.consensusIdeas.length === 0) {
+          ctx.ui.notify("⚠️ Dueling Idea Wizards produced no parseable consensus ideas. Falling back to standard discovery.", "warning");
+          const modeInstructions = discoveryInstructions(profile, scanResult);
+          return {
+            content: [{
+              type: "text",
+              text: `**Workflow:** ${roadmap}\n\n**NEXT: Call \`agent_flywheel_discover\` with your top 5 ideas and next 5-10 honorable mentions NOW.**\n\n${modeInstructions}\n\n---\n\nRepository profiled successfully.\n\n${scanSourceLine}\n${coordLine}${upgradeHint}${foundationWarning}\n\n${formatted}${memoryContext}`,
+            }],
+            details: { profile, scanResult, duelingFallback: true },
+          };
+        }
+
+        oc.state.candidateIdeas = duel.consensusIdeas;
+        oc.state.funnelRawIdeas = Object.values(duel.ideasByAgent).flat();
+        oc.state.funnelWinnowedIds = duel.consensusIdeas.filter((i) => i.tier === "top").map((i) => i.id);
+        oc.setPhase("awaiting_selection", ctx);
+        oc.persistState();
+
+        const ideasSummary = duel.consensusIdeas
+          .map((idea, n) => `${n + 1}. **${idea.title}** [${idea.category}] — ${idea.description}`)
+          .join("\n");
+        const agentSummary = duel.agents.map((a) => `${a.type} (${a.model})`).join(", ");
+
+        return {
+          content: [{
+            type: "text",
+            text:
+              `**Workflow:** ${roadmap}\n\n` +
+              `**NEXT: Call \`agent_flywheel_select\` NOW to present these ${duel.consensusIdeas.length} consensus ideas to the user.**\n\n` +
+              `---\n\n⚔️ Dueling Idea Wizards complete.\n\n` +
+              `Agents used: ${agentSummary}\n\n` +
+              `Report artifact: \`${duel.reportArtifactName}\`\n\n` +
+              `### Consensus Ideas\n${ideasSummary}`,
+          }],
+          details: {
+            profile,
+            scanResult,
+            dueling: true,
+            agents: duel.agents,
+            scoreCount: duel.scores.length,
+            reportArtifactName: duel.reportArtifactName,
+            selectedCount: duel.consensusIdeas.length,
+          },
         };
       }
 

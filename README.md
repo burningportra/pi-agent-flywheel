@@ -29,6 +29,7 @@ You: /agent-flywheel
 ## Key features
 
 - **Multi-model planning** — Have 3 different AI models compete on your plan, then synthesize the best parts
+- **Dueling Idea Wizards discovery** — Run independent cross-model ideation, adversarial 0–1000 scoring, reveal reactions, rebuttals, steelmans, blind-spot probes, and a synthesized score-matrix report before choosing work
 - **Bead-based execution** — Tasks created as beads with dependency tracking via br CLI
 - **Automatic beads compliance audits** — after all beads are done, the final guided gates include a completion audit that verifies closed beads as claims, not facts: br doctor preflight, tiered mode selection, evidence packs, anti-theater checks, scoring, and remediation prompts
 - **Resilient CLI recovery** — `br`, `bv`, `git`, `find`, `npm`, `ubs`, and coordination probes now run through a structured exec layer with retry for transient failures and graceful degradation when tools disappear mid-session
