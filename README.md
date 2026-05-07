@@ -16,6 +16,8 @@
 
 **A pi extension that turns a vague improvement goal into dependency-tracked beads, parallel agent execution, review gates, and durable learnings.**
 
+Inspired by the **Agentic Coding Flywheel** invented by [Dicklesworthstone](https://github.com/Dicklesworthstone). This extension is an implementation/adaptation of that loop for `pi`, not the origin of the idea.
+
 ### Quick Install
 
 ```bash
@@ -48,7 +50,19 @@ Then open any repository in `pi` and type:
 | **Dueling Idea Wizards** | Scores competing improvement ideas on a 0–1000 scale with rebuttals and blind-spot probes | Pick the most leveraged improvement before writing code |
 | **Review gates** | Runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance review flows | Closed beads are treated as claims that require evidence |
 | **Crash recovery** | Checkpoints state after phase changes so interrupted runs can resume | Restart `/agent-flywheel` and resume from the latest checkpoint |
-| **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, agent-mail) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
+| **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, MCP Agent Mail, beads, `ntm`) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
+
+### Recommended “Runs Nicely” Stack
+
+`pi-agent-flywheel` can limp along with only `pi`, Node, and git, but the intended flywheel experience assumes three coordination primitives are available:
+
+| Tooling | Why It Matters |
+|---------|----------------|
+| **Beads (`br` + `bv`)** | Turns plans into dependency-tracked work items and picks the next safe bead instead of relying on a giant free-form prompt |
+| **MCP Agent Mail** | Gives parallel agents identities, inboxes, file reservations, and coordination threads so they do not silently overwrite each other |
+| **`ntm`** | Launches/tends multi-agent panes and makes swarm execution observable instead of “hope the background agents are fine” |
+
+Without these, `/agent-flywheel` is still useful for scanning, planning, and review. With them, it becomes the actual multi-agent flywheel.
 
 ---
 
@@ -208,14 +222,15 @@ pi install -l git:github.com/burningportra/pi-agent-flywheel
 | [`pi`](https://github.com/badlogic/pi-mono) | Latest | Yes | Runtime that loads the extension |
 | Node.js | ≥ 18 | Yes for development/local install | TypeScript extension dependencies |
 | git | ≥ 2.20 | Yes | Worktree support and repo inspection |
-| `br` | Current | Recommended | Bead/task creation and dependency tracking |
-| `bv` | Current | Recommended | Graph-aware next-bead selection |
+| `br` | Current | Strongly recommended | Bead/task creation and dependency tracking |
+| `bv` | Current | Strongly recommended | Graph-aware next-bead selection |
+| MCP Agent Mail | Current | Strongly recommended for swarms | Agent identities, inboxes, file reservations, coordination threads |
+| `ntm` | Current | Strongly recommended for swarms | Launching, tending, and observing parallel agents |
 | [`ccc`](https://github.com/cocoindex-io/cocoindex-code) | Current | Optional | Richer codebase scanning |
 | CASS `cm` | Current | Optional | Procedural memory retrieval/storage |
 | Sophia | Current | Optional | Structured change requests and validation |
-| agent-mail | Current | Optional | Multi-agent messaging and file reservations |
 
-If optional tools are missing, `/agent-flywheel` reports the fallback path and continues where possible.
+If strongly recommended tools are missing, `/agent-flywheel` can still help with discovery/planning/review, but the full multi-agent execution loop is much smoother with beads, MCP Agent Mail, and `ntm` installed.
 
 ---
 
@@ -683,6 +698,10 @@ The extension checkpoints phase state. Restart `/agent-flywheel`; when a resumab
 Earlier versions used orchestrator/flywheel naming. The aliases avoid breaking existing sessions, but new usage should prefer `/agent-flywheel*`.
 
 ---
+
+## Acknowledgments
+
+The core **Agentic Coding Flywheel** concept was invented by [Dicklesworthstone](https://github.com/Dicklesworthstone). `pi-agent-flywheel` exists because that workflow is powerful enough to deserve first-class automation inside `pi`: discover high-leverage work, plan it into agent-executable tasks, run the work, review honestly, and feed the lessons back into the next cycle.
 
 ## About Contributions
 
