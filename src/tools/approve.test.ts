@@ -233,10 +233,11 @@ describe("S2: simplified approval options", () => {
     expect(refineHandler).toContain("freshAgent: true");
   });
 
-  it("Advanced 'Back' returns to main menu", () => {
+  it("Advanced 'Back' returns to the visible approval menu without leaving the flow", () => {
     expect(approveSource).toContain("⬅️ Back");
-    const backHandler = approveSource.slice(approveSource.indexOf("⬅️ Back"));
-    expect(backHandler).toContain("orch_approve_beads");
+    expect(approveSource).toContain("Main/advanced menu loop");
+    expect(approveSource).toContain("choice = undefined;");
+    expect(approveSource).toContain("choice = await ctx.ui.select(approvalPrompt, options)");
   });
 });
 

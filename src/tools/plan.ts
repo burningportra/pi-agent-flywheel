@@ -131,7 +131,7 @@ function loadPlannerArtifacts(ctx: ExtensionContext, goal: string): DeepPlanResu
 }
 
 export function registerPlanTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_plan", "flywheel_plan"] as const) {
+  for (const toolName of ["agent_flywheel_plan", "orch_plan", "flywheel_plan"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Generate Plan",
@@ -147,7 +147,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (!oc.state.selectedGoal || !oc.state.repoProfile) {
-        throw new Error("No selected goal or repo profile. Call orch_profile and orch_select first.");
+        throw new Error("No selected goal or repo profile. Call agent_flywheel_profile and agent_flywheel_select first.");
       }
 
       const mode = params.mode as "single_model" | "multi_model";
@@ -168,7 +168,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
               `**NEXT: Generate a single-model plan document and save it as a session artifact using \`write_artifact\` NOW.**\n\n` +
               `Use exactly this artifact name: \`${artifactName}\`.\n\n` +
               `${planDocumentPrompt(goal, profile, scanResult)}\n\n` +
-              `After writing the artifact, immediately continue the workflow by calling \`orch_approve_beads\` to review the plan in-menu.`,
+              `After writing the artifact, immediately continue the workflow by calling \`agent_flywheel_approve_beads\` to review the plan in-menu.`,
           }],
           details: { mode, goal, artifactName },
         };
@@ -196,7 +196,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
               `**NEXT: Spawn interactive planning sub-agents using \`subagent\` NOW.**\n\n` +
               `${statusLine}\n\n` +
               `Launch one \`subagent\` call for each pending planner config below. ` +
-              `Each planner writes its draft to a session artifact. After all planners complete, call \`orch_plan\` with mode \`multi_model\` again to synthesize the final plan.\n\n` +
+              `Each planner writes its draft to a session artifact. After all planners complete, call \`agent_flywheel_plan\` with mode \`multi_model\` again to synthesize the final plan.\n\n` +
               `\`\`\`json\n${JSON.stringify(pendingConfigs, null, 2)}\n\`\`\``,
           }],
           details: {
@@ -280,7 +280,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
         throw new Error(
           `All competing planning agents failed. Details:\n${failures}\n\n` +
           `${detectedInfo}\n\n` +
-          `Try \`orch_plan({ mode: "single_model" })\` as a fallback.`
+          `Try \`agent_flywheel_plan({ mode: "single_model" })\` as a fallback.`
         );
       }
 
@@ -314,10 +314,10 @@ export function registerPlanTool(oc: OrchestratorContext) {
         content: [{
           type: "text",
           text:
-            `**NEXT: Call \`orch_approve_beads\` NOW to review the synthesized plan in-menu.**\n\n` +
+            `**NEXT: Call \`agent_flywheel_approve_beads\` NOW to review the synthesized plan in-menu.**\n\n` +
             `Saved synthesized multi-model plan to session artifact \`${artifactName}\`.\n\n` +
             `Planner runs:\n${plannerSummary}\n\n` +
-            `Stay inside the orchestration workflow: review/approve the plan first, then create beads from the approved plan via the menu flow.`,
+            `Stay inside the AgentFlywheel workflow: review/approve the plan first, then create beads from the approved plan via the menu flow.`,
         }],
         details: {
           mode,
@@ -331,7 +331,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
     renderCall(args, theme) {
       const mode = (args as { mode?: string } | undefined)?.mode ?? "single_model";
       return new Text(
-        theme.fg("toolTitle", theme.bold("orch_plan ")) +
+        theme.fg("toolTitle", theme.bold("agent_flywheel_plan ")) +
           theme.fg("dim", `generating ${mode === "multi_model" ? "multi-model" : "single-model"} plan...`),
         0, 0
       );

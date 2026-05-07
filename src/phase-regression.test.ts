@@ -96,8 +96,8 @@ describe("review.ts — __regress_to_beads__ state transitions", () => {
     expect(block).toContain('targetPhase: "creating_beads"');
   });
 
-  it("tells user to call orch_approve_beads", () => {
-    expect(block).toContain("orch_approve_beads");
+  it("tells user to call agent_flywheel_approve_beads", () => {
+    expect(block).toContain("agent_flywheel_approve_beads");
   });
 });
 

@@ -66,65 +66,65 @@ const PHASE_META: Record<OrchestratorPhase, PhaseMeta> = {
   idle: {
     label: "Idle",
     emoji: "💤",
-    nextAction: "Run /orchestrate to start.",
-    buildResumePrompt: () => "Start the orchestrator workflow. Call `orch_profile` to scan the repo.",
+    nextAction: "Run /agent-flywheel to start.",
+    buildResumePrompt: () => "Start AgentFlywheel. Call `agent_flywheel_profile` to scan the repo.",
   },
   profiling: {
     label: "Scanning repo",
     emoji: "🔍",
-    nextAction: "Call `orch_profile` to continue.",
-    buildResumePrompt: () => "Resuming orchestration. Call `orch_profile` to continue scanning the repository.",
+    nextAction: "Call `agent_flywheel_profile` to continue.",
+    buildResumePrompt: () => "Resuming AgentFlywheel. Call `agent_flywheel_profile` to continue scanning the repository.",
   },
   discovering: {
     label: "Generating ideas",
     emoji: "💡",
-    nextAction: "Call `orch_discover` to continue.",
+    nextAction: "Call `agent_flywheel_discover` to continue.",
     buildResumePrompt: (s) =>
-      `Resuming orchestration${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-      `Call \`orch_discover\` to continue generating ideas.`,
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `Call \`agent_flywheel_discover\` to continue generating ideas.`,
   },
   awaiting_selection: {
     label: "Awaiting goal selection",
     emoji: "🎯",
-    nextAction: "Call `orch_select` to pick a goal.",
-    buildResumePrompt: () => "Resuming orchestration. Call `orch_select` to pick a goal and proceed.",
+    nextAction: "Call `agent_flywheel_select` to pick a goal.",
+    buildResumePrompt: () => "Resuming AgentFlywheel. Call `agent_flywheel_select` to pick a goal and proceed.",
   },
   planning: {
     label: "Writing plan",
     emoji: "📝",
-    nextAction: "Call `orch_plan` to continue.",
+    nextAction: "Call `agent_flywheel_plan` to continue.",
     buildResumePrompt: (s) =>
-      `Resuming orchestration${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-      `Call \`orch_plan\` to continue or re-generate the plan.`,
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `Call \`agent_flywheel_plan\` to continue or re-generate the plan.`,
   },
   researching: {
     label: "Researching external project",
     emoji: "🔭",
-    nextAction: "Rerun `/orchestrate-research <url>` to resume from the last completed phase.",
+    nextAction: "Rerun `/agent-flywheel-research <url>` to resume from the last completed phase.",
     buildResumePrompt: (s) =>
       `Research pipeline was interrupted${s.goal ? ` (goal: "${s.goal}")` : ""}. ` +
-      `Rerun \`/orchestrate-research\` with the same URL to resume from the last completed phase. ` +
+      `Rerun \`/agent-flywheel-research\` with the same URL to resume from the last completed phase. ` +
       `Progress is saved — completed phases will be skipped.`,
   },
   awaiting_plan_approval: {
     label: "Plan ready — awaiting approval",
     emoji: "📋",
-    nextAction: "Call `orch_approve_beads` to review and approve.",
+    nextAction: "Call `agent_flywheel_approve_beads` to review and approve.",
     buildResumePrompt: (s) =>
-      `Resuming orchestration${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
       `A plan is ready${s.planDocument ? ` at \`${s.planDocument}\`` : ""}. ` +
-      `Call \`orch_approve_beads\` to review it and stay inside the plan approval → bead creation workflow.`,
+      `Call \`agent_flywheel_approve_beads\` to review it and stay inside the plan approval → bead creation workflow.`,
   },
   creating_beads: {
     label: "Creating beads",
     emoji: "🔩",
-    nextAction: "Call `orch_approve_beads` when all beads are created.",
+    nextAction: "Call `agent_flywheel_approve_beads` when all beads are created.",
     buildResumePrompt: (s) =>
       s.openBeadCount > 0
-        ? `Resuming orchestration${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-          `${s.openBeadCount} bead(s) already created. Call \`orch_approve_beads\` to review and approve them inside the workflow menus.`
-        : `Resuming orchestration${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-          `Continue creating beads with \`br create\`, then call \`orch_approve_beads\` when done to re-enter the approval menu.`,
+        ? `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+          `${s.openBeadCount} bead(s) already created. Call \`agent_flywheel_approve_beads\` to review and approve them inside the workflow menus.`
+        : `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+          `Continue creating beads with \`br create\`, then call \`agent_flywheel_approve_beads\` when done to re-enter the approval menu.`,
   },
   refining_beads: {
     label: "Refining beads",
@@ -132,20 +132,20 @@ const PHASE_META: Record<OrchestratorPhase, PhaseMeta> = {
     nextAction: "Continue refining beads.",
     buildResumePrompt: (s) =>
       `Resuming bead refinement${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-      `Call \`orch_approve_beads\` to check quality and continue inside the approval workflow.`,
+      `Call \`agent_flywheel_approve_beads\` to check quality and continue inside the approval workflow.`,
   },
   awaiting_bead_approval: {
     label: "Beads ready — awaiting approval",
     emoji: "✅",
-    nextAction: "Call `orch_approve_beads` to approve.",
+    nextAction: "Call `agent_flywheel_approve_beads` to approve.",
     buildResumePrompt: (s) =>
-      `Resuming orchestration${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-      `${s.openBeadCount} bead(s) are ready for approval. Call \`orch_approve_beads\` to review them and stay inside the workflow menus.`,
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `${s.openBeadCount} bead(s) are ready for approval. Call \`agent_flywheel_approve_beads\` to review them and stay inside the workflow menus.`,
   },
   implementing: {
     label: "Implementing",
     emoji: "⚙️",
-    nextAction: "Call `orch_review` to pick up the next bead.",
+    nextAction: "Call `agent_flywheel_review` to pick up the next bead.",
     buildResumePrompt: (s) => {
       const progress = s.totalBeadCount > 0
         ? ` (${s.completedBeadCount}/${s.totalBeadCount} done)`
@@ -155,37 +155,37 @@ const PHASE_META: Record<OrchestratorPhase, PhaseMeta> = {
         : "";
       return (
         `Resuming implementation${s.goal ? ` for goal: "${s.goal}"` : ""}${progress}.${current} ` +
-        `Call \`orch_review\` to check bead status and continue inside the implementation/review workflow.`
+        `Call \`agent_flywheel_review\` to check bead status and continue inside the implementation/review workflow.`
       );
     },
   },
   reviewing: {
     label: "Reviewing implementation",
     emoji: "🔬",
-    nextAction: "Call `orch_review` to continue.",
+    nextAction: "Call `agent_flywheel_review` to continue.",
     buildResumePrompt: (s) =>
       `Resuming review${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
-      `Call \`orch_review\` to continue the review process inside the workflow menus.`,
+      `Call \`agent_flywheel_review\` to continue the review process inside the workflow menus.`,
   },
   iterating: {
     label: "Iterating on feedback",
     emoji: "🔄",
-    nextAction: "Call `orch_review` to continue.",
+    nextAction: "Call `agent_flywheel_review` to continue.",
     buildResumePrompt: (s) => {
       const progress = s.totalBeadCount > 0
         ? ` (${s.completedBeadCount}/${s.totalBeadCount} done)`
         : "";
       return (
         `Resuming iteration${s.goal ? ` for goal: "${s.goal}"` : ""}${progress}. ` +
-        `Call \`orch_review\` to continue iterating on feedback inside the workflow menus.`
+        `Call \`agent_flywheel_review\` to continue iterating on feedback inside the workflow menus.`
       );
     },
   },
   complete: {
     label: "Complete",
     emoji: "🎉",
-    nextAction: "All done! Run /orchestrate to start a new session.",
-    buildResumePrompt: () => "Previous orchestration was complete. Starting fresh — call `orch_profile` to scan the repo.",
+    nextAction: "All done! Run /agent-flywheel to start a new session.",
+    buildResumePrompt: () => "Previous AgentFlywheel session was complete. Starting fresh — call `agent_flywheel_profile` to scan the repo.",
   },
 };
 
@@ -295,7 +295,7 @@ export function detectSessionStage(
 // ─── Formatting helpers ───────────────────────────────────────
 
 /**
- * Builds the multi-line header string shown inside the `/orchestrate` select
+ * Builds the multi-line header string shown inside the `/agent-flywheel` select
  * prompt when an existing session is detected.
  *
  * Example output:
@@ -365,7 +365,7 @@ export function buildResumeLabel(stage: SessionStage): string {
     parts.push(`${stage.openBeadCount} bead(s) awaiting approval`);
   } else if (stage.phase === "creating_beads") {
     if (stage.openBeadCount > 0) {
-      parts.push(`${stage.openBeadCount} bead(s) ready — call \`orch_approve_beads\``);
+      parts.push(`${stage.openBeadCount} bead(s) ready — call \`agent_flywheel_approve_beads\``);
     } else {
       parts.push("beads in progress");
     }

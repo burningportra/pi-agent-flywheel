@@ -2,26 +2,28 @@
 
 ## Overview
 
-pi-orchestrator turns `/orchestrate` into a structured, multi-agent workflow. It scans the codebase, proposes improvements, creates beads (tasks) via the `br` CLI with dependency tracking, executes ready beads in order, reviews the results, and iterates until the user is satisfied.
+pi-orchestrator provides **AgentFlywheel** via `/agent-flywheel`: a structured, multi-agent workflow. It scans the codebase or researches an external repo, proposes improvements, creates beads (tasks) via the `br` CLI with dependency tracking, executes ready beads in order, reviews the results, and iterates until the user is satisfied.
 
 Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
 
 ## Architecture Diagram
 
 ```
-/orchestrate
+/agent-flywheel
   │
-  ├─► orch_profile     — Scan repo + load CASS memory from prior runs
+  ├─► Startup choice: profile repo, research external repo, or load saved plan
+  │
+  ├─► agent_flywheel_profile     — Scan repo + load CASS memory from prior runs
   │     └─ 💡 Suggest improvements  or  ✏️ I know what I want
   │
-  ├─► orch_discover    — LLM generates 10–15 scored ideas (rubric-ranked)
+  ├─► agent_flywheel_discover    — LLM generates 10–15 scored ideas (rubric-ranked)
   │
-  ├─► orch_select      — User picks idea → straight to bead creation
+  ├─► agent_flywheel_select      — User picks idea → straight to bead creation
   │                       (custom goals get refinement questionnaire)
   │
   ├─► LLM creates beads via `br create` + `br dep add`
   │
-  ├─► orch_approve_beads — Bead approval:
+  ├─► agent_flywheel_approve_beads — Bead approval:
   │     │   ✅ Approve / 🔍 Refine / ❌ Reject
   │     │
   │     ├─► Reads beads from `br list --json`
@@ -38,7 +40,7 @@ Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
   │   │  Pick next ready bead (`br ready`)                      │
   │   │  Implement (with fresh-eyes self-review before commit)  │
   │   │                                                         │
-  │   │  orch_review — per-bead gate:                          │
+  │   │  agent_flywheel_review — per-bead gate:                │
   │   │    🔥 Hit me → 5 parallel review agents                │
   │   │    ✅ Looks good → mark bead done, advance             │
   │   │                                                         │
@@ -59,7 +61,7 @@ Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
 
 ## Beads Compliance Audit
 
-The guided gate loop now includes an automatic **Beads compliance audit** gate after all beads are done and before commit/ship. `/orchestrate-audit-beads` and the `orch_audit_beads` / `flywheel_audit_beads` tools expose the same audit kickoff manually.
+The guided gate loop now includes an automatic **Beads compliance audit** gate after all beads are done and before commit/ship. `/agent-flywheel-audit-beads` and the `agent_flywheel_audit_beads` tool expose the same audit kickoff manually. Legacy `/orchestrate-audit-beads`, `orch_audit_beads`, and `flywheel_audit_beads` aliases remain available.
 
 The audit entrypoint is deliberately a preflight + kickoff step, not a silent auto-fixer:
 
@@ -142,14 +144,14 @@ When scan data is rendered into prompts and tool output, the orchestrator now tr
 
 ### 1. Discovery
 
-The workflow begins with `orch_profile`, which scans the repository and loads CASS memory from prior runs. The user chooses between:
+The workflow begins with `agent_flywheel_profile`, which scans the repository and loads CASS memory from prior runs. From `/agent-flywheel`, the user can also choose **🔬 Research external repo**, which runs `/agent-flywheel-research <github-url>` and feeds the resulting proposal back into plan approval. For repo-local discovery, the user chooses between:
 
 - **💡 Suggest improvements** — structured ideation with rubric ranking. The LLM generates 25-30 candidates internally, scores each against 5 weighted axes (useful 2×, pragmatic 2×, accretive 1.5×, robust 1×, ergonomic 1×), winnows and merges overlaps, then returns 10-15 tiered ideas (5 top + 5-10 honorable mentions) with rationale and source evidence
 - **✏️ I know what I want** — enter a custom goal directly, with optional refinement questionnaire
 
 Each idea includes a `rationale` (why it beat other candidates, citing repo evidence), a `tier` (top vs honorable), and `scores`, `sourceEvidence`, `risks`, and `synergies`.
 
-`orch_discover` generates 3–15 ideas (minimum 3 enforced). `orch_select` presents these grouped by tier (top picks first, then honorable mentions), with rationale shown as a subtitle. The user selects an idea (which proceeds directly to bead creation) or enters a custom goal (which gets a refinement questionnaire first).
+`agent_flywheel_discover` generates 3–15 ideas (minimum 3 enforced). `agent_flywheel_select` presents these grouped by tier (top picks first, then honorable mentions), with rationale shown as a subtitle. The user selects an idea (which proceeds directly to bead creation) or enters a custom goal (which gets a refinement questionnaire first).
 
 Full ideation results are persisted as a session artifact (`discovery/ideas-<timestamp>.md`) for later reference or follow-up orchestration runs.
 
@@ -173,11 +175,11 @@ When you select "🧠 Deep plan":
 2. **3 parallel agents** each create beads with a different focus: correctness, robustness, ergonomics
 3. **Synthesis**: an LLM blends "best of all worlds" into a unified bead set
 
-Agents get read-only tools and cannot call `orch_*` tools.
+Agents get read-only tools and cannot call AgentFlywheel workflow tools.
 
-#### Bead Approval (`orch_approve_beads`)
+#### Bead Approval (`agent_flywheel_approve_beads`)
 
-The `orch_approve_beads` tool reads beads from `br list --json` and presents them for approval:
+The `agent_flywheel_approve_beads` tool reads beads from `br list --json` and presents them for approval:
 
 - **▶️ Start implementing** → quality gate then begin execution
 - **🔍 Polish / Refine further** → round 0 uses same-agent polish; round 1+ auto-selects fresh-agent refinement

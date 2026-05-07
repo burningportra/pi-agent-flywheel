@@ -11,7 +11,7 @@ import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 
 export function registerReviewTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_review", "flywheel_review"] as const) {
+  for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Review Step",
@@ -80,8 +80,8 @@ export function registerReviewTool(oc: OrchestratorContext) {
             } catch { /* best-effort */ }
             return {
               content: [{ type: "text", text:
-                `✅ **Orchestration complete** — two consecutive clean review rounds.\n\n` +
-                `The codebase is in good shape. Run \`orch_review\` with beadId \"__gates__\" if you want to do a final landing checklist.`
+                `✅ **AgentFlywheel complete** — two consecutive clean review rounds.\n\n` +
+                `The codebase is in good shape. Run \`agent_flywheel_review\` with beadId \"__gates__\" if you want to do a final landing checklist.`
               }],
               details: { complete: true, twoCleanRounds: true },
             };
@@ -119,8 +119,8 @@ export function registerReviewTool(oc: OrchestratorContext) {
             type: "text",
             text: `⏪ Regressed to **plan phase**. Bead and review state has been reset.\n\n` +
               (oc.state.planDocument
-                ? `Revise the plan at \`${oc.state.planDocument}\`, then call \`orch_approve_beads\` to re-enter the approval flow and stay inside the orchestrate workflow.`
-                : `Call \`orch_plan\` to generate a new plan, then \`orch_approve_beads\` to re-enter the workflow menus.`),
+                ? `Revise the plan at \`${oc.state.planDocument}\`, then call \`agent_flywheel_approve_beads\` to re-enter the approval flow and stay inside the AgentFlywheel workflow.`
+                : `Call \`agent_flywheel_plan\` to generate a new plan, then \`agent_flywheel_approve_beads\` to re-enter the workflow menus.`),
           }],
           details: { regression: true, targetPhase: "planning" },
         };
@@ -136,7 +136,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
           content: [{
             type: "text",
             text: `⏪ Regressed to **bead creation phase**.\n\n` +
-              `Create new beads for missing scope or revise existing beads, then call \`orch_approve_beads\` to stay inside the approval workflow.\n\n` +
+              `Create new beads for missing scope or revise existing beads, then call \`agent_flywheel_approve_beads\` to stay inside the approval workflow.\n\n` +
               `Existing bead results are preserved — only add what's missing.`,
           }],
           details: { regression: true, targetPhase: "creating_beads" },
@@ -191,7 +191,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
       if (alreadyCompleted?.status === "success") {
         return {
           content: [
-            { type: "text", text: `Bead ${params.beadId} already completed. Move to the next bead or call \`orch_review\` with beadId "__gates__" for guided gates.` },
+            { type: "text", text: `Bead ${params.beadId} already completed. Move to the next bead or call \`agent_flywheel_review\` with beadId "__gates__" for guided gates.` },
           ],
           details: { review: { beadId: params.beadId, passed: true }, alreadyDone: true },
         };

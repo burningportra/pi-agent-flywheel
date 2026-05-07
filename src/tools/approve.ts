@@ -177,7 +177,7 @@ function formatPlanSummary(plan: string): string {
 }
 
 export function registerApproveTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_approve_beads", "flywheel_approve_beads"] as const) {
+  for (const toolName of ["agent_flywheel_approve_beads", "orch_approve_beads", "flywheel_approve_beads"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Approve Beads",
@@ -188,7 +188,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       if (!oc.state.selectedGoal) {
-        throw new Error("No goal selected. Call orch_select first.");
+        throw new Error("No goal selected. Call agent_flywheel_select first.");
       }
 
       if (oc.state.phase === "awaiting_plan_approval" || (oc.state.phase === "planning" && oc.state.planDocument)) {
@@ -343,7 +343,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
           return {
             content: [{
               type: "text",
-              text: `**NEXT: Run 4 sequential plan refinement rounds, then call \`orch_approve_beads\` to review the final result in-menu.**\n\nStay inside the orchestration workflow: plan refinement must return to \`orch_approve_beads\`, not skip ahead.\n\nFor each round (1-4):\n1. Spawn a fresh sub-agent using the \`subagent\` tool (fork: false)\n2. Wait for it to complete before starting the next round\n3. After all 4 rounds, call \`orch_approve_beads\` to review the improved plan\n\n${roundInstructions}`,
+              text: `**NEXT: Run 4 sequential plan refinement rounds, then call \`agent_flywheel_approve_beads\` to review the final result in-menu.**\n\nStay inside the AgentFlywheel workflow: plan refinement must return to \`agent_flywheel_approve_beads\`, not skip ahead.\n\nFor each round (1-4):\n1. Spawn a fresh sub-agent using the \`subagent\` tool (fork: false)\n2. Wait for it to complete before starting the next round\n3. After all 4 rounds, call \`agent_flywheel_approve_beads\` to review the improved plan\n\n${roundInstructions}`,
             }],
             details: { approved: false, plan: true, refining: true, autoRefine: true, rounds: 4, planDocument: oc.state.planDocument, planRound },
           };
@@ -360,7 +360,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
           return {
             content: [{
               type: "text",
-              text: `💡 You're at round ${planRound}. Guide recommends 4-5 rounds total — ${4 - planRound} more to go.\n\n**NEXT: Spawn a fresh sub-agent for plan refinement, then call \`orch_approve_beads\` again to stay inside the plan-approval menu flow.**\n\nUse \`subagent\` with these parameters:\n\`\`\`json\n${JSON.stringify({ name: `plan-refine-r${planRound + 1}`, task: `${freshPrompt}\n\nAfter refining, write the updated plan to the artifact: \`${oc.state.planDocument}\`\nUse write_artifact with name "${oc.state.planDocument}".`, model: refinementModel, cwd: ctx.cwd }, null, 2)}\n\`\`\`\n\nThis uses **${refinementModel}** (model rotation prevents taste convergence).\nAfter the sub-agent completes, call \`orch_approve_beads\` to review changes.`,
+              text: `💡 You're at round ${planRound}. Guide recommends 4-5 rounds total — ${4 - planRound} more to go.\n\n**NEXT: Spawn a fresh sub-agent for plan refinement, then call \`agent_flywheel_approve_beads\` again to stay inside the plan-approval menu flow.**\n\nUse \`subagent\` with these parameters:\n\`\`\`json\n${JSON.stringify({ name: `plan-refine-r${planRound + 1}`, task: `${freshPrompt}\n\nAfter refining, write the updated plan to the artifact: \`${oc.state.planDocument}\`\nUse write_artifact with name "${oc.state.planDocument}".`, model: refinementModel, cwd: ctx.cwd }, null, 2)}\n\`\`\`\n\nThis uses **${refinementModel}** (model rotation prevents taste convergence).\nAfter the sub-agent completes, call \`agent_flywheel_approve_beads\` to review changes.`,
             }],
             details: { approved: false, plan: true, refining: true, freshAgent: true, model: refinementModel, planDocument: oc.state.planDocument, planRound },
           };
@@ -439,7 +439,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
         return {
           content: [{
             type: "text",
-            text: `**NEXT: Create beads from the approved plan using \`br create\` and \`br dep add\` in bash NOW. When all beads are created, call \`orch_approve_beads\` again to re-enter the bead approval menu.**\n\nStay inside the orchestration workflow: approved plan → bead creation → bead approval → implementation.\n\nArtifact: \`${oc.state.planDocument}\`\n\n---\n\n${creationPrompt}\n\n---\n\n**After creating all beads:** call \`orch_approve_beads\` to review and approve before implementation begins.`,
+            text: `**NEXT: Create beads from the approved plan using \`br create\` and \`br dep add\` in bash NOW. When all beads are created, call \`agent_flywheel_approve_beads\` again to re-enter the bead approval menu.**\n\nStay inside the AgentFlywheel workflow: approved plan → bead creation → bead approval → implementation.\n\nArtifact: \`${oc.state.planDocument}\`\n\n---\n\n${creationPrompt}\n\n---\n\n**After creating all beads:** call \`agent_flywheel_approve_beads\` to review and approve before implementation begins.`,
           }],
           details: { approved: true, plan: true, creatingBeads: true, planDocument: oc.state.planDocument },
         };
@@ -456,7 +456,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
 
       if (beads.length === 0) {
         return {
-          content: [{ type: "text", text: "No open beads found. Stay inside the orchestration workflow: create beads with `br create` first, then call `orch_approve_beads` to return to the menu." }],
+          content: [{ type: "text", text: "No open beads found. Stay inside the AgentFlywheel workflow: create beads with `br create` first, then call `agent_flywheel_approve_beads` to return to the menu." }],
           details: { approved: false },
         };
       }
@@ -858,15 +858,9 @@ export function registerApproveTool(oc: OrchestratorContext) {
         // If quality gate failed, fall through to manual select
       }
 
-      if (choice === undefined) {
-        choice = await ctx.ui.select(
-          `${beads.length} beads ready for: ${oc.state.selectedGoal}${roundHeader}${qualitySummary}${simulationWarning}${bottleneckWarning}${planAuditWarning}${foregoneInfo}\n\n${beadListText}${validationWarning}${convergenceTip}`,
-          options
-        );
-      }
+      const approvalPrompt = `${beads.length} beads ready for: ${oc.state.selectedGoal}${roundHeader}${qualitySummary}${simulationWarning}${bottleneckWarning}${planAuditWarning}${foregoneInfo}\n\n${beadListText}${validationWarning}${convergenceTip}`;
 
-      // ── Advanced sub-menu handler ──
-      if (choice?.startsWith("⚙️")) {
+      const selectAdvancedChoice = async (): Promise<string | undefined> => {
         const advancedOptions: string[] = [
           `🧠 Fresh-agent refinement (round ${round + 1})`,
           `🔍 Same-agent polish (round ${round + 1})`,
@@ -887,16 +881,26 @@ export function registerApproveTool(oc: OrchestratorContext) {
           advancedOptions
         );
 
-        if (!advChoice || advChoice.startsWith("⬅️")) {
-          // Back to main menu — re-trigger approval
-          return {
-            content: [{ type: "text", text: "Call `orch_approve_beads` again to return to the approval menu and stay inside the orchestrate workflow." }],
-            details: { approved: false },
-          };
+        return advChoice && !advChoice.startsWith("⬅️") ? advChoice : undefined;
+      };
+
+      // ── Main/advanced menu loop ──
+      // Choosing Back from Advanced should return to the visible approval menu
+      // immediately, not emit a follow-up instruction that kicks the user out of
+      // the current UI flow.
+      while (true) {
+        if (choice === undefined) {
+          choice = await ctx.ui.select(approvalPrompt, options);
+          if (choice === undefined) break;
         }
-        // Delegate to existing handlers by reassigning choice
-        choice = advChoice;
-        // Fall through to handler blocks below...
+        if (!choice.startsWith("⚙️")) break;
+
+        const advancedChoice = await selectAdvancedChoice();
+        if (advancedChoice) {
+          choice = advancedChoice;
+          break;
+        }
+        choice = undefined;
       }
 
       // ── "🔍 Refine further" (round 1+) → fresh-agent refinement ──

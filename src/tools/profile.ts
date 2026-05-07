@@ -21,7 +21,7 @@ function weightedScore(idea: import("../types.js").CandidateIdea): number {
 }
 
 export function registerProfileTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_profile", "flywheel_profile"] as const) {
+  for (const toolName of ["agent_flywheel_profile", "orch_profile", "flywheel_profile"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Profile Repo",
@@ -227,7 +227,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           return {
             content: [{
               type: "text",
-              text: `**NEXT: Call \`orch_plan\` with mode \`single_model\` NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nGenerate a detailed implementation plan as a markdown artifact. Stay inside the orchestrate workflow: after the plan is written, return to \`orch_approve_beads\` for plan approval before creating beads.`,
+              text: `**NEXT: Call \`agent_flywheel_plan\` with mode \`single_model\` NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nGenerate a detailed implementation plan as a markdown artifact. Stay inside the AgentFlywheel workflow: after the plan is written, return to \`agent_flywheel_approve_beads\` for plan approval before creating beads.`,
             }],
             details: { profile, scanResult, customGoal: goal, selected: true, goal: enrichedGoal, constraints: oc.state.constraints, workflow: "plan_first" },
           };
@@ -240,7 +240,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           return {
             content: [{
               type: "text",
-              text: `**NEXT: Call \`orch_plan\` with mode \`multi_model\` NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nRun competing planners for correctness, robustness, and ergonomics, then synthesize them into one plan document artifact. Stay inside the orchestrate workflow: after synthesis, return to \`orch_approve_beads\` for plan approval before creating beads.`,
+              text: `**NEXT: Call \`agent_flywheel_plan\` with mode \`multi_model\` NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nRun competing planners for correctness, robustness, and ergonomics, then synthesize them into one plan document artifact. Stay inside the AgentFlywheel workflow: after synthesis, return to \`agent_flywheel_approve_beads\` for plan approval before creating beads.`,
             }],
             details: { profile, scanResult, customGoal: goal, selected: true, goal: enrichedGoal, constraints: oc.state.constraints, workflow: "multi_model_plan" },
           };
@@ -264,7 +264,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         return {
           content: [{
             type: "text",
-            text: `**NEXT: Create beads for this goal using \`br create\` and \`br dep add\` in bash NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nStay inside the orchestrate workflow: once the beads exist, return to \`orch_approve_beads\` for bead approval before implementation.\n\n---\n\n${instructions}`,
+            text: `**NEXT: Create beads for this goal using \`br create\` and \`br dep add\` in bash NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nStay inside the AgentFlywheel workflow: once the beads exist, return to \`agent_flywheel_approve_beads\` for bead approval before implementation.\n\n---\n\n${instructions}`,
           }],
           details: { profile, scanResult, customGoal: goal, selected: true, goal: enrichedGoal, constraints: oc.state.constraints, workflow: "direct" },
         };
@@ -324,7 +324,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           return {
             content: [{
               type: "text",
-              text: `**Workflow:** ${roadmap}\n\n**NEXT: Call \`orch_discover\` with your top 5 ideas and next 5-10 honorable mentions NOW.**\n\n${modeInstructions}\n\n---\n\nRepository profiled successfully.\n\n${scanSourceLine}\n${coordLine}${upgradeHint}${foundationWarning}\n\n${formatted}${memoryContext}`,
+              text: `**Workflow:** ${roadmap}\n\n**NEXT: Call \`agent_flywheel_discover\` with your top 5 ideas and next 5-10 honorable mentions NOW.**\n\n${modeInstructions}\n\n---\n\nRepository profiled successfully.\n\n${scanSourceLine}\n${coordLine}${upgradeHint}${foundationWarning}\n\n${formatted}${memoryContext}`,
             }],
             details: { profile, scanResult, funnelFallback: true },
           };
@@ -468,7 +468,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         return {
           content: [{
             type: "text",
-            text: `**Workflow:** ${roadmap}\n\n**NEXT: Call \`orch_select\` NOW to present these ${finalIdeas.length} ideas to the user.**\n\n---\n\n🔬 Deep discovery complete (30→5→${allIdeas.length} funnel, ${finalIdeas.length} selected)\n\n### Top Ideas (tier: top)\n${finalIdeas.filter(i => i.tier === "top").map((i, n) => `${n + 1}. **${i.title}** [${i.category}] — ${i.description}`).join("\n")}\n\n### Complementary Ideas (tier: honorable)\n${finalIdeas.filter(i => i.tier !== "top").map((i, n) => `${n + 1}. **${i.title}** [${i.category}] — ${i.description}`).join("\n")}`,
+            text: `**Workflow:** ${roadmap}\n\n**NEXT: Call \`agent_flywheel_select\` NOW to present these ${finalIdeas.length} ideas to the user.**\n\n---\n\n🔬 Deep discovery complete (30→5→${allIdeas.length} funnel, ${finalIdeas.length} selected)\n\n### Top Ideas (tier: top)\n${finalIdeas.filter(i => i.tier === "top").map((i, n) => `${n + 1}. **${i.title}** [${i.category}] — ${i.description}`).join("\n")}\n\n### Complementary Ideas (tier: honorable)\n${finalIdeas.filter(i => i.tier !== "top").map((i, n) => `${n + 1}. **${i.title}** [${i.category}] — ${i.description}`).join("\n")}`,
           }],
           details: { profile, scanResult, funnel: true, rawCount: rawIdeas.length, winnowedCount: top5.length, expandedCount: expandedIdeas.length, selectedCount: finalIdeas.length },
         };
@@ -583,7 +583,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         oc.setPhase("idle", ctx);
         oc.persistState();
         // Auto-restart orchestration so user doesn't have to manually re-run
-        oc.pi.sendUserMessage("/orchestrate", { deliverAs: "followUp" });
+        oc.pi.sendUserMessage("/agent-flywheel", { deliverAs: "followUp" });
         return {
           content: [{ type: "text", text: `🗑️ Cleared ${deleted} bead(s). Starting fresh...` }],
           details: { profile, scanResult, cleared: true },
@@ -592,7 +592,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
 
       // Standard discovery (default)
       const modeInstructions = discoveryInstructions(profile, scanResult);
-      const discoveryPrompt = `**NEXT: Call \`orch_discover\` with your top 5 ideas and next 5-10 honorable mentions NOW.**\n\n${modeInstructions}`;
+      const discoveryPrompt = `**NEXT: Call \`agent_flywheel_discover\` with your top 5 ideas and next 5-10 honorable mentions NOW.**\n\n${modeInstructions}`;
 
       return {
         content: [
@@ -607,7 +607,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
 
     renderCall(_args, theme) {
       return new Text(
-        theme.fg("toolTitle", theme.bold("orch_profile ")) +
+        theme.fg("toolTitle", theme.bold("agent_flywheel_profile ")) +
           theme.fg("dim", "scanning repository..."),
         0, 0
       );

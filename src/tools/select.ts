@@ -5,7 +5,7 @@ import { formatRepoProfile, beadCreationPrompt } from "../prompts.js";
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
 
 export function registerSelectTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_select", "flywheel_select"] as const) {
+  for (const toolName of ["agent_flywheel_select", "orch_select", "flywheel_select"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Select Idea",

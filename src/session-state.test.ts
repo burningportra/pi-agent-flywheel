@@ -161,14 +161,14 @@ describe("detectSessionStage", () => {
       const state = makeState({ phase: "implementing", selectedGoal: "Add dark mode" });
       const stage = detectSessionStage(state, [makeBead("br-1", "open")]);
       expect(stage.resumePrompt).toContain("Add dark mode");
-      expect(stage.resumePrompt).toContain("orch_review");
+      expect(stage.resumePrompt).toContain("agent_flywheel_review");
     });
 
     it("includes plan path in awaiting_plan_approval resume prompt", () => {
       const state = makeState({ phase: "awaiting_plan_approval", planDocument: "artifacts/plan.md" });
       const stage = detectSessionStage(state, []);
       expect(stage.resumePrompt).toContain("artifacts/plan.md");
-      expect(stage.resumePrompt).toContain("orch_approve_beads");
+      expect(stage.resumePrompt).toContain("agent_flywheel_approve_beads");
     });
 
     it("includes current bead in implementing prompt when in-progress", () => {
@@ -178,10 +178,10 @@ describe("detectSessionStage", () => {
       expect(stage.resumePrompt).toContain("br-5");
     });
 
-    it("mentions orch_select for awaiting_selection", () => {
+    it("mentions agent_flywheel_select for awaiting_selection", () => {
       const state = makeState({ phase: "awaiting_selection" });
       const stage = detectSessionStage(state, []);
-      expect(stage.resumePrompt).toContain("orch_select");
+      expect(stage.resumePrompt).toContain("agent_flywheel_select");
     });
   });
 });

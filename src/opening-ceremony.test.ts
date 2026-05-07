@@ -11,9 +11,9 @@ describe("opening ceremony renderer", () => {
     const frames = getOpeningCeremonyFrames();
 
     expect(frames).toHaveLength(3);
-    expect(frames[0]?.text).toContain("PI // ORCHESTRATOR");
+    expect(frames[0]?.text).toContain("AGENTFLYWHEEL");
     expect(frames[1]?.text).toContain("summoning bead engine");
-    expect(frames[2]?.text).toContain("ignite /orchestrate");
+    expect(frames[2]?.text).toContain("ignite /agent-flywheel");
     expect(frames.every((frame) => frame.delayMs > 0)).toBe(true);
   });
 
@@ -71,7 +71,7 @@ describe("opening ceremony renderer", () => {
 
     expect(result).toMatchObject({ rendered: true, mode: "static", frameCount: 1 });
     expect(writes).toHaveLength(1);
-    expect(writes[0]).toContain("ignite /orchestrate");
+    expect(writes[0]).toContain("ignite /agent-flywheel");
   });
 
   it("fails open when the writer throws", async () => {

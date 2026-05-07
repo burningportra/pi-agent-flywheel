@@ -397,7 +397,7 @@ export function registerCommands(oc: OrchestratorContext) {
             );
           } else {
             pi.sendUserMessage(
-              `Implement bead **${beadId}**. Run \`br show ${beadId}\` to see its details, then implement it and call \`orch_review\` when done to stay inside the orchestrate workflow.`,
+              `Implement bead **${beadId}**. Run \`br show ${beadId}\` to see its details, then implement it and call \`agent_flywheel_review\` when done to stay inside the AgentFlywheel workflow.`,
               { deliverAs: "followUp" }
             );
           }
@@ -417,7 +417,7 @@ export function registerCommands(oc: OrchestratorContext) {
           }
           oc.persistState();
           pi.sendUserMessage(
-            `Resumed after resetting ${resetCount} stuck bead(s). Call \`orch_review\` to pick the next bead and continue inside the orchestrate workflow.`,
+            `Resumed after resetting ${resetCount} stuck bead(s). Call \`agent_flywheel_review\` to pick the next bead and continue inside the AgentFlywheel workflow.`,
             { deliverAs: "followUp" }
           );
           return;
@@ -443,7 +443,7 @@ export function registerCommands(oc: OrchestratorContext) {
             oc.persistState();
             pi.sendUserMessage(
               `Extending existing plan with ${openCount} open bead(s) still active.\n\n` +
-              `Call \`orch_discover\` to generate new ideas, then add beads with \`br create\` and return through \`orch_approve_beads\`. ` +
+              `Call \`agent_flywheel_discover\` to generate new ideas, then add beads with \`br create\` and return through \`agent_flywheel_approve_beads\`. ` +
               `Existing open beads will not be touched.`,
               { deliverAs: "followUp" }
             );
@@ -452,7 +452,7 @@ export function registerCommands(oc: OrchestratorContext) {
             oc.setPhase("implementing", ctx);
             oc.persistState();
             pi.sendUserMessage(
-              `Continuing with ${openCount} open bead(s). Call \`orch_review\` to pick the next bead and implement it inside the orchestrate workflow.`,
+              `Continuing with ${openCount} open bead(s). Call \`agent_flywheel_review\` to pick the next bead and implement it inside the AgentFlywheel workflow.`,
               { deliverAs: "followUp" }
             );
           }
@@ -478,7 +478,7 @@ export function registerCommands(oc: OrchestratorContext) {
             oc.persistState();
             pi.sendUserMessage(
               `Pruned ${pruneCount} stale bead(s). ${remaining.length} bead(s) remain active.\n\n` +
-              `Call \`orch_review\` to continue implementing inside the orchestrate workflow: ${remaining.map(b => b.id).join(", ")}.`,
+              `Call \`agent_flywheel_review\` to continue implementing inside the AgentFlywheel workflow: ${remaining.map(b => b.id).join(", ")}.`,
               { deliverAs: "followUp" }
             );
             return;
@@ -507,7 +507,7 @@ export function registerCommands(oc: OrchestratorContext) {
           oc.persistState();
           pi.sendUserMessage(
             `**Loaded saved plan: ${selectedPlan.label}**\n\n` +
-            `**NEXT: Call \`orch_approve_beads\` NOW to review this plan inside the orchestration workflow.**\n\n` +
+            `**NEXT: Call \`agent_flywheel_approve_beads\` NOW to review this plan inside the AgentFlywheel workflow.**\n\n` +
             `Artifact: \`${selectedPlan.artifactName}\`\n\n` +
             `Do not skip directly to bead creation — keep the run inside the plan approval → bead creation → bead approval happy path.`,
             { deliverAs: "followUp" }
@@ -524,8 +524,8 @@ export function registerCommands(oc: OrchestratorContext) {
           } else {
             ctx.ui.notify(`⚠️ Sync failed: ${syncResult.error.stderr || syncResult.error.command}`, "warning");
           }
-          // Re-enter the /orchestrate menu so user can pick next action
-          pi.sendUserMessage("/orchestrate", { deliverAs: "followUp" });
+          // Re-enter the /agent-flywheel menu so user can pick next action
+          pi.sendUserMessage("/agent-flywheel", { deliverAs: "followUp" });
           return;
 
         // ── Handle: Fresh ─────────────────────────────────────────
@@ -582,66 +582,82 @@ export function registerCommands(oc: OrchestratorContext) {
       oc.orchestratorActive = true;
       oc.persistState();
 
-      // ── Fresh start: offer to load a saved plan before profiling ──
+      // ── Fresh start: choose profile, research, or saved plan ──
       if (!goalArg) {
         const freshSessionDir = ctx.sessionManager.getSessionDir();
         const freshPlans = findSavedPlans(freshSessionDir, ctx.cwd);
-        if (freshPlans.length > 0) {
-          const freshChoices = [
-            "🔍 Profile repo — scan, discover ideas, then plan (default)",
-            `📄 Load saved plan — pick from ${freshPlans.length} previously generated plan(s)`,
-          ];
-          const freshChoice = await ctx.ui.select(
-            "🌟 Start fresh orchestration:",
-            freshChoices
+        const freshChoices = [
+          "🔍 Profile repo — scan, discover ideas, then plan (default)",
+          "🔬 Research external repo — study a GitHub project and adapt ideas",
+          ...(freshPlans.length > 0 ? [`📄 Load saved plan — pick from ${freshPlans.length} previously generated plan(s)`] : []),
+        ];
+        const freshChoice = await ctx.ui.select(
+          "🌟 Start AgentFlywheel:",
+          freshChoices
+        );
+
+        if (freshChoice?.startsWith("🔬")) {
+          const researchUrl = await ctx.ui.input(
+            "GitHub repo URL to research:",
+            "https://github.com/org/repo"
           );
-          if (freshChoice?.startsWith("📄 Load saved plan")) {
-            const planChoices = freshPlans.map(p => p.label);
-            planChoices.push("← Cancel");
-            const planChoice = await ctx.ui.select("Select a saved plan:", planChoices);
-            if (planChoice && planChoice !== "← Cancel") {
-              const selectedIdx = planChoices.indexOf(planChoice);
-              const selectedPlan = freshPlans[selectedIdx];
-              if (selectedPlan) {
-                let planContent = "";
-                try { planContent = readFileSync(selectedPlan.path, "utf8"); } catch {
-                  ctx.ui.notify(`⚠️ Could not read plan: ${selectedPlan.path}`, "warning");
-                }
-                if (planContent) {
-                  oc.state.planDocument = selectedPlan.artifactName;
-                  oc.setPhase("awaiting_plan_approval", ctx);
-                  oc.persistState();
-                  pi.sendUserMessage(
-                    `**Loaded saved plan: ${selectedPlan.label}**\n\n` +
-                    `**NEXT: Call \`orch_approve_beads\` NOW to review this plan inside the orchestration workflow.**\n\n` +
-                    `Artifact: \`${selectedPlan.artifactName}\`\n\n` +
-                    `Do not skip directly to bead creation — keep the run inside the plan approval → bead creation → bead approval happy path.`,
-                    { deliverAs: "followUp" }
-                  );
-                  return;
-                }
-              }
-            }
-            // Cancelled or failed — fall through to normal profile path
-          } else if (freshChoice === undefined) {
-            ctx.ui.notify("Orchestration cancelled.", "info");
+          if (!researchUrl?.trim()) {
+            ctx.ui.notify("Research cancelled — no repo URL provided.", "info");
             oc.orchestratorActive = false;
             oc.setPhase("idle", ctx);
             oc.persistState();
             return;
           }
-          // freshChoice === profile or undefined/cancel — fall through
+          pi.sendUserMessage(`/agent-flywheel-research ${researchUrl.trim()}`, { deliverAs: "followUp" });
+          return;
         }
+
+        if (freshChoice?.startsWith("📄 Load saved plan")) {
+          const planChoices = freshPlans.map(p => p.label);
+          planChoices.push("← Cancel");
+          const planChoice = await ctx.ui.select("Select a saved plan:", planChoices);
+          if (planChoice && planChoice !== "← Cancel") {
+            const selectedIdx = planChoices.indexOf(planChoice);
+            const selectedPlan = freshPlans[selectedIdx];
+            if (selectedPlan) {
+              let planContent = "";
+              try { planContent = readFileSync(selectedPlan.path, "utf8"); } catch {
+                ctx.ui.notify(`⚠️ Could not read plan: ${selectedPlan.path}`, "warning");
+              }
+              if (planContent) {
+                oc.state.planDocument = selectedPlan.artifactName;
+                oc.setPhase("awaiting_plan_approval", ctx);
+                oc.persistState();
+                pi.sendUserMessage(
+                  `**Loaded saved plan: ${selectedPlan.label}**\n\n` +
+                  `**NEXT: Call \`agent_flywheel_approve_beads\` NOW to review this plan inside the AgentFlywheel workflow.**\n\n` +
+                  `Artifact: \`${selectedPlan.artifactName}\`\n\n` +
+                  `Do not skip directly to bead creation — keep the run inside the plan approval → bead creation → bead approval happy path.`,
+                  { deliverAs: "followUp" }
+                );
+                return;
+              }
+            }
+          }
+          // Cancelled or failed — fall through to normal profile path
+        } else if (freshChoice === undefined) {
+          ctx.ui.notify("AgentFlywheel cancelled.", "info");
+          oc.orchestratorActive = false;
+          oc.setPhase("idle", ctx);
+          oc.persistState();
+          return;
+        }
+        // freshChoice === profile or cancelled saved-plan load — fall through
       }
 
         if (goalArg) {
           pi.sendUserMessage(
-            `Start the orchestrator workflow for this repo. I want to: ${goalArg}\n\nBegin by calling \`orch_profile\` to scan the repo, then stay inside the orchestrate workflow/menus while routing my stated goal through the normal planning or bead-creation path.`,
+            `Start the AgentFlywheel workflow for this repo. I want to: ${goalArg}\n\nBegin by calling \`agent_flywheel_profile\` to scan the repo, then stay inside the AgentFlywheel workflow/menus while routing my stated goal through the normal planning or bead-creation path.`,
             { deliverAs: "followUp" }
           );
         } else {
           pi.sendUserMessage(
-            "Start the orchestrator workflow for this repo. Begin by calling `orch_profile` to scan the repository.",
+            "Start the AgentFlywheel workflow for this repo. Begin by calling `agent_flywheel_profile` to scan the repository.",
             { deliverAs: "followUp" }
           );
         }
@@ -649,8 +665,8 @@ export function registerCommands(oc: OrchestratorContext) {
 
       // Opening ceremony hook:
       // Insert any startup-only presentation immediately before running the
-      // command startup flow below so it fires once per /orchestrate invocation
-      // before any resume menu, saved-plan selector, notify(), or orch_profile
+      // command startup flow below so it fires once per /agent-flywheel invocation
+      // before any resume menu, saved-plan selector, notify(), or agent_flywheel_profile
       // follow-up message is shown.
       // Animate only in raw TTY (no TUI) — in pi's TUI, console.log
       // output cannot use ANSI cursor movement to overwrite previous frames,
@@ -677,15 +693,26 @@ export function registerCommands(oc: OrchestratorContext) {
       await runOrchestrateStartupFlow();
   };
 
-  // ─── Command: /orchestrate ───────────────────────────────────
+  // ─── Command: /agent-flywheel ───────────────────────────────────
+  pi.registerCommand("agent-flywheel", {
+    description:
+      "Start AgentFlywheel for this repo",
+    handler: startHandler,
+  });
+
+  pi.registerCommand("agent-flywheel-start", {
+    description: "Start AgentFlywheel for this repo (alias of /agent-flywheel)",
+    handler: startHandler,
+  });
+
   pi.registerCommand("orchestrate", {
     description:
-      "Start the repo-aware multi-agent orchestrator",
+      "Legacy alias of /agent-flywheel",
     handler: startHandler,
   });
 
   pi.registerCommand("flywheel-start", {
-    description: "Start the repo-aware multi-agent flywheel (alias of /orchestrate)",
+    description: "Alias of /agent-flywheel",
     handler: startHandler,
   });
 
@@ -1111,14 +1138,12 @@ export function registerCommands(oc: OrchestratorContext) {
     },
   });
 
-  // ─── Command: /orchestrate-research ──────────────────────
-  pi.registerCommand("orchestrate-research", {
-    description: "Study an external project and reimagine its ideas for this project (7-phase pipeline)",
-    handler: async (args, ctx) => {
+  // ─── Command: /agent-flywheel-research ──────────────────────
+  const researchHandler = async (args: string, ctx: any) => {
       const url = (args ?? "").trim();
       if (!url) {
         ctx.ui.notify(
-          "Usage: /orchestrate-research <github-url>\n\n" +
+          "Usage: /agent-flywheel-research <github-url>\n\n" +
           "Runs the Research & Reimagine pipeline:\n" +
           "1. Investigate external project\n" +
           "2. Deepen (push past conservative suggestions)\n" +
@@ -1229,7 +1254,7 @@ export function registerCommands(oc: OrchestratorContext) {
           ctx.ui.notify(
             `Pipeline paused for manual editing.\n` +
             `Edit the proposal at:\n  ${artifactPath}\n\n` +
-            `When done, rerun \`/orchestrate-research ${url}\` to resume from this point.`,
+            `When done, rerun \`/agent-flywheel-research ${url}\` to resume from this point.`,
             "info"
           );
           return { accepted: false };
@@ -1238,7 +1263,7 @@ export function registerCommands(oc: OrchestratorContext) {
         if (!choice || choice.startsWith("⏸️")) {
           ctx.ui.notify(
             `Research pipeline paused.\nProposal saved to: ${artifactName}\n\n` +
-            `Rerun \`/orchestrate-research ${url}\` to resume from the user-review phase.`,
+            `Rerun \`/agent-flywheel-research ${url}\` to resume from the user-review phase.`,
             "info"
           );
           return { accepted: false };
@@ -1339,7 +1364,21 @@ export function registerCommands(oc: OrchestratorContext) {
         ),
         { deliverAs: "followUp" }
       );
-    },
+    };
+
+  pi.registerCommand("agent-flywheel-research", {
+    description: "Study an external project and reimagine its ideas for this project (7-phase pipeline)",
+    handler: researchHandler,
+  });
+
+  pi.registerCommand("orchestrate-research", {
+    description: "Legacy alias of /agent-flywheel-research",
+    handler: researchHandler,
+  });
+
+  pi.registerCommand("flywheel-research", {
+    description: "Alias of /agent-flywheel-research",
+    handler: researchHandler,
   });
 
   // ─── Command: /orchestrate-swarm ─────────────────────────
@@ -2108,8 +2147,13 @@ ${description}
     pi.sendUserMessage(plan.prompt, { deliverAs: "followUp" });
   };
 
-  pi.registerCommand("orchestrate-audit-beads", {
+  pi.registerCommand("agent-flywheel-audit-beads", {
     description: "Audit closed beads for actual completion with evidence packs",
+    handler: auditBeadsHandler,
+  });
+
+  pi.registerCommand("orchestrate-audit-beads", {
+    description: "Legacy alias of /agent-flywheel-audit-beads",
     handler: auditBeadsHandler,
   });
 
@@ -2118,7 +2162,16 @@ ${description}
     handler: auditBeadsHandler,
   });
 
-  // ─── Claude agent-flywheel compatibility aliases ─────────────
+  // ─── AgentFlywheel preferred aliases + compatibility aliases ─────────────
+  pi.registerCommand("agent-flywheel-doctor", {
+    description: "Read-only diagnostic of AgentFlywheel prerequisites and session health",
+    handler: async (_args, ctx) => {
+      const { runDoctorChecks, formatDoctorReport } = await import("./tools/doctor.js");
+      const report = await runDoctorChecks(pi, ctx.cwd);
+      ctx.ui.notify(formatDoctorReport(report), report.overall === "red" ? "error" : report.overall === "yellow" ? "warning" : "info");
+    },
+  });
+
   pi.registerCommand("flywheel-doctor", {
     description: "Read-only diagnostic of flywheel prerequisites and session health",
     handler: async (_args, ctx) => {
@@ -2128,8 +2181,24 @@ ${description}
     },
   });
 
+  pi.registerCommand("agent-flywheel-status", {
+    description: "Show current AgentFlywheel status",
+    handler: async (_args, ctx) => {
+      try {
+        const { loadAllFeedback, computeFeedbackStats, formatFeedbackStats } = await import("./feedback.js");
+        const feedbacks = loadAllFeedback(ctx.cwd);
+        if (feedbacks.length > 0) ctx.ui.notify(formatFeedbackStats(computeFeedbackStats(feedbacks)), "info");
+      } catch { /* best-effort */ }
+      if (!oc.orchestratorActive && oc.state.phase === "idle") {
+        ctx.ui.notify("No AgentFlywheel session active.", "info");
+        return;
+      }
+      oc.updateWidget(ctx);
+    },
+  });
+
   pi.registerCommand("flywheel-status", {
-    description: "Show current flywheel/orchestrator status",
+    description: "Show current AgentFlywheel/orchestrator status",
     handler: async (_args, ctx) => {
       try {
         const { loadAllFeedback, computeFeedbackStats, formatFeedbackStats } = await import("./feedback.js");
@@ -2144,8 +2213,28 @@ ${description}
     },
   });
 
+  pi.registerCommand("agent-flywheel-stop", {
+    description: "Stop the current AgentFlywheel session",
+    handler: async (_args, ctx) => {
+      if (!oc.orchestratorActive) {
+        ctx.ui.notify("No AgentFlywheel session in progress.", "info");
+        return;
+      }
+      if (oc.worktreePool) {
+        const summary = await oc.worktreePool.safeCleanup();
+        if (summary.autoCommitted > 0) ctx.ui.notify(`💾 Auto-committed ${summary.autoCommitted} dirty worktree(s) before cleanup.`, "info");
+        oc.worktreePool = undefined;
+      }
+      if (oc.swarmTender) { oc.swarmTender.stop(); oc.swarmTender = undefined; }
+      oc.orchestratorActive = false;
+      oc.setPhase("idle", ctx);
+      oc.persistState();
+      ctx.ui.notify("🛑 AgentFlywheel stopped.", "warning");
+    },
+  });
+
   pi.registerCommand("flywheel-stop", {
-    description: "Stop the current flywheel/orchestration session",
+    description: "Stop the current AgentFlywheel/orchestration session",
     handler: async (_args, ctx) => {
       if (!oc.orchestratorActive) {
         ctx.ui.notify("No orchestration in progress.", "info");
@@ -2164,8 +2253,8 @@ ${description}
     },
   });
 
-  pi.registerCommand("flywheel-cleanup", {
-    description: "Clean up orphaned pi-orchestrator worktrees",
+  pi.registerCommand("agent-flywheel-cleanup", {
+    description: "Clean up orphaned AgentFlywheel worktrees",
     handler: async (_args, ctx) => {
       const { findOrphanedWorktrees, cleanupOrphanedWorktrees } = await import("./worktree.js");
       const tracked = oc.worktreePool ? [...oc.worktreePool.getAll()] : [];
@@ -2185,6 +2274,40 @@ ${description}
     },
   });
 
+  pi.registerCommand("flywheel-cleanup", {
+    description: "Clean up orphaned AgentFlywheel worktrees",
+    handler: async (_args, ctx) => {
+      const { findOrphanedWorktrees, cleanupOrphanedWorktrees } = await import("./worktree.js");
+      const tracked = oc.worktreePool ? [...oc.worktreePool.getAll()] : [];
+      const orphans = await findOrphanedWorktrees(pi, ctx.cwd, tracked);
+      if (orphans.length === 0) {
+        ctx.ui.notify("✅ No orphaned worktrees found.", "info");
+        return;
+      }
+      const dirtyCount = orphans.filter((o) => o.isDirty).length;
+      const confirmed = await ctx.ui.confirm(
+        "Clean up worktrees",
+        `Found ${orphans.length} orphaned worktree(s)${dirtyCount ? ` (${dirtyCount} dirty — will auto-commit)` : ""}. Remove them?`
+      );
+      if (!confirmed) return;
+      const summary = await cleanupOrphanedWorktrees(pi, ctx.cwd, orphans);
+      ctx.ui.notify(`🧹 Removed ${summary.removed} worktree(s)${summary.autoCommitted ? `; auto-committed ${summary.autoCommitted}` : ""}${summary.errors.length ? `; errors: ${summary.errors.join(", ")}` : ""}`, summary.errors.length ? "warning" : "info");
+    },
+  });
+
+  pi.registerCommand("agent-flywheel-swarm-status", {
+    description: "Show AgentFlywheel swarm health: active/idle/stuck agents, bead progress, conflicts",
+    handler: async (_args, ctx) => {
+      if (!oc.swarmTender) {
+        ctx.ui.notify("No swarm active. Launch one with /orchestrate-swarm.", "info");
+        return;
+      }
+      const { formatSwarmStatus } = await import("./swarm.js");
+      const { readBeads } = await import("./beads.js");
+      ctx.ui.notify(formatSwarmStatus(oc.swarmTender.getStatus(), await readBeads(pi, ctx.cwd)), "info");
+    },
+  });
+
   pi.registerCommand("flywheel-swarm-status", {
     description: "Show swarm health: active/idle/stuck agents, bead progress, conflicts",
     handler: async (_args, ctx) => {
@@ -2195,6 +2318,20 @@ ${description}
       const { formatSwarmStatus } = await import("./swarm.js");
       const { readBeads } = await import("./beads.js");
       ctx.ui.notify(formatSwarmStatus(oc.swarmTender.getStatus(), await readBeads(pi, ctx.cwd)), "info");
+    },
+  });
+
+  pi.registerCommand("agent-flywheel-swarm-stop", {
+    description: "Stop the swarm tender and send landing prompts",
+    handler: async (_args, ctx) => {
+      if (!oc.swarmTender) {
+        ctx.ui.notify("No swarm active.", "info");
+        return;
+      }
+      oc.swarmTender.stop();
+      oc.swarmTender = undefined;
+      const { landingChecklistInstructions } = await import("./prompts.js");
+      ctx.ui.notify(`🛑 Swarm tender stopped.\n\nAgents may still be running in their terminals. Send each the landing checklist:\n\n${landingChecklistInstructions(ctx.cwd).slice(0, 500)}...`, "info");
     },
   });
 

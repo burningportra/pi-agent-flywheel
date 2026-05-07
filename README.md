@@ -1,6 +1,6 @@
 # pi-orchestrator
 
-Type `/orchestrate` in any repo. It scans your codebase with ccc when available, falls back gracefully to the built-in profiler when it is not, proposes improvements, plans the work, implements in parallel, and reviews — all in one command.
+Type `/agent-flywheel` in any repo. It scans your codebase with ccc when available, falls back gracefully to the built-in profiler when it is not, can research external repos for inspiration, proposes improvements, plans the work, implements in parallel, and reviews — all in one command.
 
 ## Install
 
@@ -8,13 +8,14 @@ Type `/orchestrate` in any repo. It scans your codebase with ccc when available,
 pi install git:github.com/burningportra/pi-orchestrator
 ```
 
-Then open any project and type `/orchestrate`.
+Then open any project and type `/agent-flywheel`.
 
 ## What happens
 
 ```
-You: /orchestrate
+You: /agent-flywheel
 
+→ Choose: profile this repo, research an external repo, or load a saved plan
 → Scans your repo (ccc codebase analysis first, profile/commits/history second)
 → Proposes 3–7 improvements ranked by impact
 → You pick one (or type your own goal)
@@ -34,7 +35,7 @@ You: /orchestrate
 - **Bead template library** — Optional scaffolds for common bead shapes: `add-api-endpoint`, `refactor-module`, and `add-tests`
 - **4-agent review** — Fresh-eyes, polish, ergonomics, and reality-check reviewers run in parallel
 - **CASS memory** — Procedural memory via [cm CLI](https://github.com/Dicklesworthstone/cass_memory_system) — relevance-scored rules, anti-patterns, and cross-session learning
-- **Crash recovery** — Orchestration state is checkpointed to disk after every phase transition. If your session crashes, `/orchestrate` will offer to resume from the last checkpoint
+- **Crash recovery** — AgentFlywheel state is checkpointed to disk after every phase transition. If your session crashes, `/agent-flywheel` will offer to resume from the last checkpoint
 - **Coordination backends** — Beads (br CLI), Sophia, and agent-mail for multi-agent coordination
 
 ## Prerequisites
@@ -44,24 +45,27 @@ You: /orchestrate
 - Optional but recommended: [ccc](https://github.com/cocoindex-io/cocoindex-code) for richer codebase scanning
 
 Multi-model planning requires a pi subscription. Sophia and ccc are optional.
-If ccc is unavailable, `/orchestrate` falls back to the built-in profiler and keeps the same workflow.
+If ccc is unavailable, `/agent-flywheel` falls back to the built-in profiler and keeps the same workflow.
 See [docs/setup.md](docs/setup.md) for detailed configuration.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/orchestrate` / `/flywheel-start` | Full workflow — scan, plan, implement, review |
-| `/orchestrate [goal]` / `/flywheel-start [goal]` | Skip discovery, plan a specific goal directly |
-| `/orchestrate-stop` / `/flywheel-stop` | Cancel and clean up worktrees |
-| `/orchestrate-status` / `/flywheel-status` | Show current phase and progress |
-| `/flywheel-doctor` | Read-only diagnostic for git, Node, br/bv, ntm, cm, agent-mail, checkpoint, and orphaned worktrees |
-| `/orchestrate-audit-beads` / `/flywheel-audit-beads` | Start a beads compliance audit to verify closed bead completion claims with evidence packs |
-| `/orchestrate-cleanup` / `/flywheel-cleanup` | Safely remove orphaned worktrees |
-| `/orchestrate-swarm-status` / `/flywheel-swarm-status` | Show active swarm health |
-| `/orchestrate-swarm-stop` / `/flywheel-swarm-stop` | Stop swarm monitoring and show landing guidance |
+| `/agent-flywheel` | Full workflow — scan/research, plan, implement, review |
+| `/agent-flywheel [goal]` | Skip discovery, plan a specific goal directly |
+| `/agent-flywheel-research <github-url>` | Research an external repo and adapt ideas into this project |
+| `/agent-flywheel-stop` | Cancel and clean up worktrees |
+| `/agent-flywheel-status` | Show current phase and progress |
+| `/agent-flywheel-doctor` | Read-only diagnostic for git, Node, br/bv, ntm, cm, agent-mail, checkpoint, and orphaned worktrees |
+| `/agent-flywheel-audit-beads` | Start a beads compliance audit to verify closed bead completion claims with evidence packs |
+| `/agent-flywheel-cleanup` | Safely remove orphaned worktrees |
+| `/agent-flywheel-swarm-status` | Show active swarm health |
+| `/agent-flywheel-swarm-stop` | Stop swarm monitoring and show landing guidance |
 
-For Claude agent-flywheel parity, the pi tools are also registered under `flywheel_*` names in addition to the legacy `orch_*` names: `flywheel_profile`, `flywheel_discover`, `flywheel_select`, `flywheel_plan`, `flywheel_approve_beads`, `flywheel_review`, `flywheel_memory`, `flywheel_verify_beads`, and `flywheel_audit_beads`.
+Legacy `/orchestrate*` and `/flywheel*` aliases remain available for existing sessions.
+
+Preferred tool names use the `agent_flywheel_*` prefix: `agent_flywheel_profile`, `agent_flywheel_discover`, `agent_flywheel_select`, `agent_flywheel_plan`, `agent_flywheel_approve_beads`, `agent_flywheel_review`, `agent_flywheel_memory`, `agent_flywheel_verify_beads`, and `agent_flywheel_audit_beads`. Legacy `orch_*` and `flywheel_*` aliases remain registered for compatibility.
 
 ## Learn more
 

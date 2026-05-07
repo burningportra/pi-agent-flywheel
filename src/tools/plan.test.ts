@@ -56,23 +56,23 @@ describe("multiModelPlanArtifactNames", () => {
 });
 
 describe("plan workflow handoff", () => {
-  it("tells the agent to continue into orch_approve_beads after writing the single-model plan", () => {
+  it("tells the agent to continue into agent_flywheel_approve_beads after writing the single-model plan", () => {
     const { readFileSync } = require("fs");
     const { join } = require("path");
     const source = readFileSync(join(__dirname, "plan.ts"), "utf8");
 
     expect(source).toContain("After writing the artifact, immediately continue the workflow by calling");
-    expect(source).toContain("orch_approve_beads");
+    expect(source).toContain("agent_flywheel_approve_beads");
     expect(source).toContain("oc.state.planDocument = artifactName");
   });
 
-  it("keeps the multi-model path inside orch_approve_beads after synthesis", () => {
+  it("keeps the multi-model path inside agent_flywheel_approve_beads after synthesis", () => {
     const { readFileSync } = require("fs");
     const { join } = require("path");
     const source = readFileSync(join(__dirname, "plan.ts"), "utf8");
 
     expect(source).toContain("review the synthesized plan in-menu");
-    expect(source).toContain("Stay inside the orchestration workflow");
+    expect(source).toContain("Stay inside the AgentFlywheel workflow");
   });
 
   it("loads planner artifacts from sibling sub-agent sessions before re-prompting", () => {

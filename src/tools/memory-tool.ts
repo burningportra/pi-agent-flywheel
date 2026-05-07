@@ -4,7 +4,7 @@ import { Text } from "@mariozechner/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 
 export function registerMemoryTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_memory", "flywheel_memory"] as const) {
+  for (const toolName of ["agent_flywheel_memory", "orch_memory", "flywheel_memory"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Memory",

@@ -90,14 +90,14 @@ export async function runGuidedGates(
 
   if (!chosen) chosen = "✅";
 
-  const callbackHint = `\n\nAfter completing this, call \`orch_review\` with beadId "__gates__" and verdict "pass" for the next gate.`;
+  const callbackHint = `\n\nAfter completing this, call \`agent_flywheel_review\` with beadId "__gates__" and verdict "pass" for the next gate.`;
 
   // Regression hint appended to gates where fundamental issues might surface.
   // Flywheel: "If a gate fails, drop back a phase instead of pushing forward."
   const regressionHint = `\n\n---\n**If this gate revealed fundamental issues:**\n` +
-    `- \`orch_review\` with beadId \"__regress_to_beads__\" → go back to bead creation\n` +
-    `- \`orch_review\` with beadId \"__regress_to_plan__\" → go back to plan refinement\n` +
-    `- \`orch_review\` with beadId \"__regress_to_implement__\" → go back to implementation`;
+    `- \`agent_flywheel_review\` with beadId \"__regress_to_beads__\" → go back to bead creation\n` +
+    `- \`agent_flywheel_review\` with beadId \"__regress_to_plan__\" → go back to plan refinement\n` +
+    `- \`agent_flywheel_review\` with beadId \"__regress_to_implement__\" → go back to implementation`;
 
   if (chosen.startsWith("✅")) {
     oc.orchestratorActive = false;
@@ -178,7 +178,7 @@ export async function runGuidedGates(
       content: [
         {
           type: "text",
-          text: `**NEXT: Call \`parallel_subagents\` NOW with the config below.**\n\n## 👥 Peer Review — Round ${round}\n\n\`\`\`json\n${peerJson}\n\`\`\`\n\nAfter all complete, present findings and apply fixes. Then call \`orch_review\` with beadId "__gates__" and verdict "pass".${regressionHint}`,
+          text: `**NEXT: Call \`parallel_subagents\` NOW with the config below.**\n\n## 👥 Peer Review — Round ${round}\n\n\`\`\`json\n${peerJson}\n\`\`\`\n\nAfter all complete, present findings and apply fixes. Then call \`agent_flywheel_review\` with beadId "__gates__" and verdict "pass".${regressionHint}`,
         },
       ],
       details: { iterating: true, round, peerReview: true },
@@ -266,7 +266,7 @@ export async function runGuidedGates(
     return {
       content: [{
         type: "text",
-        text: `## 🧾 Beads Compliance Audit — Round ${round}\n\nAll beads are closed, so run the final completion audit before commit/ship. This gate treats \`closed\` as a claim, not proof.\n\n${plan.summary}\n\n---\n\n${plan.prompt}\n\n---\n\n**Gate outcome:**\n- If the audit finds false-closed beads or creates completion-debt beads, do **not** pass this gate. Call \`orch_review\` with beadId \"__regress_to_implement__\" so the new/reopened bead work is handled before commit.\n- If the audit passes with no blocking false-closed findings, call \`orch_review\` with beadId \"__gates__\" and verdict \"pass\" for the next gate.${regressionHint}`,
+        text: `## 🧾 Beads Compliance Audit — Round ${round}\n\nAll beads are closed, so run the final completion audit before commit/ship. This gate treats \`closed\` as a claim, not proof.\n\n${plan.summary}\n\n---\n\n${plan.prompt}\n\n---\n\n**Gate outcome:**\n- If the audit finds false-closed beads or creates completion-debt beads, do **not** pass this gate. Call \`agent_flywheel_review\` with beadId \"__regress_to_implement__\" so the new/reopened bead work is handled before commit.\n- If the audit passes with no blocking false-closed findings, call \`agent_flywheel_review\` with beadId \"__gates__\" and verdict \"pass\" for the next gate.${regressionHint}`,
       }],
       details: { iterating: true, round, complianceAudit: true, preflightOk: true, plan },
     };
@@ -311,7 +311,7 @@ export async function runGuidedGates(
   // Unreachable: all gate choices are handled above.
   // If we get here something is wrong — return a safe fallback.
   return {
-    content: [{ type: "text", text: `Unknown gate choice: "${chosen}". Call \`orch_review\` with beadId "__gates__" to continue.` }],
+    content: [{ type: "text", text: `Unknown gate choice: "${chosen}". Call \`agent_flywheel_review\` with beadId "__gates__" to continue.` }],
     details: { iterating: true, round, unknownGate: chosen },
   };
 }

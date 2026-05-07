@@ -32,8 +32,11 @@ function buildContext(events: string[], cwd: string) {
       getSessionDir: () => cwd,
     },
     ui: {
-      select: vi.fn(async () => {
+      select: vi.fn(async (message: string, choices?: string[]) => {
         events.push("select");
+        if (message.startsWith("🌟 Start AgentFlywheel:")) {
+          return choices?.[0];
+        }
         return undefined;
       }),
       notify: vi.fn((message: string) => {
@@ -108,7 +111,7 @@ function buildOrchestrator(events: string[]): { oc: OrchestratorContext; command
   return { oc, commands };
 }
 
-describe("/orchestrate startup ceremony integration", () => {
+describe("/agent-flywheel startup ceremony integration", () => {
   beforeEach(() => {
     ceremonyCalls.length = 0;
     activeEvents = undefined;
@@ -122,13 +125,13 @@ describe("/orchestrate startup ceremony integration", () => {
     activeEvents = events;
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { commands } = buildOrchestrator(events);
-    const handler = commands.get("orchestrate")?.handler;
+    const handler = commands.get("agent-flywheel")?.handler;
 
     await handler("", buildContext(events, cwd));
 
     expect(ceremonyCalls).toHaveLength(1);
     expect(events[0]).toBe("ceremony");
-    expect(events.some((event) => event.startsWith("send:Start the orchestrator workflow"))).toBe(true);
+    expect(events.some((event) => event.startsWith("send:Start the AgentFlywheel workflow"))).toBe(true);
   });
 
   it("runs the ceremony before showing the resume menu", async () => {
@@ -139,7 +142,7 @@ describe("/orchestrate startup ceremony integration", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { oc, commands } = buildOrchestrator(events);
     oc.state.phase = "discovering";
-    const handler = commands.get("orchestrate")?.handler;
+    const handler = commands.get("agent-flywheel")?.handler;
 
     await handler("", buildContext(events, cwd));
 
@@ -159,12 +162,12 @@ describe("/orchestrate startup ceremony integration", () => {
     ceremonyBehavior.result = result as any;
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { commands } = buildOrchestrator(events);
-    const handler = commands.get("orchestrate")?.handler;
+    const handler = commands.get("agent-flywheel")?.handler;
 
     await handler("", buildContext(events, cwd));
 
     expect(ceremonyCalls).toHaveLength(1);
     expect(events[0]).toBe("ceremony");
-    expect(events.some((event) => event.startsWith("send:Start the orchestrator workflow"))).toBe(true);
+    expect(events.some((event) => event.startsWith("send:Start the AgentFlywheel workflow"))).toBe(true);
   });
 });

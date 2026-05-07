@@ -24,7 +24,7 @@ const MODES = [
 const POLICIES = ["completion-debt", "reopen", "report-only"] as const;
 
 export function registerComplianceAuditTool(oc: OrchestratorContext) {
-  for (const toolName of ["orch_audit_beads", "flywheel_audit_beads"] as const) {
+  for (const toolName of ["agent_flywheel_audit_beads", "orch_audit_beads", "flywheel_audit_beads"] as const) {
     oc.pi.registerTool({
       name: toolName,
       label: "Audit Beads Completion",

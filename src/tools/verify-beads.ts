@@ -40,7 +40,7 @@ function renderOutcome(outcome: VerifyOutcome, total: number): string {
 }
 
 export function registerVerifyBeadsTool(oc: OrchestratorContext) {
-  for (const toolName of ["flywheel_verify_beads", "orch_verify_beads"] as const) {
+  for (const toolName of ["agent_flywheel_verify_beads", "flywheel_verify_beads", "orch_verify_beads"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Verify Beads",
