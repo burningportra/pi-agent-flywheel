@@ -1,18 +1,17 @@
-import { Type, Static } from "typebox"; // Include Static for types
+import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { implementerInstructions, realityCheckInstructions, randomExplorationInstructions, SWARM_STAGGER_DELAY_MS } from "../prompts.js";
-import { readMemory, verifyBeadEvidence } from "../memory.js"; // Include verifyBeadEvidence
+import { readMemory } from "../memory.js";
 import { getEpisodicContext, sanitiseSlug } from "../episodic-memory.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
 import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
+import { assessVerificationEvidence } from "../bead-review.js";
 
 export function registerReviewTool(oc: OrchestratorContext) {
-  // Begin of bead pi-r47 implementation
-  // Review feedback must align with verification contracts
   for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
     name: toolName,
@@ -37,7 +36,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, getVerificationContract } = await import("../beads.js"); // Include getVerificationContract
+      const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, extractVerificationContract } = await import("../beads.js");
 
       // Sentinel: beadId === "__gates__" while iterating = show next gate
       if (oc.state.phase === "iterating" && params.beadId === "__gates__") {
@@ -170,6 +169,27 @@ export function registerReviewTool(oc: OrchestratorContext) {
       const bead = await getBeadById(oc.pi, ctx.cwd, params.beadId);
       if (!bead) {
         throw new Error(`Bead ${params.beadId} not found. Use \`br list\` to see available beads.`);
+      }
+
+      const verificationContract = extractVerificationContract(bead.description ?? "");
+      if (params.verdict === "pass" && verificationContract) {
+        const evidenceText = [params.summary, params.feedback, params.revisionInstructions ?? ""].join("\n\n");
+        const evidenceAssessment = assessVerificationEvidence(verificationContract, evidenceText);
+        if (!evidenceAssessment.ok) {
+          return {
+            content: [{
+              type: "text",
+              text: `⚠️ Bead ${params.beadId} cannot pass review yet because the submitted evidence does not satisfy its verification contract.\n\n` +
+                `### Verification contract\n${verificationContract.body}\n\n` +
+                `### Evidence issues\n${evidenceAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` +
+                `Re-run or cite the exact required command/checks, or explain the manual proof fallback with the automation blocker. Then call \`orch_review\` again.`,
+            }],
+            details: {
+              review: { beadId: params.beadId, passed: false },
+              verificationEvidence: evidenceAssessment,
+            },
+          };
+        }
       }
 
       // Guard: reject re-review of already-completed beads
@@ -372,21 +392,24 @@ export function registerReviewTool(oc: OrchestratorContext) {
           const goal = oc.state.selectedGoal ?? "Unknown goal";
           const rcEpisodic2 = getEpisodicContext(bead.title, sanitiseSlug(ctx.cwd));
           const rcEpisodicSection2 = rcEpisodic2 ? `\n\n${rcEpisodic2}` : "";
+          const verificationContractSection = verificationContract
+            ? `\n\n## Verification Contract\nReview evidence must address these exact commands/checks or justify the manual fallback:\n${verificationContract.body}`
+            : "";
           const agentConfigs = [
             {
               name: `fresh-eyes-${params.beadId}-r${round}`,
               cwd: ctx.cwd,
-              task: `${hitMePreamble(`fresh-eyes-${params.beadId}-r${round}`)}Fresh-eyes reviewer for bead ${params.beadId} (round ${round}). NEVER seen this code.\n\nBead: ${bead.title} — ${bead.description}\nFiles: ${allArtifactsForBead.join(", ")}\n\nFind blunders, bugs, errors, oversights. Be harsh. Fix issues directly using the edit tool.`,
+              task: `${hitMePreamble(`fresh-eyes-${params.beadId}-r${round}`)}Fresh-eyes reviewer for bead ${params.beadId} (round ${round}). NEVER seen this code.\n\nBead: ${bead.title} — ${bead.description}${verificationContractSection}\nFiles: ${allArtifactsForBead.join(", ")}\n\nFind blunders, bugs, errors, oversights. Be harsh. Fix issues directly using the edit tool.`,
             },
             {
               name: `polish-${params.beadId}-r${round}`,
               cwd: ctx.cwd,
-              task: `${hitMePreamble(`polish-${params.beadId}-r${round}`)}Polish reviewer for bead ${params.beadId} (round ${round}). De-slopify.\n\nBead: ${bead.title} — ${bead.description}\nFiles: ${allArtifactsForBead.join(", ")}\n\nRemove AI slop, improve clarity, make it agent-friendly. Fix issues directly.`,
+              task: `${hitMePreamble(`polish-${params.beadId}-r${round}`)}Polish reviewer for bead ${params.beadId} (round ${round}). De-slopify.\n\nBead: ${bead.title} — ${bead.description}${verificationContractSection}\nFiles: ${allArtifactsForBead.join(", ")}\n\nRemove AI slop, improve clarity, make it agent-friendly. Fix issues directly.`,
             },
             {
               name: `ergonomics-${params.beadId}-r${round}`,
               cwd: ctx.cwd,
-              task: `${hitMePreamble(`ergonomics-${params.beadId}-r${round}`)}Ergonomics reviewer for bead ${params.beadId} (round ${round}).\n\nBead: ${bead.title} — ${bead.description}\nFiles: ${allArtifactsForBead.join(", ")}\n\nIf you came in fresh with zero context, would you understand this? Fix anything confusing.`,
+              task: `${hitMePreamble(`ergonomics-${params.beadId}-r${round}`)}Ergonomics reviewer for bead ${params.beadId} (round ${round}).\n\nBead: ${bead.title} — ${bead.description}${verificationContractSection}\nFiles: ${allArtifactsForBead.join(", ")}\n\nIf you came in fresh with zero context, would you understand this? Fix anything confusing.`,
             },
             {
               name: `reality-check-${params.beadId}-r${round}`,

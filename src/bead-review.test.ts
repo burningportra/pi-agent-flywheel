@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { verifyBeadEvidence } from "../memory.js"; // Import verifyBeadEvidence for tests
-import { parseSuggestions } from "./bead-review.js";
+import { assessVerificationEvidence, extractVerificationCommands, parseSuggestions } from "./bead-review.js";
+import type { VerificationContract } from "./types.js";
 
 describe("parseSuggestions", () => {
   it("parses numbered list", () => {
@@ -78,5 +78,62 @@ Overall the dependency graph is correct.`;
       "Missing error handling in bead A",
       "Bead B should depend on bead C",
     ]);
+  });
+});
+
+describe("verification evidence assessment", () => {
+  const contract: VerificationContract = {
+    body: `- Commands/checks: run npm test -- src/bead-review.test.ts and npm run build.
+- Success looks like: the focused tests pass and TypeScript compiles.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect the review prompt.`,
+    startLine: 1,
+    endLine: 4,
+  };
+
+  it("extracts concrete command/checks from a verification contract", () => {
+    expect(extractVerificationCommands(contract)).toEqual([
+      "npm test -- src/bead-review.test.ts",
+      "npm run build",
+    ]);
+  });
+
+  it("accepts evidence keyed to every named command/check", () => {
+    const result = assessVerificationEvidence(
+      contract,
+      `Verified:
+- npm test -- src/bead-review.test.ts passed.
+- npm run build passed.`
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.missingCommands).toEqual([]);
+  });
+
+  it("rejects generic passing claims when the contract names specific commands", () => {
+    const result = assessVerificationEvidence(contract, "All tests passed. Looks good.");
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain("generic evidence is insufficient");
+    expect(result.missingCommands).toEqual([
+      "npm test -- src/bead-review.test.ts",
+      "npm run build",
+    ]);
+  });
+
+  it("rejects partial evidence that omits one required command/check", () => {
+    const result = assessVerificationEvidence(contract, "npm test -- src/bead-review.test.ts passed.");
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCommands).toEqual(["npm run build"]);
+  });
+
+  it("allows a justified manual proof fallback when automation is blocked", () => {
+    const result = assessVerificationEvidence(
+      contract,
+      "Manual proof fallback used: npm is unavailable in this environment, so commands could not run. I manually inspected the review prompt output and captured the exact blocker."
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.manualFallbackUsed).toBe(true);
   });
 });

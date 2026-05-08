@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Bead, VerificationContract } from "./types.js"; // Include VerificationContract type
+import type { Bead, VerificationContract } from "./types.js";
 import { join } from "path";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -10,6 +10,84 @@ export interface CrossModelReviewResult {
   model: string;
   error?: string;
   fallbackUsed?: boolean;
+}
+
+export interface VerificationEvidenceAssessment {
+  ok: boolean;
+  requiredCommands: string[];
+  missingCommands: string[];
+  issues: string[];
+  manualFallbackUsed: boolean;
+}
+
+const COMMAND_START = /\b(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b[^;\n]*/gi;
+
+function normalizeEvidenceText(text: string): string {
+  return text.toLowerCase().replace(/[`'"“”]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeCommand(command: string): string {
+  return command
+    .replace(/^run\s+/i, "")
+    .replace(/\s+and\s*$/i, "")
+    .replace(/\s+or\s*$/i, "")
+    .replace(/[.)]+$/g, "")
+    .trim();
+}
+
+export function extractVerificationCommands(contract: VerificationContract): string[] {
+  const commands: string[] = [];
+  for (const match of contract.body.matchAll(COMMAND_START)) {
+    const raw = match[0]
+      .split(/\s+and\s+(?=(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b)/i)
+      .flatMap((part) => part.split(/\s*,\s*(?=(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b)/i));
+    for (const part of raw) {
+      const command = normalizeCommand(part);
+      if (command.length > 0 && !commands.includes(command)) commands.push(command);
+    }
+  }
+  return commands;
+}
+
+export function assessVerificationEvidence(
+  contract: VerificationContract,
+  evidence: string
+): VerificationEvidenceAssessment {
+  const requiredCommands = extractVerificationCommands(contract);
+  const normalizedEvidence = normalizeEvidenceText(evidence);
+  const manualFallbackUsed = /manual\s+(?:proof|evidence|verification|fallback)|fallback\s+(?:proof|evidence)|manual\s+inspect/i.test(evidence);
+  const mentionsAutomationBlocked = /(?:could not|couldn't|cannot|can't|unable to|blocked|unavailable|missing dependency|environment).{0,80}(?:run|execute|automation|command|check|test)|(?:command|check|test).{0,80}(?:could not|couldn't|cannot|can't|unable to|blocked|unavailable)/i.test(evidence);
+  const reportsFailureOrSkipped = /\b(?:failed|failing|failure|skipped|skip|not run|did not run|wasn't run|was not run|not executed)\b/i.test(evidence);
+  const genericOnly = /\b(?:tests passed|all tests pass|build passed|checks passed|verified|looks good)\b/i.test(evidence)
+    && requiredCommands.length > 0
+    && requiredCommands.every((command) => !normalizedEvidence.includes(normalizeEvidenceText(command)));
+
+  const missingCommands = requiredCommands.filter((command) => !normalizedEvidence.includes(normalizeEvidenceText(command)));
+  const issues: string[] = [];
+
+  if (requiredCommands.length === 0 && !manualFallbackUsed) {
+    issues.push("verification contract does not expose a concrete command/check to match against");
+  }
+
+  if (missingCommands.length > 0 && !(manualFallbackUsed && mentionsAutomationBlocked)) {
+    issues.push(`missing evidence for required command/check(s): ${missingCommands.join(", ")}`);
+  }
+
+  if (genericOnly) {
+    issues.push("generic evidence is insufficient; cite the exact command/check named by the verification contract");
+  }
+
+  if (reportsFailureOrSkipped && !(manualFallbackUsed && mentionsAutomationBlocked)) {
+    issues.push("failed or skipped verification cannot be treated as a passing review without a justified manual proof fallback");
+  }
+
+  return {
+    ok: issues.length === 0,
+    requiredCommands,
+    missingCommands,
+    issues,
+    manualFallbackUsed,
+  };
 }
 
 /**
