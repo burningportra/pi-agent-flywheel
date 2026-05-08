@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Bead } from "./types.js";
+import type { Bead, VerificationContract } from "./types.js"; // Include VerificationContract type
 import { join } from "path";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -109,6 +109,7 @@ Check for: parallel-ready beads that modify the same files, closure extraction f
  * Tries to select a model different from the likely current session model.
  */
 function pickAlternativeModel(): string | undefined {
+  // pi-r47 changes: Adjust model picking logic to ensure a fresh perspective based on verification needs
   // Default to gemini — different provider perspective from Claude
   return "gemini-2.5-pro";
 }

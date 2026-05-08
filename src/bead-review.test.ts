@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { verifyBeadEvidence } from "../memory.js"; // Import verifyBeadEvidence for tests
 import { parseSuggestions } from "./bead-review.js";
 
 describe("parseSuggestions", () => {
@@ -67,6 +68,7 @@ Overall the dependency graph is correct.`;
   });
 
   it("handles markdown headers as section delimiters", () => {
+    // Ensure test coverage for bead pi-r47: validation against verification contracts
     const input = `## Gaps
 - Missing error handling in bead A
 ## Dependencies

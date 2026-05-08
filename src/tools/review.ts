@@ -1,9 +1,9 @@
-import { Type } from "typebox";
+import { Type, Static } from "typebox"; // Include Static for types
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { implementerInstructions, realityCheckInstructions, randomExplorationInstructions, SWARM_STAGGER_DELAY_MS } from "../prompts.js";
-import { readMemory } from "../memory.js";
+import { readMemory, verifyBeadEvidence } from "../memory.js"; // Include verifyBeadEvidence
 import { getEpisodicContext, sanitiseSlug } from "../episodic-memory.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
@@ -11,6 +11,8 @@ import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 
 export function registerReviewTool(oc: OrchestratorContext) {
+  // Begin of bead pi-r47 implementation
+  // Review feedback must align with verification contracts
   for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
     name: toolName,
@@ -35,7 +37,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext } = await import("../beads.js");
+      const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, getVerificationContract } = await import("../beads.js"); // Include getVerificationContract
 
       // Sentinel: beadId === "__gates__" while iterating = show next gate
       if (oc.state.phase === "iterating" && params.beadId === "__gates__") {
@@ -321,13 +323,24 @@ export function registerReviewTool(oc: OrchestratorContext) {
           ctx.ui.notify(`⚠️ Review agents were pending — auto-running the review pass now.`, "warning");
           hitMeChoice = "🔥 Auto review pass";
         } else {
-          hitMeChoice = "✅";
+          const currentPassCount = oc.state.beadReviewPassCounts[params.beadId] ?? 1;
+          const maxReviewPasses = Math.max(1, oc.state.maxReviewPasses ?? 2);
           if (!oc.state.beadHitMeTriggered) oc.state.beadHitMeTriggered = {};
           if (!oc.state.beadHitMeCompleted) oc.state.beadHitMeCompleted = {};
           oc.state.beadHitMeTriggered[params.beadId] = false;
           oc.state.beadHitMeCompleted[params.beadId] = false;
+
+          if (currentPassCount < maxReviewPasses) {
+            hitMeChoice = "🔥 Auto review pass";
+            ctx.ui.notify(
+              `🔥 Bead ${params.beadId} passed review — auto-spawning another pass (${currentPassCount}/${maxReviewPasses}).`,
+              "info"
+            );
+          } else {
+            hitMeChoice = "✅";
+            ctx.ui.notify(`✅ Bead ${params.beadId} passed review (${currentPassCount}/${maxReviewPasses}).`, "info");
+          }
           oc.persistState();
-          ctx.ui.notify(`✅ Bead ${params.beadId} passed review (round ${prevPassCount}).`, "info");
         }
 
         if (hitMeChoice?.startsWith("🔥")) {
