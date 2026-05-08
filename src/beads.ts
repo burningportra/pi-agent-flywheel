@@ -1,5 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Bead, BvInsights, BvNextPick } from "./types.js";
+import type {
+  Bead,
+  BvInsights,
+  BvNextPick,
+  VerificationContract,
+  VerificationContractIssue,
+  VerificationContractRequirement,
+} from "./types.js";
 import { resilientExec, brExec, brExecJson } from "./cli-exec.js";
 
 /**
@@ -316,6 +323,70 @@ export function extractArtifacts(bead: Bead): string[] {
 }
 
 /**
+ * Extracts the required `### Verification:` section from a bead description.
+ * The section ends at the next markdown heading, so adjacent `### Files:` or
+ * other sections are not mixed into the verification contract body.
+ */
+export function extractVerificationContract(description: string): VerificationContract | null {
+  const lines = (description ?? "").split(/\r?\n/);
+  const headingIndex = lines.findIndex((line) => /^###\s+Verification\s*:?\s*$/i.test(line.trim()));
+  if (headingIndex === -1) return null;
+
+  let endIndex = lines.length;
+  for (let index = headingIndex + 1; index < lines.length; index++) {
+    if (/^#{1,6}\s+\S/.test(lines[index].trim())) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  return {
+    body: lines.slice(headingIndex + 1, endIndex).join("\n").trim(),
+    startLine: headingIndex + 1,
+    endLine: endIndex,
+  };
+}
+
+const VERIFICATION_REQUIREMENT_LABELS: Record<VerificationContractRequirement, string> = {
+  "commands-checks": "commands/checks",
+  "success-expectations": "success expectations",
+  "manual-proof": "manual proof guidance",
+};
+
+function verificationContractHasRequirement(body: string, requirement: VerificationContractRequirement): boolean {
+  switch (requirement) {
+    case "commands-checks":
+      return /commands?\s*\/\s*checks?|commands?|checks?|run\s+[`'\"]?[\w./:-]+|(?:npm|pnpm|yarn|bun|cargo|go|pytest|vitest|tsc)\s+/i.test(body);
+    case "success-expectations":
+      return /success\s+looks\s+like|successful\s+(?:output|status)|passes?|exit\s+code\s+0|compiles?|green|expected\s+(?:output|status)|status\s+means/i.test(body);
+    case "manual-proof":
+      return /manual\s+(?:proof|evidence|verification|fallback|check)|(?:proof|evidence)\s+fallback|when\s+automation\s+(?:cannot|can't|can not|does\s+not)\s+cover|if\s+(?:automation|commands?|checks?).{0,80}(?:cannot|can't|can not|unable|insufficient|not\s+cover)/i.test(body);
+  }
+}
+
+export function validateVerificationContract(bead: Bead): VerificationContractIssue[] {
+  const contract = extractVerificationContract(bead.description ?? "");
+  if (!contract) {
+    return [{
+      beadId: bead.id,
+      issueType: "missing-section",
+      reason: `bead ${bead.id} is missing required ### Verification: section`,
+    }];
+  }
+
+  const requirements: VerificationContractRequirement[] = ["commands-checks", "success-expectations", "manual-proof"];
+  return requirements
+    .filter((requirement) => !verificationContractHasRequirement(contract.body, requirement))
+    .map((requirement) => ({
+      beadId: bead.id,
+      issueType: "missing-requirement" as const,
+      requirement,
+      excerpt: contract.body.slice(0, 160),
+      reason: `bead ${bead.id} verification section is missing ${VERIFICATION_REQUIREMENT_LABELS[requirement]}`,
+    }));
+}
+
+/**
  * Updates the status of a bead.
  */
 export async function updateBeadStatus(
@@ -371,12 +442,13 @@ export async function remediateOrphans(
 export async function validateBeads(
   pi: ExtensionAPI,
   cwd: string
-): Promise<{ ok: boolean; orphaned: string[]; cycles: boolean; warnings: string[]; shallowBeads: { id: string; reason: string }[]; templateIssues: TemplateHygieneIssue[] }> {
+): Promise<{ ok: boolean; orphaned: string[]; cycles: boolean; warnings: string[]; shallowBeads: { id: string; reason: string }[]; templateIssues: TemplateHygieneIssue[]; verificationIssues: VerificationContractIssue[] }> {
   let cycles = false;
   let orphaned: string[] = [];
   const warnings: string[] = [];
   const shallowBeads: { id: string; reason: string }[] = [];
   const templateIssues: TemplateHygieneIssue[] = [];
+  const verificationIssues: VerificationContractIssue[] = [];
 
   // Read all beads once — reuse for every check below to avoid 3× shell execs
   const allBeadsForFilter = await readBeads(pi, cwd);
@@ -469,6 +541,10 @@ export async function validateBeads(
         }
       }
 
+      if (bead.status === "open" || bead.status === "in_progress") {
+        verificationIssues.push(...validateVerificationContract(bead));
+      }
+
       if (bead.status !== "open") continue;
 
       const lines = desc.split("\n");
@@ -526,7 +602,7 @@ export async function validateBeads(
     // Non-fatal
   }
 
-  return { ok: !cycles && orphaned.length === 0 && templateIssues.length === 0, orphaned, cycles, warnings, shallowBeads, templateIssues };
+  return { ok: !cycles && orphaned.length === 0 && templateIssues.length === 0 && verificationIssues.length === 0, orphaned, cycles, warnings, shallowBeads, templateIssues, verificationIssues };
 }
 
 /**

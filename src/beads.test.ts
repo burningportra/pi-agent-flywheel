@@ -6,8 +6,10 @@ import {
   getBeadById,
   beadDeps,
   extractArtifacts,
+  extractVerificationContract,
   updateBeadStatus,
   validateBeads,
+  validateVerificationContract,
   getBeadsSummary,
   detectBv,
   bvInsights,
@@ -23,6 +25,11 @@ function makePi(impl: (cmd: string, args: string[]) => Promise<{ code: number; s
 }
 
 const CWD = "/fake/cwd";
+
+const VALID_VERIFICATION_SECTION = `### Verification:
+- Commands/checks: run npm test -- src/beads.test.ts and npm run build.
+- Success looks like: tests pass, TypeScript compiles, and commands exit 0.
+- Manual proof fallback: if automation cannot cover the work, capture logs and inspect the changed code manually.`;
 
 function makeBead(overrides: Partial<Bead> = {}): Bead {
   return {
@@ -147,6 +154,90 @@ describe("extractArtifacts", () => {
 
   it("returns [] for empty description", () => {
     expect(extractArtifacts(makeBead())).toEqual([]);
+  });
+});
+
+// ─── Verification contracts ──────────────────────────────────
+
+describe("extractVerificationContract", () => {
+  it("extracts only the ### Verification section before ### Files", () => {
+    const description = `Intro
+${VALID_VERIFICATION_SECTION}
+### Files:
+- src/beads.ts`;
+
+    const contract = extractVerificationContract(description);
+    expect(contract).not.toBeNull();
+    expect(contract!.body).toContain("Commands/checks");
+    expect(contract!.body).not.toContain("### Files");
+    expect(contract!.body).not.toContain("src/beads.ts");
+  });
+
+  it("returns null when the heading is absent", () => {
+    expect(extractVerificationContract("Intro\n### Files:\n- src/beads.ts")).toBeNull();
+  });
+});
+
+describe("validateVerificationContract", () => {
+  it("accepts a complete verification contract", () => {
+    const issues = validateVerificationContract(makeBead({ description: VALID_VERIFICATION_SECTION }));
+    expect(issues).toEqual([]);
+  });
+
+  it("reports a clear missing-section error", () => {
+    const issues = validateVerificationContract(makeBead({ id: "verify-1", description: "No verification here." }));
+    expect(issues).toEqual([
+      expect.objectContaining({
+        beadId: "verify-1",
+        issueType: "missing-section",
+        reason: expect.stringContaining("missing required ### Verification: section"),
+      }),
+    ]);
+  });
+
+  it("reports missing commands/checks guidance", () => {
+    const issues = validateVerificationContract(makeBead({
+      id: "verify-2",
+      description: `### Verification:
+- Success looks like: the review passes.
+- Manual proof fallback: if automation cannot cover it, inspect the code manually.`,
+    }));
+    expect(issues).toEqual([
+      expect.objectContaining({
+        requirement: "commands-checks",
+        reason: expect.stringContaining("missing commands/checks"),
+      }),
+    ]);
+  });
+
+  it("reports missing success expectations", () => {
+    const issues = validateVerificationContract(makeBead({
+      id: "verify-3",
+      description: `### Verification:
+- Commands/checks: run npm test -- src/beads.test.ts.
+- Manual proof fallback: if automation cannot cover it, inspect the code manually.`,
+    }));
+    expect(issues).toEqual([
+      expect.objectContaining({
+        requirement: "success-expectations",
+        reason: expect.stringContaining("missing success expectations"),
+      }),
+    ]);
+  });
+
+  it("reports missing manual proof guidance", () => {
+    const issues = validateVerificationContract(makeBead({
+      id: "verify-4",
+      description: `### Verification:
+- Commands/checks: run npm test -- src/beads.test.ts.
+- Success looks like: the tests pass and the command exits 0.`,
+    }));
+    expect(issues).toEqual([
+      expect.objectContaining({
+        requirement: "manual-proof",
+        reason: expect.stringContaining("missing manual proof guidance"),
+      }),
+    ]);
   });
 });
 
@@ -378,8 +469,8 @@ describe("validateBeads with bv insights", () => {
     // readBeads must return open beads matching the IDs in bv insights,
     // otherwise the open-bead filter will drop them.
     const openBeads = [
-      { id: "bead-hot", title: "Hot", description: "A bottleneck bead with enough content to pass checks.\n### Files:\n- src/hot.ts\n- [ ] criterion", status: "open", priority: 2, type: "task", labels: [] },
-      { id: "bead-critical", title: "Critical", description: "An articulation point bead with enough content.\n### Files:\n- src/critical.ts\n- [ ] criterion", status: "open", priority: 2, type: "task", labels: [] },
+      { id: "bead-hot", title: "Hot", description: `A bottleneck bead with enough content to pass checks.\n${VALID_VERIFICATION_SECTION}\n### Files:\n- src/hot.ts\n- [ ] criterion`, status: "open", priority: 2, type: "task", labels: [] },
+      { id: "bead-critical", title: "Critical", description: `An articulation point bead with enough content.\n${VALID_VERIFICATION_SECTION}\n### Files:\n- src/critical.ts\n- [ ] criterion`, status: "open", priority: 2, type: "task", labels: [] },
     ];
     const pi = {
       exec: vi.fn(async (cmd: string, args: string[]) => {
@@ -643,6 +734,74 @@ describe("validateBeads shallowBeads", () => {
   });
 });
 
+describe("validateBeads verification contracts", () => {
+  beforeEach(() => resetBvCache());
+
+  function makeValidationPi(beads: Bead[]) {
+    return {
+      exec: vi.fn(async (cmd: string, args: string[]) => {
+        if (cmd === "which") throw new Error("not found");
+        if (cmd === "br" && args[0] === "dep" && args[1] === "cycles") {
+          return { code: 0, stdout: "OK", stderr: "" };
+        }
+        if (cmd === "br" && args[0] === "list") {
+          return { code: 0, stdout: JSON.stringify(beads), stderr: "" };
+        }
+        if (cmd === "br" && args[0] === "dep" && args[1] === "list") {
+          return { code: 0, stdout: "", stderr: "" };
+        }
+        return { code: 0, stdout: "[]", stderr: "" };
+      }),
+    } as unknown as ExtensionAPI;
+  }
+
+  it("surfaces missing verification sections in validateBeads", async () => {
+    const bead = makeBead({
+      id: "missing-verify",
+      description: "This bead has files and acceptance criteria but no verification section.\n\n### Files:\n- src/beads.ts\n\n- [ ] update code\n- [ ] add tests",
+    });
+
+    const result = await validateBeads(makeValidationPi([bead]), CWD);
+    expect(result.ok).toBe(false);
+    expect(result.verificationIssues).toEqual([
+      expect.objectContaining({
+        beadId: "missing-verify",
+        issueType: "missing-section",
+        reason: expect.stringContaining("missing required ### Verification: section"),
+      }),
+    ]);
+  });
+
+  it("surfaces component-specific verification requirement failures", async () => {
+    const bead = makeBead({
+      id: "weak-verify",
+      description: `This bead has an incomplete verification section.
+
+### Verification:
+- Review the changes.
+
+### Files:
+- src/beads.ts
+
+- [ ] update code
+- [ ] add tests`,
+    });
+
+    const result = await validateBeads(makeValidationPi([bead]), CWD);
+    expect(result.ok).toBe(false);
+    expect(result.verificationIssues.map((issue) => issue.requirement)).toEqual([
+      "commands-checks",
+      "success-expectations",
+      "manual-proof",
+    ]);
+    expect(result.verificationIssues.map((issue) => issue.reason)).toEqual([
+      expect.stringContaining("missing commands/checks"),
+      expect.stringContaining("missing success expectations"),
+      expect.stringContaining("missing manual proof guidance"),
+    ]);
+  });
+});
+
 describe("validateBeads template hygiene", () => {
   beforeEach(() => resetBvCache());
 
@@ -695,7 +854,7 @@ describe("validateBeads template hygiene", () => {
     const beads = [
       makeBead({
         id: "tmpl-typed",
-        description: `Document that this helper returns Promise<Result<T>> and integrates with <ErrorBoundary> in docs.\n\n### Files:\n- src/parser.ts\n- src/parser.test.ts\n\n- [ ] explain the typing\n- [ ] keep tests passing`,
+        description: `Document that this helper returns Promise<Result<T>> and integrates with <ErrorBoundary> in docs.\n\n${VALID_VERIFICATION_SECTION}\n\n### Files:\n- src/parser.ts\n- src/parser.test.ts\n\n- [ ] explain the typing\n- [ ] keep tests passing`,
       }),
     ];
 
@@ -708,7 +867,7 @@ describe("validateBeads template hygiene", () => {
     const beads = [
       makeBead({
         id: "tmpl-3",
-        description: `This bead follows the singleton template pattern used in the parser and documents why that pattern matters for maintainability.\n\n### Files:\n- src/parser.ts\n- src/parser.test.ts\n\n- [ ] explain the pattern\n- [ ] keep tests passing`,
+        description: `This bead follows the singleton template pattern used in the parser and documents why that pattern matters for maintainability.\n\n${VALID_VERIFICATION_SECTION}\n\n### Files:\n- src/parser.ts\n- src/parser.test.ts\n\n- [ ] explain the pattern\n- [ ] keep tests passing`,
       }),
     ];
 

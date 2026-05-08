@@ -176,6 +176,28 @@ export interface Bead {
   closed_at?: string;
 }
 
+export type VerificationContractRequirement =
+  | "commands-checks"
+  | "success-expectations"
+  | "manual-proof";
+
+export interface VerificationContract {
+  /** Raw markdown body below `### Verification:` and before the next heading. */
+  body: string;
+  /** 1-based line number of the `### Verification:` heading. */
+  startLine: number;
+  /** 1-based line number where the section body ends. */
+  endLine: number;
+}
+
+export interface VerificationContractIssue {
+  beadId: string;
+  issueType: "missing-section" | "missing-requirement";
+  requirement?: VerificationContractRequirement;
+  reason: string;
+  excerpt?: string;
+}
+
 export interface BeadResult {
   beadId: string;
   status: "success" | "partial" | "blocked";
