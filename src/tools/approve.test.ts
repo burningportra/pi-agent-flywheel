@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diffBeadSnapshots, formatDiffSummary, type DiffSummary } from "./approve.js";
+import { approvalValidationBlocksStart, diffBeadSnapshots, formatApprovalValidationWarning, formatDiffSummary, verificationContractFailureLines, type DiffSummary } from "./approve.js";
 import { computeConvergenceScore } from "../prompts.js";
 import { createInitialState } from "../types.js";
 import type { OrchestratorState } from "../types.js";
@@ -238,6 +238,100 @@ describe("S2: simplified approval options", () => {
     expect(approveSource).toContain("Main/advanced menu loop");
     expect(approveSource).toContain("choice = undefined;");
     expect(approveSource).toContain("choice = await ctx.ui.select(approvalPrompt, options)");
+  });
+});
+
+describe("verification contract approval gate", () => {
+  const baseValidation = {
+    ok: true,
+    orphaned: [],
+    cycles: false,
+    warnings: [],
+    shallowBeads: [],
+    templateIssues: [],
+    verificationIssues: [],
+  };
+
+  it("blocks approval and identifies the bead when ### Verification: is missing", () => {
+    const validation = {
+      ...baseValidation,
+      ok: false,
+      verificationIssues: [{
+        beadId: "pi-missing",
+        issueType: "missing-section" as const,
+        reason: "bead pi-missing is missing required ### Verification: section",
+      }],
+    };
+
+    expect(approvalValidationBlocksStart(validation)).toBe(true);
+    expect(verificationContractFailureLines(validation)).toEqual([
+      "- bead pi-missing is missing required ### Verification: section",
+    ]);
+    expect(formatApprovalValidationWarning(validation)).toContain("approval blocked");
+    expect(formatApprovalValidationWarning(validation)).toContain("bead pi-missing is missing required ### Verification: section");
+  });
+
+  it("blocks approval and names each missing verification component", () => {
+    const validation = {
+      ...baseValidation,
+      ok: false,
+      verificationIssues: [
+        {
+          beadId: "pi-incomplete",
+          issueType: "missing-requirement" as const,
+          requirement: "commands-checks" as const,
+          reason: "bead pi-incomplete verification section is missing commands/checks",
+          excerpt: "Success looks like: green output",
+        },
+        {
+          beadId: "pi-incomplete",
+          issueType: "missing-requirement" as const,
+          requirement: "success-expectations" as const,
+          reason: "bead pi-incomplete verification section is missing success expectations",
+        },
+        {
+          beadId: "pi-incomplete",
+          issueType: "missing-requirement" as const,
+          requirement: "manual-proof" as const,
+          reason: "bead pi-incomplete verification section is missing manual proof guidance",
+        },
+      ],
+    };
+
+    const warning = formatApprovalValidationWarning(validation);
+    expect(approvalValidationBlocksStart(validation)).toBe(true);
+    expect(warning).toContain("pi-incomplete verification section is missing commands/checks");
+    expect(warning).toContain("pi-incomplete verification section is missing success expectations");
+    expect(warning).toContain("pi-incomplete verification section is missing manual proof guidance");
+    expect(warning).toContain("excerpt: Success looks like: green output");
+  });
+
+  it("does not block approval when verification validation passes", () => {
+    const validation = { ...baseValidation };
+
+    expect(approvalValidationBlocksStart(validation)).toBe(false);
+    expect(verificationContractFailureLines(validation)).toEqual([]);
+    expect(formatApprovalValidationWarning(validation)).not.toContain("Verification contracts");
+  });
+
+  it("preserves existing Files and template hygiene warning text", () => {
+    const validation = {
+      ...baseValidation,
+      ok: false,
+      shallowBeads: [{ id: "pi-files", reason: "Missing ### Files: section" }],
+      templateIssues: [{
+        beadId: "pi-template",
+        issueType: "unresolved-placeholder",
+        excerpt: "{{testFile}}",
+        reason: "bead pi-template still contains an unresolved template placeholder",
+      }],
+    };
+
+    const warning = formatApprovalValidationWarning(validation);
+    expect(approvalValidationBlocksStart(validation)).toBe(false);
+    expect(warning).toContain("pi-files (Missing ### Files: section)");
+    expect(warning).toContain("Template hygiene");
+    expect(warning).toContain("pi-template (unresolved-placeholder: {{testFile}})");
   });
 });
 

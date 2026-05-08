@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { readFileSync } from "fs";
-import type { OrchestratorContext, Bead } from "../types.js";
+import type { OrchestratorContext, Bead, VerificationContractIssue } from "../types.js";
 import { implementerInstructions, freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, SWARM_STAGGER_DELAY_MS, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, type BeadQualityAuditResult } from "../prompts.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
@@ -132,6 +132,52 @@ export function formatDiffSummary(diff: DiffSummary): string {
 let _lastBeadSnapshotFull: BeadSnapshotFull | undefined;
 
 const MAX_POLISH_ROUNDS = 12;
+
+interface ApprovalValidationInput {
+  ok: boolean;
+  orphaned: string[];
+  cycles: boolean;
+  warnings?: string[];
+  shallowBeads?: { id: string; reason: string }[];
+  templateIssues?: { beadId: string; issueType: string; excerpt: string; reason: string }[];
+  verificationIssues?: VerificationContractIssue[];
+}
+
+export function verificationContractFailureLines(validation: Pick<ApprovalValidationInput, "verificationIssues">): string[] {
+  return (validation.verificationIssues ?? []).map((issue) => {
+    const excerpt = issue.excerpt?.trim();
+    return `- ${issue.reason}${excerpt ? ` (excerpt: ${excerpt})` : ""}`;
+  });
+}
+
+export function approvalValidationBlocksStart(validation: Pick<ApprovalValidationInput, "verificationIssues">): boolean {
+  return verificationContractFailureLines(validation).length > 0;
+}
+
+export function formatApprovalValidationWarning(validation: ApprovalValidationInput): string {
+  const validationIssueParts: string[] = [];
+  if (validation.cycles) validationIssueParts.push("dependency cycles detected");
+  if (validation.orphaned.length > 0) validationIssueParts.push(`orphaned: ${validation.orphaned.join(", ")}`);
+  if ((validation.templateIssues?.length ?? 0) > 0) validationIssueParts.push("template hygiene issues");
+  if ((validation.verificationIssues?.length ?? 0) > 0) validationIssueParts.push("verification contract issues");
+
+  const bvWarnings = validation.warnings?.length ? `\n⚠️ ${validation.warnings.join("\n⚠️ ")}` : "";
+  const shallowWarning = validation.shallowBeads?.length
+    ? `\n📝 Shallow beads: ${validation.shallowBeads.map((s) => `${s.id} (${s.reason})`).join(", ")}`
+    : "";
+  const templateWarning = validation.templateIssues?.length
+    ? `\n🧩 Template hygiene: ${validation.templateIssues.map((issue) => `${issue.beadId} (${issue.issueType}: ${issue.excerpt})`).join(", ")}`
+    : "";
+  const verificationFailures = verificationContractFailureLines(validation);
+  const verificationWarning = verificationFailures.length
+    ? `\n⛔ Verification contracts: approval blocked until these are fixed:\n${verificationFailures.join("\n")}`
+    : "";
+  const validationWarning = (!validation.ok && validationIssueParts.length > 0)
+    ? `\n\n⚠️ Validation issues: ${validationIssueParts.join("; ")}`
+    : "";
+
+  return validationWarning + bvWarnings + shallowWarning + templateWarning + verificationWarning;
+}
 
 type PlanSnapshot = { fingerprint: string; lineCount: number; size: number; content: string };
 let _lastPlanSnapshot: PlanSnapshot | undefined;
@@ -563,16 +609,8 @@ export function registerApproveTool(oc: OrchestratorContext) {
       // Update full snapshot for next round
       _lastBeadSnapshotFull = currentSnapshotFull;
 
-      const bvWarnings = validation.warnings?.length ? `\n⚠️ ${validation.warnings.join("\n⚠️ ")}` : "";
-      const shallowWarning = validation.shallowBeads?.length
-        ? `\n📝 Shallow beads: ${validation.shallowBeads.map((s) => `${s.id} (${s.reason})`).join(", ")}`
-        : "";
-      const templateWarning = validation.templateIssues?.length
-        ? `\n🧩 Template hygiene: ${validation.templateIssues.map((issue) => `${issue.beadId} (${issue.issueType}: ${issue.excerpt})`).join(", ")}`
-        : "";
-      const validationWarning = (!validation.ok
-        ? `\n\n⚠️ Validation issues: ${validation.cycles ? "dependency cycles detected" : ""} ${validation.orphaned.length > 0 ? `orphaned: ${validation.orphaned.join(", ")}` : ""}`
-        : "") + bvWarnings + shallowWarning + templateWarning;
+      const validationWarning = formatApprovalValidationWarning(validation);
+      const verificationGateBlocked = approvalValidationBlocksStart(validation);
 
       const insights = await bvInsights(oc.pi, ctx.cwd);
       const bottleneckWarning = insights?.Bottlenecks?.length
@@ -675,6 +713,16 @@ export function registerApproveTool(oc: OrchestratorContext) {
           priority: planQuality.recommendation === "block" ? 35 : 55,
           label: `Plan Quality ${planQuality.overall}/100`,
           action: `Expand bead context for weak plan sections${planQuality.weakSections.length > 0 ? `: ${planQuality.weakSections.join(", ")}` : ""}.`,
+        });
+      }
+      if (verificationGateBlocked) {
+        const verificationFailures = verificationContractFailureLines(validation);
+        const action = `**Verification Contracts** — approval is blocked until every bead has a complete ### Verification: section. Fix: ${verificationFailures.join(" ")}`;
+        refinementFocusLines.push(`- ${action}`);
+        refinementPriorityItems.push({
+          priority: 5,
+          label: "Verification Contracts",
+          action: "Add commands/checks, success expectations, and manual proof guidance to each incomplete ### Verification: section.",
         });
       }
       if (!qualityPreview.passed) {
@@ -809,7 +857,15 @@ export function registerApproveTool(oc: OrchestratorContext) {
       // Main menu: Start / Polish (or Refine) / Advanced / Reject
       // Advanced sub-menu: all specialist options for power users
       const options: string[] = [];
-      if (maxReached) {
+      if (verificationGateBlocked) {
+        if (round >= 1) {
+          options.push(`🔍 Refine further (round ${round + 1})`);
+        } else {
+          options.push(`🔍 Polish beads (round ${round + 1})`);
+        }
+        options.push("⚙️ Advanced options...");
+        options.push("❌ Reject");
+      } else if (maxReached) {
         options.push(startLabel, "❌ Reject");
       } else {
         options.push(startLabel);
@@ -835,7 +891,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
 
       let choice: string | undefined;
 
-      if (meetsAutoApprove) {
+      if (meetsAutoApprove && !verificationGateBlocked) {
         // Re-run quality gate before auto-approve (qualityPreview may be stale)
         const autoQuality = await qualityCheckBeads(oc.pi, ctx.cwd);
 
@@ -1357,6 +1413,23 @@ cd ${ctx.cwd}`;
         return {
           content: [{ type: "text", text: "Beads rejected. Orchestration stopped." }],
           details: { approved: false },
+        };
+      }
+
+      // "▶️ Start implementing" — hard-stop approval if required verification contracts are incomplete.
+      if (verificationGateBlocked) {
+        const failureLines = verificationContractFailureLines(validation);
+        oc.setPhase("refining_beads", ctx);
+        oc.persistState();
+        await syncBeads(oc.pi, ctx.cwd);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `**Verification contract gate failed. Fix these issues, then call \`orch_approve_beads\` again.**\n\n⛔ Issues:\n${failureLines.join("\n")}\n\n---\n\n${beadRefinementPrompt(round, oc.state.polishChanges, refinementFocus)}\n\n---\n\nCurrent beads (${beads.length} total):\n${compactBeadList}\n\nUse \`br show <id>\` for full bead details.`,
+            },
+          ],
+          details: { approved: false, refining: true, verificationGateFailed: true, beadCount: beads.length },
         };
       }
 
