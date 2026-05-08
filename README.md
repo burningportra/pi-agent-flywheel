@@ -128,6 +128,49 @@ You: /agent-flywheel
 5. **Review should create evidence**  
    The final audit treats “done” as a claim. The extension asks for evidence packs, checks scope drift, and pushes remediation when claims do not match the diff.
 
+### Bead verification contracts
+
+Every implementation bead should include a `### Verification:` section before `### Files:`. Treat it as a small contract between the planner, implementer, and reviewer:
+
+- **Commands/checks** — the exact command(s), inspection steps, or manual checks to perform.
+- **Success expectations** — what passing output, status, or behavior looks like.
+- **Manual proof fallback** — what evidence is acceptable if automation cannot cover the work or cannot run in the local environment.
+
+Good contract:
+
+```markdown
+### Verification:
+- Commands/checks: run npm test -- src/bead-review.test.ts and npm run build.
+- Success looks like: the focused tests pass, TypeScript compiles, and both commands exit 0.
+- Manual proof fallback: if the commands cannot run, capture the exact blocker and manually inspect the changed review prompt and test assertions.
+
+### Files:
+- src/bead-review.ts
+- src/bead-review.test.ts
+```
+
+Bad contract — too vague and missing the manual fallback:
+
+```markdown
+### Verification:
+- Run tests.
+- Success looks like: everything works.
+```
+
+Review evidence must match the same contract. For the good contract above, this is acceptable:
+
+```text
+Verified:
+- npm test -- src/bead-review.test.ts passed.
+- npm run build passed.
+```
+
+This is not acceptable because it is too generic for a contract that named exact commands:
+
+```text
+All tests passed. Looks good.
+```
+
 ---
 
 ## How pi-agent-flywheel Compares
