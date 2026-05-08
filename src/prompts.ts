@@ -265,6 +265,10 @@ br create "Title" -t task -p <priority 1-5> -d "Detailed description including:
 - Acceptance criteria (as checklist):
   - [ ] Criterion 1
   - [ ] Criterion 2
+- ### Verification:
+  - Commands/checks: run concrete commands such as npm test -- src/foo.test.ts and npm run build
+  - Success looks like: describe the exact passing output or observable behavior expected
+  - Manual proof fallback: explain what to inspect and what blocker to capture if commands cannot run
 - ### Files: src/foo.ts, src/bar.ts"
 \`\`\`
 
@@ -286,6 +290,10 @@ Each subtask should be a single coherent unit of work that one agent can complet
 ### Requirements
 - Make beads self-documenting - include background, reasoning, and anything a future agent needs
 - The beads should be so detailed that a fresh agent never needs to consult back to the original goal. Include relevant background, reasoning/justification, considerations - anything a future agent needs about goals, intentions, and thought process.
+- Each bead MUST include a \`### Verification:\` section before \`### Files:\` with three fully expanded parts:
+  - \`Commands/checks:\` concrete commands or checks the implementer should run
+  - \`Success looks like:\` expected pass criteria or observable proof that the work is correct
+  - \`Manual proof fallback:\` what to inspect and what exact blocker to report if commands cannot run
 - Each bead MUST include a \`### Files:\` section listing files to create/modify
 - Order by priority: foundations first, integration last
 - Set dependency edges so \`br ready\` returns the correct parallel groups
@@ -312,11 +320,16 @@ Example - starting from template \`add-api-endpoint\` with all placeholders subs
 > - [ ] Return clear success and failure responses for the main path and obvious edge cases.
 > - [ ] Add tests covering the happy path and at least one error path.
 >
+> ### Verification:
+> - Commands/checks: run npm test -- src/api/users.test.ts and the project's build/type-check command.
+> - Success looks like: endpoint tests cover the happy path and at least one invalid-input path, and build/type-check finishes without errors.
+> - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/api/users.ts and src/api/users.test.ts for validation, success responses, error responses, and assertions.
+>
 > ### Files:
 > - src/api/users.ts
 > - src/api/users.test.ts
 
-Notice: every placeholder is resolved and the final text is fully expanded - no template IDs, no placeholders.
+Notice: every placeholder is resolved and the final text is fully expanded with concrete verification and file guidance - no template IDs, no placeholders.
 
 If no template fits, write a custom bead normally. Final beads must not say \`[Use template: ...]\`, \`see template\`, or leave unresolved \`{{placeholderName}}\` markers behind.
 
@@ -395,6 +408,10 @@ br create "Title" -t task -p <priority 1-5> -d "Detailed description including:
 - Acceptance criteria (as checklist):
   - [ ] Criterion 1
   - [ ] Criterion 2
+- ### Verification:
+  - Commands/checks: run concrete commands such as npm test -- src/foo.test.ts and npm run build
+  - Success looks like: describe the exact passing output or observable behavior expected
+  - Manual proof fallback: explain what to inspect and what blocker to capture if commands cannot run
 - ### Files: src/foo.ts, src/bar.ts"
 \`\`\`
 
@@ -407,6 +424,10 @@ br dep add <child-id> <parent-id>
 - Every bead must be self-contained and self-documenting
 - Preserve the plan's intended sequencing and parallelism
 - Carry forward edge cases, migration notes, and testing expectations from the plan into the relevant beads
+- Each bead MUST include a \`### Verification:\` section before \`### Files:\` with three fully expanded parts:
+  - \`Commands/checks:\` concrete commands or checks the implementer should run
+  - \`Success looks like:\` expected pass criteria or observable proof that the work is correct
+  - \`Manual proof fallback:\` what to inspect and what exact blocker to report if commands cannot run
 - Each bead MUST include a \`### Files:\` section listing files to create/modify
 - Acceptance criteria should be specific and testable
 - Include test beads where appropriate
@@ -433,11 +454,16 @@ Example - plan says "add a users endpoint with validation and tests", template \
 > - [ ] Return clear success and failure responses for the main path and obvious edge cases.
 > - [ ] Add tests covering the happy path and at least one error path.
 >
+> ### Verification:
+> - Commands/checks: run npm test -- src/api/users.test.ts and the project's build/type-check command.
+> - Success looks like: endpoint tests cover the happy path and at least one invalid-input path, and build/type-check finishes without errors.
+> - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/api/users.ts and src/api/users.test.ts for validation, success responses, error responses, and assertions.
+>
 > ### Files:
 > - src/api/users.ts
 > - src/api/users.test.ts
 
-Notice: every placeholder is resolved and the final text is fully expanded with plan context - no template IDs, no placeholders, no "see template" references.
+Notice: every placeholder is resolved and the final text is fully expanded with plan context, concrete verification guidance, and file guidance - no template IDs, no placeholders, no "see template" references.
 
 Verify with \`br list\` and \`br dep cycles\` (must show no cycles).
 
@@ -464,10 +490,11 @@ ${roundInfo}${changesInfo}${blockingInfo}Review each bead via \`br list\` and \`
 2. Could the description be clearer or more actionable?
 3. Does a fresh agent have enough context to execute without guessing?
 4. Are acceptance criteria specific and testable?
-5. Is the \`### Files:\` section accurate and complete?
-6. Are dependencies correct? Would \`br ready\` return the right parallel groups?
-7. Are any beads too large? Could they split into 2-3 subtasks for better parallelism?
-8. Could a fresh agent implement this without ANY external context? What background is missing?
+5. Does it include a fully expanded \`### Verification:\` section with concrete commands/checks, success expectations, and manual proof fallback?
+6. Is the \`### Files:\` section accurate and complete?
+7. Are dependencies correct? Would \`br ready\` return the right parallel groups?
+8. Are any beads too large? Could they split into 2-3 subtasks for better parallelism?
+9. Could a fresh agent implement this without ANY external context? What background is missing?
 
 ### Actions
 - Start with the highest-severity blocking dimension above and update only the beads related to it
@@ -507,6 +534,7 @@ You are reviewing beads for a project with NO prior context. This is deliberate 
    - Does it make sense as a self-contained work unit?
    - Is the description detailed enough for a fresh agent to implement without guessing?
    - Are acceptance criteria specific and testable?
+   - Does the bead include a fully expanded \`### Verification:\` section with concrete commands/checks, success expectations, and manual proof fallback?
    - Are dependencies correct?
    - Could the architecture be improved?
 4. Make improvements directly via \`br update <id> -d "..."\`

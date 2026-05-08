@@ -16,6 +16,11 @@ Acceptance criteria:
 - [ ] Return clear success and failure responses for the main path and obvious edge cases.
 - [ ] Add tests covering the happy path and at least one error path.
 
+### Verification:
+- Commands/checks: run npm test -- {{testFile}} and npm run build.
+- Success looks like: endpoint tests cover the happy path and at least one invalid-input path, and build/type-check finishes without errors.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect {{implementationFile}} and {{testFile}} for validation, success responses, error responses, and assertions.
+
 ### Files:
 - {{implementationFile}}
 - {{testFile}}`,
@@ -47,6 +52,11 @@ Acceptance criteria:
 - [ ] Return clear success and failure responses for the main path and obvious edge cases.
 - [ ] Add tests covering the happy path and at least one error path.
 
+### Verification:
+- Commands/checks: run npm test -- src/api/users.test.ts and npm run build.
+- Success looks like: endpoint tests cover the happy path and at least one invalid-input path, and build/type-check finishes without errors.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/api/users.ts and src/api/users.test.ts for validation, success responses, error responses, and assertions.
+
 ### Files:
 - src/api/users.ts
 - src/api/users.test.ts`,
@@ -67,6 +77,11 @@ Acceptance criteria:
 - [ ] Reorganize {{moduleName}} to improve {{refactorGoal}} without changing intended behavior.
 - [ ] Update affected call sites or imports if the internal structure changes.
 - [ ] Add or update regression tests covering the preserved behavior.
+
+### Verification:
+- Commands/checks: run npm test -- {{testFile}} and npm run build.
+- Success looks like: regression tests pass, build/type-check finishes without errors, and preserved behavior remains covered by assertions.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect {{moduleFile}} and {{testFile}} for preserved behavior, updated imports, and regression assertions.
 
 ### Files:
 - {{moduleFile}}
@@ -98,6 +113,11 @@ Acceptance criteria:
 - [ ] Update affected call sites or imports if the internal structure changes.
 - [ ] Add or update regression tests covering the preserved behavior.
 
+### Verification:
+- Commands/checks: run npm test -- src/scan.test.ts and npm run build.
+- Success looks like: regression tests pass, build/type-check finishes without errors, and preserved behavior remains covered by assertions.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/scan.ts and src/scan.test.ts for preserved behavior, updated imports, and regression assertions.
+
 ### Files:
 - src/scan.ts
 - src/scan.test.ts`,
@@ -118,6 +138,11 @@ Acceptance criteria:
 - [ ] Add automated tests covering the primary behavior of {{featureName}}.
 - [ ] Include at least one edge case or failure-path assertion for {{riskArea}}.
 - [ ] Keep the tests readable enough that they document the intended behavior.
+
+### Verification:
+- Commands/checks: run npm test -- {{testFile}} and npm run build.
+- Success looks like: the focused test file passes, build/type-check finishes without errors, and assertions cover the primary behavior plus at least one edge or failure path.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect {{implementationFile}} and {{testFile}} for meaningful assertions tied to {{featureName}} and {{riskArea}}.
 
 ### Files:
 - {{implementationFile}}
@@ -147,6 +172,11 @@ Acceptance criteria:
 - [ ] Add automated tests covering the primary behavior of plan-to-bead audit warnings.
 - [ ] Include at least one edge case or failure-path assertion for empty sections and weak mappings.
 - [ ] Keep the tests readable enough that they document the intended behavior.
+
+### Verification:
+- Commands/checks: run npm test -- src/flywheel.test.ts and npm run build.
+- Success looks like: the focused test file passes, build/type-check finishes without errors, and assertions cover the primary behavior plus at least one edge or failure path.
+- Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/prompts.ts and src/flywheel.test.ts for meaningful assertions tied to plan-to-bead audit warnings and empty sections and weak mappings.
 
 ### Files:
 - src/prompts.ts

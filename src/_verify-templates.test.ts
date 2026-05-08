@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { expandTemplate, listBeadTemplates } from "./bead-templates.js";
 
+function expectExpandedBeadContract(description: string): void {
+  expect(description).toContain("### Verification:");
+  expect(description).toContain("Commands/checks:");
+  expect(description).toContain("Success looks like:");
+  expect(description).toContain("Manual proof fallback:");
+  expect(description).toContain("### Files:");
+  expect(description.indexOf("### Verification:")).toBeLessThan(description.indexOf("### Files:"));
+  expect(description).not.toMatch(/\[Use template:|see template|{{/i);
+}
+
 describe("verify template examples match expansion", () => {
   const cases: Array<{ id: string; values: Record<string, string> }> = [
     { id: "add-api-endpoint", values: { endpointPath: "/users", moduleName: "user-management", endpointPurpose: "return a filtered user list", httpMethod: "GET", implementationFile: "src/api/users.ts", testFile: "src/api/users.test.ts" } },
@@ -16,6 +26,7 @@ describe("verify template examples match expansion", () => {
       const templates = listBeadTemplates();
       const template = templates.find(tmpl => tmpl.id === t.id)!;
       expect(result.description).toBe(template.examples[0].description);
+      expectExpandedBeadContract(result.description);
     });
   }
 });

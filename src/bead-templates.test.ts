@@ -6,6 +6,16 @@ import {
   listBeadTemplates,
 } from "./bead-templates.js";
 
+function expectExpandedBeadContract(description: string): void {
+  expect(description).toContain("### Verification:");
+  expect(description).toContain("Commands/checks:");
+  expect(description).toContain("Success looks like:");
+  expect(description).toContain("Manual proof fallback:");
+  expect(description).toContain("### Files:");
+  expect(description.indexOf("### Verification:")).toBeLessThan(description.indexOf("### Files:"));
+  expect(description).not.toMatch(/\[Use template:|see template|{{/i);
+}
+
 describe("bead templates", () => {
   it("returns the built-in catalog in deterministic order", () => {
     const first = listBeadTemplates();
@@ -26,7 +36,12 @@ describe("bead templates", () => {
     for (const template of templates) {
       expect(template.label.length).toBeGreaterThan(0);
       expect(template.summary.length).toBeGreaterThan(0);
+      expect(template.descriptionTemplate).toContain("### Verification:");
+      expect(template.descriptionTemplate).toContain("Commands/checks:");
+      expect(template.descriptionTemplate).toContain("Success looks like:");
+      expect(template.descriptionTemplate).toContain("Manual proof fallback:");
       expect(template.descriptionTemplate).toContain("### Files:");
+      expect(template.descriptionTemplate.indexOf("### Verification:")).toBeLessThan(template.descriptionTemplate.indexOf("### Files:"));
       expect(template.placeholders.length).toBeGreaterThanOrEqual(2);
       expect(template.acceptanceCriteria.length).toBeGreaterThanOrEqual(3);
       expect(template.filePatterns.length).toBeGreaterThanOrEqual(2);
@@ -36,6 +51,9 @@ describe("bead templates", () => {
         expect(placeholder.description.length).toBeGreaterThan(0);
         expect(placeholder.example.length).toBeGreaterThan(0);
         expect(typeof placeholder.required).toBe("boolean");
+      }
+      for (const example of template.examples) {
+        expectExpandedBeadContract(example.description);
       }
     }
   });
@@ -75,7 +93,7 @@ describe("bead templates", () => {
       expect(result.description).toContain("src/api/users.ts");
       expect(result.description).toContain("src/api/users.test.ts");
       expect(result.description).not.toContain("{{");
-      expect(result.description).toContain("### Files:");
+      expectExpandedBeadContract(result.description);
     }
   });
 
@@ -93,6 +111,7 @@ describe("bead templates", () => {
       expect(result.description).toContain("scan pipeline");
       expect(result.description).toContain("src/scan.ts");
       expect(result.description).not.toContain("{{");
+      expectExpandedBeadContract(result.description);
     }
   });
 
@@ -109,6 +128,7 @@ describe("bead templates", () => {
       expect(result.description).toContain("plan-to-bead audit warnings");
       expect(result.description).toContain("src/flywheel.test.ts");
       expect(result.description).not.toContain("{{");
+      expectExpandedBeadContract(result.description);
     }
   });
 
