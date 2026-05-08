@@ -224,6 +224,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
       // Default: Direct to beads
       const instructions = beadCreationPrompt(goal, repoContext, oc.state.constraints);
       oc.setPhase("creating_beads", ctx);
+      oc.persistState();
 
       return {
         content: [

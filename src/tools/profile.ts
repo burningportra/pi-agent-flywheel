@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
-import type { OrchestratorContext } from "../types.js";
+import type { OrchestratorContext, OrchestratorState } from "../types.js";
 import type { ScanResult } from "../types.js";
 import { scanRepo } from "../scan.js";
 import {
@@ -20,6 +20,100 @@ function weightedScore(idea: import("../types.js").CandidateIdea): number {
   return s.useful * 2 + s.pragmatic * 2 + s.accretive * 1.5 + s.robust + s.ergonomic;
 }
 
+export interface ProfileContinuation {
+  text: string;
+  details: Record<string, unknown>;
+}
+
+/**
+ * If an AgentFlywheel run is already past profiling, a stray profile call should
+ * continue the current phase instead of reopening discovery and trapping users
+ * in the start/discover/select loop.
+ */
+export function activeWorkflowContinuation(state: OrchestratorState): ProfileContinuation | undefined {
+  if (state.phase === "awaiting_selection" && state.candidateIdeas && state.candidateIdeas.length > 0) {
+    const ideaSummary = state.candidateIdeas
+      .slice(0, 7)
+      .map((idea, index) => `${index + 1}. **${idea.title}** [${idea.category}] — ${idea.description}`)
+      .join("\n");
+    return {
+      text:
+        `**NEXT: Call \`agent_flywheel_select\` NOW to present these ${state.candidateIdeas.length} idea(s) to the user.**\n\n` +
+        `Discovery is already complete; do not call \`agent_flywheel_profile\` again unless the user explicitly starts over.\n\n` +
+        `### Available Ideas\n${ideaSummary}`,
+      details: { continuation: true, phase: state.phase, awaitingSelection: true, ideaCount: state.candidateIdeas.length },
+    };
+  }
+
+  const hasInFlightInteractiveDiscovery = Boolean(
+    state.duelingWizardLaunchRequested || state.funnelRawIdeas?.length || state.funnelWinnowedIds?.length
+  );
+  if (state.phase === "discovering" && state.repoProfile && !state.selectedGoal && !hasInFlightInteractiveDiscovery) {
+    return {
+      text:
+        "**NEXT: Call `agent_flywheel_discover` NOW to generate standard discovery ideas.**\n\n" +
+        "The repo is already profiled and discovery is waiting for idea generation; do not call `agent_flywheel_profile` again unless the user explicitly starts over.",
+      details: { continuation: true, phase: state.phase, awaitingDiscovery: true },
+    };
+  }
+
+  if (!state.selectedGoal) return undefined;
+
+  const currentConstraints = state.constraints ?? [];
+  const constraints = currentConstraints.length > 0
+    ? `\nConstraints: ${currentConstraints.join(", ")}`
+    : "";
+  const goalLine = `Goal: "${state.selectedGoal}"${constraints}`;
+
+  switch (state.phase) {
+    case "planning": {
+      const planHint = state.planDocument
+        ? `A plan artifact is expected at \`${state.planDocument}\`. If it has already been written, call \`agent_flywheel_approve_beads\` now; otherwise finish writing that artifact first.`
+        : "Call `agent_flywheel_plan` with the workflow mode the user selected.";
+      return {
+        text:
+          `**NEXT: Continue the existing planning phase.**\n\n${goalLine}\n\n` +
+          `${planHint}\n\nDo not restart discovery/profile unless the user explicitly starts over via \`/agent-flywheel\` → Fresh/Clear.`,
+        details: { continuation: true, phase: state.phase, goal: state.selectedGoal, planDocument: state.planDocument },
+      };
+    }
+    case "awaiting_plan_approval":
+      return {
+        text:
+          `**NEXT: Call \`agent_flywheel_approve_beads\` NOW to review the plan.**\n\n${goalLine}\n\n` +
+          `${state.planDocument ? `Plan artifact: \`${state.planDocument}\`\n\n` : ""}` +
+          "Do not restart discovery/profile unless the user explicitly starts over.",
+        details: { continuation: true, phase: state.phase, goal: state.selectedGoal, planDocument: state.planDocument },
+      };
+    case "creating_beads":
+      return {
+        text:
+          `**NEXT: Create beads for the selected goal using \`br create\` and \`br dep add\`, then call \`agent_flywheel_approve_beads\`.**\n\n${goalLine}\n\n` +
+          "Discovery and goal selection are already complete; do not call `agent_flywheel_profile` again unless the user explicitly starts over.",
+        details: { continuation: true, phase: state.phase, goal: state.selectedGoal },
+      };
+    case "refining_beads":
+    case "awaiting_bead_approval":
+      return {
+        text:
+          `**NEXT: Call \`agent_flywheel_approve_beads\` NOW to continue bead refinement/approval.**\n\n${goalLine}\n\n` +
+          "Do not restart discovery/profile unless the user explicitly starts over.",
+        details: { continuation: true, phase: state.phase, goal: state.selectedGoal },
+      };
+    case "implementing":
+    case "reviewing":
+    case "iterating":
+      return {
+        text:
+          `**NEXT: Call \`agent_flywheel_review\` NOW to continue implementation/review.**\n\n${goalLine}\n\n` +
+          "Do not restart discovery/profile unless the user explicitly starts over.",
+        details: { continuation: true, phase: state.phase, goal: state.selectedGoal },
+      };
+    default:
+      return undefined;
+  }
+}
+
 export function registerProfileTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_profile", "orch_profile", "flywheel_profile"] as const) {
   oc.pi.registerTool({
@@ -31,6 +125,14 @@ export function registerProfileTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, onUpdate, ctx) {
+      const continuation = activeWorkflowContinuation(oc.state);
+      if (continuation) {
+        return {
+          content: [{ type: "text", text: continuation.text }],
+          details: continuation.details,
+        };
+      }
+
       oc.setPhase("profiling", ctx);
       ctx.ui.notify(`pi-agent-flywheel v${oc.version}`, 'info');
       onUpdate?.({
@@ -262,6 +364,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         // Default: Direct to beads
         const instructions = beadCreationPrompt(enrichedGoal, repoContext, oc.state.constraints);
         oc.setPhase("creating_beads", ctx);
+        oc.persistState();
         return {
           content: [{
             type: "text",
@@ -303,7 +406,9 @@ export function registerProfileTool(oc: OrchestratorContext) {
         } = await import("../dueling-ideas.js");
         const wizardAgents = selectDuelingIdeaAgents(ctx, 3);
         const missingWizardAgents = ctx.hasUI ? getMissingDuelingIdeaAgents(ctx, wizardAgents) : [];
-        if (missingWizardAgents.length > 0) {
+        const shouldPromptForWizards = missingWizardAgents.length > 0 && !oc.state.duelingWizardLaunchRequested;
+        if (shouldPromptForWizards) {
+          oc.state.duelingWizardLaunchRequested = true;
           oc.setPhase("discovering", ctx);
           oc.persistState();
           const pendingConfigs = buildDuelingIdeaSubagentConfigs(
@@ -312,6 +417,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
             profile,
             scanResult,
             existingBeadTitles,
+            ctx,
           );
           const completedAgents = wizardAgents
             .filter((agent) => !missingWizardAgents.some((missing) => missing.type === agent.type))
@@ -344,6 +450,13 @@ export function registerProfileTool(oc: OrchestratorContext) {
           };
         }
 
+        if (missingWizardAgents.length > 0 && oc.state.duelingWizardLaunchRequested) {
+          ctx.ui.notify(
+            "⚠️ Wizard artifacts are still missing after the launch step. Recovering by running the missing Dueling Idea Wizard phase in-process instead of prompting again.",
+            "warning"
+          );
+        }
+
         const duel = await runDuelingIdeaWizards(
           oc.pi,
           ctx,
@@ -369,6 +482,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         oc.state.candidateIdeas = duel.consensusIdeas;
         oc.state.funnelRawIdeas = Object.values(duel.ideasByAgent).flat();
         oc.state.funnelWinnowedIds = duel.consensusIdeas.filter((i) => i.tier === "top").map((i) => i.id);
+        oc.state.duelingWizardLaunchRequested = false;
         oc.setPhase("awaiting_selection", ctx);
         oc.persistState();
 
@@ -444,7 +558,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           name: "ideation-broad",
           model: pickRefinementModel(0), // ideation model — different from winnowing (model 1)
           task: phase1Prompt,
-        }]);
+        }], signal);
         const rawIdeas = parseIdeasJSON(phase1Results[0]?.plan ?? "");
 
         if (rawIdeas.length < 10) {
@@ -476,7 +590,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           // Different models = different blind spots = real critical evaluation.
           model: pickRefinementModel(1), // winnowing model — structurally different from ideation (model 0)
           task: phase2Prompt,
-        }]);
+        }], signal);
         const winnowResult = parseWinnowingResult(phase2Results[0]?.plan ?? "");
 
         if (winnowResult.keptIds.length === 0) {
@@ -493,9 +607,28 @@ export function registerProfileTool(oc: OrchestratorContext) {
         oc.state.funnelWinnowedIds = winnowResult.keptIds;
         oc.persistState();
 
-        const top5 = winnowResult.keptIds
+        let top5 = winnowResult.keptIds
           .map((id) => rawIdeas.find((i) => i.id === id))
           .filter((i): i is NonNullable<typeof i> => i !== undefined && i !== null);
+
+        const desiredTopCount = Math.min(5, rawIdeas.length);
+        if (top5.length < desiredTopCount) {
+          const chosenIds = new Set(top5.map((i) => i.id));
+          const supplements = rawIdeas
+            .filter((idea) => !chosenIds.has(idea.id))
+            .slice()
+            .sort((a, b) => weightedScore(b) - weightedScore(a))
+            .slice(0, desiredTopCount - top5.length);
+          ctx.ui.notify(
+            top5.length === 0
+              ? "⚠️ Winnowing returned IDs that did not match generated ideas. Falling back to top-scored ideas."
+              : `⚠️ Winnowing matched only ${top5.length}/${desiredTopCount} ideas. Filling the rest by score.`,
+            "warning"
+          );
+          top5 = [...top5, ...supplements];
+          oc.state.funnelWinnowedIds = top5.map((idea) => idea.id);
+          oc.persistState();
+        }
 
         // Mark top 5 as tier "top"
         for (const idea of top5) idea.tier = "top";
@@ -516,7 +649,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           name: "ideation-expand",
           model: pickRefinementModel(2), // yet another model
           task: phase3Prompt,
-        }]);
+        }], signal);
         const expandedIdeas = parseIdeasJSON(phase3Results[0]?.plan ?? "");
 
         // Mark expanded ideas as honorable
@@ -539,16 +672,26 @@ export function registerProfileTool(oc: OrchestratorContext) {
         const reviewChoice = await ctx.ui.select(
           `🔬 Phase 3 complete — ${allIdeas.length} ideas ready.\n\n${ideasSummary}\n\nHow do you want to proceed?`,
           [
-            `✅ Accept all ${allIdeas.length} — create beads for all`,
-            "🔍 Select subset — choose which to pursue",
+            `✅ Accept all ${allIdeas.length} — present these for goal selection`,
+            "🔍 Select subset — choose which to present",
             "🔄 Refine further — run discovery again",
             "❌ Discard — start over",
           ]
         );
 
+        if (!reviewChoice) {
+          oc.orchestratorActive = false;
+          oc.setPhase("idle", ctx);
+          oc.persistState();
+          return {
+            content: [{ type: "text", text: "Deep discovery review cancelled. Orchestration stopped." }],
+            details: { profile, scanResult, funnel: true, cancelled: true },
+          };
+        }
+
         let finalIdeas = allIdeas;
 
-        if (reviewChoice?.startsWith("❌")) {
+        if (reviewChoice.startsWith("❌")) {
           // User wants to start over — reset funnel state and restart
           oc.state.funnelRawIdeas = undefined;
           oc.state.funnelWinnowedIds = undefined;
@@ -559,7 +702,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
             content: [{ type: "text", text: "Discarded. Call `orch_profile` to start the discovery funnel again." }],
             details: { profile, scanResult, funnel: true, discarded: true },
           };
-        } else if (reviewChoice?.startsWith("🔄")) {
+        } else if (reviewChoice.startsWith("🔄")) {
           // User wants to refine further — re-run orch_profile with deep discovery
           oc.state.funnelRawIdeas = undefined;
           oc.state.funnelWinnowedIds = undefined;
@@ -570,7 +713,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
             content: [{ type: "text", text: "Resetting for another round. Call `orch_profile` and choose deep discovery again to refine further." }],
             details: { profile, scanResult, funnel: true, refined: true },
           };
-        } else if (reviewChoice?.startsWith("🔍")) {
+        } else if (reviewChoice.startsWith("🔍")) {
           // User wants to select a subset — show each idea with confirm
           ctx.ui.notify("Select which ideas to pursue (confirm each one):", "info");
           const selectedIdeas: typeof allIdeas = [];
@@ -588,7 +731,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
             ctx.ui.notify(`Selected ${finalIdeas.length} idea(s) to pursue.`, "info");
           }
         }
-        // else "✅ Accept all" — use allIdeas as-is
+        // else "✅ Accept all" — present allIdeas in the normal goal-selection step
 
         oc.state.candidateIdeas = finalIdeas;
         oc.state.funnelWinnowedIds = finalIdeas.filter((i) => i.tier === "top").map((i) => i.id);

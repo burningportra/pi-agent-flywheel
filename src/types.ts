@@ -430,6 +430,8 @@ export interface OrchestratorState {
   funnelRawIdeas?: CandidateIdea[];
   /** Winnowed top ideas (phase 2 of funnel). */
   funnelWinnowedIds?: string[];
+  /** True after the UI has already asked the user to launch Dueling Idea Wizard sub-agents. */
+  duelingWizardLaunchRequested?: boolean;
   /** Foregone conclusion score — composite readiness assessment. */
   foregoneScore?: import("./foregone.js").ForegoneScore;
 
