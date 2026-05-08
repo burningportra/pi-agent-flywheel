@@ -232,8 +232,9 @@ Bead review happens through the `orch_review` tool registered in `src/tools/revi
 
 When an agent submits `orch_review` with a bead ID:
 1. The agent provides a **summary**, **verdict** (pass/fail), and **feedback**
-2. On pass, the bead is closed and the next ready bead is selected (via `bv --robot-next` or `br ready`)
-3. On fail, the agent receives revision instructions and reworks
+2. On pass, the flywheel auto-decides whether to spawn a review-agent pass based on `maxReviewPasses`
+3. Once the review-pass budget is met, the bead is closed and the next ready bead is selected (via `bv --robot-next` or `br ready`)
+4. On fail, the agent receives revision instructions and reworks
 
 ### Cross-Model Review
 
@@ -250,7 +251,7 @@ The output is parsed into actionable suggestions via `parseSuggestions()`, which
 
 ### Guided Gates (Iteration Phase)
 
-During the iteration phase, `orch_review` with `beadId: "__gates__"` triggers guided gate reviews. The system tracks **consecutive clean rounds** — two clean passes in a row signals the codebase is in good shape, and the orchestrator offers to finish.
+During the iteration phase, `orch_review` with `beadId: "__gates__"` triggers guided gate reviews. The system tracks **consecutive clean rounds** — two clean passes in a row signals the codebase is in good shape, and the orchestrator finishes automatically.
 
 A clean round requires: verdict = pass, no revision instructions.
 

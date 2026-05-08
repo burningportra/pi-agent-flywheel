@@ -41,8 +41,8 @@ Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
   │   │  Implement (with fresh-eyes self-review before commit)  │
   │   │                                                         │
   │   │  agent_flywheel_review — per-bead gate:                │
-  │   │    🔥 Hit me → 5 parallel review agents                │
-  │   │    ✅ Looks good → mark bead done, advance             │
+  │   │    Auto-spawns review agents until review-pass budget  │
+  │   │    is met, then marks bead done and advances           │
   │   │                                                         │
   │   │  `br done <id>` on pass → unlocks dependent beads      │
   │   │  ⏭️ Skip to completion if work done early              │
@@ -268,12 +268,12 @@ Starts on parallel launch, stops on completion.
 
 #### Per-Bead Review
 
-After each bead's self-review passes:
+After each bead's self-review passes, the flywheel decides automatically:
 
-- **🔥 Hit me** — 5 parallel review agents (fresh-eyes / polish / ergonomics / reality-check / random-exploration)
-- **✅ Looks good** — mark bead done, advance to next ready bead
+- If the bead has not used its review-pass budget (`maxReviewPasses`, default 2), it spawns 5 parallel review agents (fresh-eyes / polish / ergonomics / reality-check / random-exploration).
+- Once the budget is met, it marks the bead done and advances to the next ready bead.
 
-After hit-me agents finish, the workflow auto-advances (no re-prompt). Only the first round shows the menu.
+No user menu asks for "looks good" versus another review pass.
 
 #### Agent Fungibility
 

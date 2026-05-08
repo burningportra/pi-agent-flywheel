@@ -110,7 +110,7 @@ Per-bead review, post-implementation gates, and quality enforcement.
 
 | Capability | Source | Details |
 |------------|--------|---------|
-| Per-bead review | `src/tools/review.ts` — `registerReviewTool()` | 🔥 Hit me (5 parallel agents) or ✅ Looks good |
+| Per-bead review | `src/tools/review.ts` — `registerReviewTool()` | Auto-decides: spawn 5 review agents until review budget is met, then advance |
 | Guided gates | `src/gates.ts` — `runGuidedGates()` | 7-step sequential flow: self-review → peer review → test coverage → de-slopify → commit → ship → landing |
 | Review prompts | `src/prompts.ts` — `reviewerInstructions()`, `adversarialReviewInstructions()`, `crossAgentReviewInstructions()` | Fresh-eyes, adversarial, and cross-agent review perspectives |
 | Reality check | `src/prompts.ts` — `realityCheckInstructions()` | "Do we actually have the thing?" verification |

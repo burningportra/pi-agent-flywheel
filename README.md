@@ -48,7 +48,7 @@ Then open any repository in `pi` and type:
 | **Bead-based execution** | Converts plans into `br` tasks with dependencies and acceptance criteria | `add-users-endpoint` depends on `extract-user-service` |
 | **Multi-model planning** | Lets multiple models propose plans, then synthesizes the strongest path | Gemini + GPT + Claude-style planning lanes when available |
 | **Dueling Idea Wizards** | Launches interactive wizard sub-agents, then scores competing improvement ideas on a 0–1000 scale with rebuttals and blind-spot probes | Pick the most leveraged improvement before writing code |
-| **Review gates** | Runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance review flows | Closed beads are treated as claims that require evidence |
+| **Review gates** | Auto-decides review-agent passes, then runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance flows | Closed beads are treated as claims that require evidence |
 | **Crash recovery** | Checkpoints state after phase changes so interrupted runs can resume | Restart `/agent-flywheel` and resume from the latest checkpoint |
 | **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, MCP Agent Mail, beads, `ntm`) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
 

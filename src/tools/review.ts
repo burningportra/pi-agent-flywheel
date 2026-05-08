@@ -51,44 +51,30 @@ export function registerReviewTool(oc: OrchestratorContext) {
         oc.persistState();
 
         if (oc.state.consecutiveCleanRounds >= 2) {
-          // Surface the two-clean-rounds completion signal before running gates
-          const stopChoice = await ctx.ui.select(
-            `✅ **Two consecutive clean review rounds** — the codebase is in good shape.\n\n` +
-            `Round ${oc.state.iterationRound}: passed clean.\nRound ${oc.state.iterationRound - 1}: passed clean.\n\n` +
-            `You can continue reviewing or finish the orchestration.`,
-            [
-              "✅ Finish — two clean rounds is enough",
-              "🔄 Continue reviewing (another round)",
-            ]
-          );
-          if (stopChoice?.startsWith("✅")) {
-            // Mark complete: two clean rounds is the guide's stop condition
-            oc.state.consecutiveCleanRounds = 0;
-            oc.orchestratorActive = false;
-            oc.state.currentGateIndex = 0;
-            oc.setPhase("complete", ctx);
-            oc.persistState();
-            try { const { reflectMemory } = await import("../memory.js"); reflectMemory(ctx.cwd); } catch { /* best-effort */ }
-            // Mine session into MemPalace (best-effort, fire-and-forget)
-            try {
-              const { mineSession, sanitiseSlug } = await import("../episodic-memory.js");
-              const sessionFile = ctx.sessionManager.getSessionFile();
-              const projectSlug = sanitiseSlug(ctx.cwd);
-              if (sessionFile && mineSession(sessionFile, projectSlug)) {
-                ctx.ui.notify("📚 Session mined into MemPalace");
-              }
-            } catch { /* best-effort */ }
-            return {
-              content: [{ type: "text", text:
-                `✅ **AgentFlywheel complete** — two consecutive clean review rounds.\n\n` +
-                `The codebase is in good shape. Run \`agent_flywheel_review\` with beadId \"__gates__\" if you want to do a final landing checklist.`
-              }],
-              details: { complete: true, twoCleanRounds: true },
-            };
-          }
-          // Reset counter if they choose to continue
+          // Auto-finish: two clean rounds is the guide's stop condition.
+          // Do not gate on a user choice to finish versus spawn another pass.
           oc.state.consecutiveCleanRounds = 0;
+          oc.orchestratorActive = false;
+          oc.state.currentGateIndex = 0;
+          oc.setPhase("complete", ctx);
           oc.persistState();
+          try { const { reflectMemory } = await import("../memory.js"); reflectMemory(ctx.cwd); } catch { /* best-effort */ }
+          // Mine session into MemPalace (best-effort, fire-and-forget)
+          try {
+            const { mineSession, sanitiseSlug } = await import("../episodic-memory.js");
+            const sessionFile = ctx.sessionManager.getSessionFile();
+            const projectSlug = sanitiseSlug(ctx.cwd);
+            if (sessionFile && mineSession(sessionFile, projectSlug)) {
+              ctx.ui.notify("📚 Session mined into MemPalace");
+            }
+          } catch { /* best-effort */ }
+          return {
+            content: [{ type: "text", text:
+              `✅ **AgentFlywheel complete** — two consecutive clean review rounds.\n\n` +
+              `The codebase is in good shape. The flywheel auto-finished instead of asking for another pass.`
+            }],
+            details: { complete: true, twoCleanRounds: true, autoDecided: true },
+          };
         }
 
         return await runGuidedGates(oc, oc.state, ctx, "");
@@ -188,7 +174,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
       const alreadyCompleted = oc.state.beadResults?.[params.beadId];
       // Guard covers both pass and fail re-reviews: a completed bead must not be
       // downgraded to "partial" by a subsequent fail verdict (fresh-eyes bug fix).
-      if (alreadyCompleted?.status === "success") {
+      if (alreadyCompleted?.status === "success" && !oc.state.beadHitMeTriggered?.[params.beadId]) {
         return {
           content: [
             { type: "text", text: `Bead ${params.beadId} already completed. Move to the next bead or call \`agent_flywheel_review\` with beadId "__gates__" for guided gates.` },
@@ -321,74 +307,19 @@ export function registerReviewTool(oc: OrchestratorContext) {
         let hitMeChoice: string | undefined;
 
         if (!hitMeWasTriggered) {
-          hitMeChoice = await ctx.ui.select(
-            `✅ Bead ${params.beadId} (${bead.title}) passed self-review.`,
-            [
-              "🔥 Hit me — spawn parallel review agents for this bead",
-              "✅ Looks good — move on",
-            ]
+          const currentPassCount = oc.state.beadReviewPassCounts[params.beadId] ?? 1;
+          const maxReviewPasses = Math.max(1, oc.state.maxReviewPasses ?? 2);
+          const shouldSpawnReviewPass = currentPassCount < maxReviewPasses;
+          hitMeChoice = shouldSpawnReviewPass ? "🔥 Auto review pass" : "✅ Auto accept";
+          ctx.ui.notify(
+            shouldSpawnReviewPass
+              ? `🔥 Bead ${params.beadId} passed self-review — auto-spawning review agents (${currentPassCount}/${maxReviewPasses}).`
+              : `✅ Bead ${params.beadId} passed self-review — auto-accepting (${currentPassCount}/${maxReviewPasses}).`,
+            "info"
           );
         } else if (!hitMeWasCompleted) {
-          ctx.ui.notify(`⚠️ Review agents haven't completed yet. Re-presenting spawn instruction.`, "warning");
-          const round = Math.max(0, prevPassCount - 1);
-          const rePresThreadId = params.beadId;
-          const executionMode = resolveExecutionMode(
-            oc.state.coordinationMode,
-            !!oc.state.coordinationBackend?.agentMail
-          );
-          const rePresPreamble = (name: string) =>
-            oc.state.coordinationBackend?.agentMail
-              ? agentMailTaskPreamble(
-                  ctx.cwd,
-                  name,
-                  bead.title,
-                  allArtifactsForBead,
-                  rePresThreadId,
-                  executionMode
-                )
-              : "";
-          const allBeads = await readBeads(oc.pi, ctx.cwd);
-          const beadResults = Object.values(oc.state.beadResults ?? {});
-          const goal = oc.state.selectedGoal ?? "Unknown goal";
-          const rcEpisodic1 = getEpisodicContext(bead.title, sanitiseSlug(ctx.cwd));
-          const rcEpisodicSection1 = rcEpisodic1 ? `\n\n${rcEpisodic1}` : "";
-          const agentConfigs = [
-            {
-              name: `fresh-eyes-${params.beadId}-r${round}`,
-              cwd: ctx.cwd,
-              task: `${rePresPreamble(`fresh-eyes-${params.beadId}-r${round}`)}Fresh-eyes reviewer for bead ${params.beadId} (round ${round}). NEVER seen this code.\n\nBead: ${bead.title} — ${bead.description}\nFiles: ${allArtifactsForBead.join(", ")}\n\nFind blunders, bugs, errors, oversights. Be harsh. Fix issues directly using the edit tool.`,
-            },
-            {
-              name: `polish-${params.beadId}-r${round}`,
-              cwd: ctx.cwd,
-              task: `${rePresPreamble(`polish-${params.beadId}-r${round}`)}Polish reviewer for bead ${params.beadId} (round ${round}). De-slopify.\n\nBead: ${bead.title} — ${bead.description}\nFiles: ${allArtifactsForBead.join(", ")}\n\nRemove AI slop, improve clarity, make it agent-friendly. Fix issues directly.`,
-            },
-            {
-              name: `ergonomics-${params.beadId}-r${round}`,
-              cwd: ctx.cwd,
-              task: `${rePresPreamble(`ergonomics-${params.beadId}-r${round}`)}Ergonomics reviewer for bead ${params.beadId} (round ${round}).\n\nBead: ${bead.title} — ${bead.description}\nFiles: ${allArtifactsForBead.join(", ")}\n\nIf you came in fresh with zero context, would you understand this? Fix anything confusing.`,
-            },
-            {
-              name: `reality-check-${params.beadId}-r${round}`,
-              cwd: ctx.cwd,
-              task: `${rePresPreamble(`reality-check-${params.beadId}-r${round}`)}Reality checker for bead ${params.beadId} (round ${round}).\n\n${realityCheckInstructions(goal, allBeads, beadResults)}${rcEpisodicSection1}\n\nDo NOT edit code. Just report your findings as text.`,
-            },
-            {
-              name: `random-explore-${params.beadId}-r${round}`,
-              cwd: ctx.cwd,
-              task: `${rePresPreamble(`random-explore-${params.beadId}-r${round}`)}${randomExplorationInstructions(goal, allArtifactsForBead, ctx.cwd)}`,
-            },
-          ];
-          const reviewJson = JSON.stringify({ agents: agentConfigs }, null, 2);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `**Review agents must complete before advancing. Call \`parallel_subagents\` NOW with the config below.**\n\n## 🔥 Hit me — Bead ${params.beadId}, Round ${round} (re-presented)\n\n\`\`\`json\n${reviewJson}\n\`\`\`\n\nAfter all complete, present findings and apply fixes. Then call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
-              },
-            ],
-            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, rePresented: true },
-          };
+          ctx.ui.notify(`⚠️ Review agents were pending — auto-running the review pass now.`, "warning");
+          hitMeChoice = "🔥 Auto review pass";
         } else {
           hitMeChoice = "✅";
           if (!oc.state.beadHitMeTriggered) oc.state.beadHitMeTriggered = {};
@@ -465,14 +396,14 @@ export function registerReviewTool(oc: OrchestratorContext) {
             content: [
               {
                 type: "text",
-                text: `## 🔥 Hit me — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}After reviewing the findings above, call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
+                text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
               },
             ],
             details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId },
           };
         }
 
-        // User said "looks good" — check for next ready beads
+        // Auto-accepted — check for next ready beads
         const ready = await readyBeads(oc.pi, ctx.cwd);
 
         if (ready.length === 0) {
