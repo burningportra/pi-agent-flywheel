@@ -33,6 +33,10 @@ import { registerMemoryTool } from "./tools/memory-tool.js";
 import { registerDoctorTool } from "./tools/doctor.js";
 import { registerVerifyBeadsTool } from "./tools/verify-beads.js";
 import { registerComplianceAuditTool } from "./tools/compliance-audit.js";
+import { registerCapabilitiesTool } from "./tools/capabilities.js";
+import { registerRobotDocsTool } from "./tools/robot-docs.js";
+import { registerTriageTool } from "./tools/triage.js";
+import { registerSuggestTool } from "./tools/suggest.js";
 import { DashboardController, renderDashboardLines, PHASE_EMOJI } from "./dashboard/index.js";
 import { readBeads } from "./beads.js";
 import { writeCheckpoint, clearCheckpoint, readCheckpoint } from "./checkpoint.js";
@@ -500,4 +504,8 @@ export default function (pi: ExtensionAPI) {
   registerDoctorTool(oc);
   registerVerifyBeadsTool(oc);
   registerComplianceAuditTool(oc);
+  registerCapabilitiesTool(oc, ORCHESTRATOR_VERSION);
+  registerRobotDocsTool(oc);
+  registerTriageTool(oc);
+  registerSuggestTool(oc);
 }

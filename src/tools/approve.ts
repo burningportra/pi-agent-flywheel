@@ -6,9 +6,10 @@ import { implementerInstructions, freshContextRefinementPrompt, computeConvergen
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
 import { sessionArtifactPath } from "../session-artifacts.js";
-import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
+import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExecJson, resilientExec } from "../cli-exec.js";
 
+import { FlywheelError } from "../errors.js";
 // ─── Module-level bead snapshots for change detection ────────
 // These live at module scope so they persist across multiple calls to
 // orch_approve_beads within the same orchestration session. Each call
@@ -228,18 +229,19 @@ export function registerApproveTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Approve Beads",
     description:
-      "Read beads created via br CLI, present them for user approval. Offers refinement passes (Phase 6) before execution. Call after the LLM has created beads with br create.",
+      "Read beads created via br CLI, present them for user approval. Offers refinement passes (Phase 6) before execution. Call after the LLM has created beads with br create. [phase 5/6, prereq: flywheel_plan, next: flywheel_review]",
     promptSnippet: "Present beads for user approval before execution",
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("approve_beads"));
       if (!oc.state.selectedGoal) {
-        throw new Error("No goal selected. Call agent_flywheel_select first.");
+        throw new FlywheelError("NO_GOAL");
       }
 
       if (oc.state.phase === "awaiting_plan_approval" || (oc.state.phase === "planning" && oc.state.planDocument)) {
         if (!oc.state.planDocument) {
-          throw new Error("No saved plan artifact found in orchestrator state.");
+          throw new FlywheelError("NO_PLAN");
         }
 
         const planPath = sessionArtifactPath(ctx, oc.state.planDocument);

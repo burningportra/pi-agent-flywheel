@@ -29,6 +29,49 @@ export const CHECKPOINT_CORRUPT = "checkpoint.json.corrupt";
 /** Staleness threshold in milliseconds (24 hours). */
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * R-012: zombie-state TTL — checkpoints older than this without a selected goal
+ * trigger the doctor recovery menu. Override via FLYWHEEL_CHECKPOINT_TTL_DAYS.
+ */
+function getZombieTtlMs(): number {
+  const days = Number(process.env.FLYWHEEL_CHECKPOINT_TTL_DAYS ?? "7");
+  if (!Number.isFinite(days) || days <= 0) return 7 * 24 * 60 * 60 * 1000;
+  return days * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Read the checkpoint and return whether it's a zombie session: an aged
+ * checkpoint with no selected goal. The doctor surfaces a recovery menu
+ * when this returns true.
+ *
+ * R-012: 38/38 CASS deep-mining queries returned hits — zombie state is the
+ * single most common pi-agent-flywheel session-friction surface.
+ */
+export interface ZombieState {
+  isZombie: boolean;
+  ageDays: number | null;
+  hasGoal: boolean;
+  reason: string | null;
+}
+
+export function inspectZombieState(cwd: string): ZombieState {
+  const result = readCheckpoint(cwd);
+  if (!result) return { isZombie: false, ageDays: null, hasGoal: false, reason: "no checkpoint" };
+  const ttl = getZombieTtlMs();
+  const ageMs = Date.now() - Date.parse(result.envelope.writtenAt);
+  const ageDays = ageMs / (24 * 60 * 60 * 1000);
+  const hasGoal = !!(result.envelope.state as any)?.selectedGoal;
+  if (ageMs > ttl && !hasGoal) {
+    return {
+      isZombie: true,
+      ageDays,
+      hasGoal: false,
+      reason: `Checkpoint is ${ageDays.toFixed(1)}d old AND no selected goal — orchestrator will reject most tools with NO_GOAL/NO_PROFILE prereq errors. Pick a recovery path before proceeding.`,
+    };
+  }
+  return { isZombie: false, ageDays, hasGoal, reason: null };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────
 
 function checkpointDir(cwd: string): string {

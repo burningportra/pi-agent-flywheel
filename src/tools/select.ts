@@ -4,19 +4,22 @@ import type { OrchestratorContext } from "../types.js";
 import { formatRepoProfile, beadCreationPrompt } from "../prompts.js";
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { FlywheelError } from "../errors.js";
 export function registerSelectTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_select", "orch_select", "flywheel_select"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Select Idea",
     description:
-      "Present the discovered ideas to the user and let them select one (or enter a custom goal). Returns the selected goal string.",
+      "Present the discovered ideas to the user and let them select one (or enter a custom goal). Returns the selected goal string. [phase 3/6, prereq: flywheel_discover, next: flywheel_plan]",
     promptSnippet: "Present ideas to user for selection",
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("select"));
       if (!oc.state.candidateIdeas || oc.state.candidateIdeas.length === 0) {
-        throw new Error("No ideas available. Call orch_discover first.");
+        throw new FlywheelError("NO_IDEAS");
       }
 
       // Group ideas by tier for display

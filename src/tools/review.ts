@@ -7,17 +7,18 @@ import { readMemory } from "../memory.js";
 import { getEpisodicContext, sanitiseSlug } from "../episodic-memory.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
-import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
+import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessVerificationEvidence } from "../bead-review.js";
 
+import { FlywheelError } from "../errors.js";
 export function registerReviewTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Review Step",
     description:
-      "Submit your implementation work for review. Provide a summary of what you changed. The tool evaluates against acceptance criteria and returns pass/fail.",
+      "Submit your implementation work for review. Provide a summary of what you changed. The tool evaluates against acceptance criteria and returns pass/fail. [phase 6/6, prereq: flywheel_approve_beads, next: none]",
     promptSnippet: "Submit implementation for review against acceptance criteria",
     parameters: Type.Object({
       beadId: Type.String({ description: "bead ID to review (from br list), \"__gates__\" for guided gates, or \"__regress_to_plan__\"/\"__regress_to_beads__\"/\"__regress_to_implement__\" for phase regression" }),
@@ -36,6 +37,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("review"));
       const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, extractVerificationContract } = await import("../beads.js");
 
       // Sentinel: beadId === "__gates__" while iterating = show next gate
@@ -168,7 +170,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
 
       const bead = await getBeadById(oc.pi, ctx.cwd, params.beadId);
       if (!bead) {
-        throw new Error(`Bead ${params.beadId} not found. Use \`br list\` to see available beads.`);
+        throw new FlywheelError("BEAD_NOT_FOUND", `Bead ${params.beadId} not found. Use \`br list\` to see available beads.`);
       }
 
       const verificationContract = extractVerificationContract(bead.description ?? "");

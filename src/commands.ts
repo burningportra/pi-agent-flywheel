@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { brExec, resilientExec } from './cli-exec.js';
 import { prepareComplianceAuditPlan, type ComplianceAuditMode, type ComplianceRemediationPolicy } from './compliance-audit.js';
+import { emitSlashDeprecationWarning } from './tools/shared.js';
 
 /**
  * Format staleness info for open beads, showing when they were created.
@@ -250,6 +251,26 @@ function parseComplianceAuditArgs(rawArgs?: string): {
  * /orchestrate-status, /memory) on the pi extension API.
  */
 export function registerCommands(oc: OrchestratorContext) {
+
+  // R-005: wrap registerCommand to emit slash deprecation warnings.
+  // Each legacy alias (mapped in SLASH_CANONICAL) emits a one-shot warning when invoked.
+  const __originalRegisterCommand = oc.pi.registerCommand.bind(oc.pi);
+  oc.pi.registerCommand = ((name: string, opts: any) => {
+    const opts2 = (() => {
+      if (!opts || typeof opts.run !== 'function') return opts;
+      const __originalRun = opts.run;
+      return {
+        ...opts,
+        run: async function (this: any, ctx: any) {
+          emitSlashDeprecationWarning(name);
+          return __originalRun.call(this, ctx);
+        },
+      };
+    })();
+    return __originalRegisterCommand(name, opts2);
+  }) as typeof oc.pi.registerCommand;
+
+
   const { pi } = oc;
 
   const startHandler = async (args: string, ctx: any) => {
@@ -1787,9 +1808,9 @@ ${description}
   });
 
   // ─── Command: /orchestrate-audit ─────────────────────────────
-  pi.registerCommand("orchestrate-audit", {
+  const codebaseAuditOptions = {
     description: "Full codebase audit: spin up parallel agents for bugs, security, tests, and dead code",
-    handler: async (args, ctx) => {
+    handler: async (args: string, ctx: any) => {
       const { auditAgentPrompt, findingsToBeadsPrompt } = await import("./prompts.js");
       const { getDomainChecklist, formatDomainBlunderItems } = await import("./domain-knowledge.js");
       const { runDeepPlanAgents } = await import("./deep-plan.js");
@@ -1813,7 +1834,7 @@ ${description}
       const allFoci: AuditFocus[] = ["bugs", "security", "tests", "dead-code"];
       let foci: AuditFocus[] = allFoci;
       if (focusMatch) {
-        const requested = focusMatch[1].split(",").map(s => s.trim()) as AuditFocus[];
+        const requested = focusMatch[1].split(",").map((s: string) => s.trim()) as AuditFocus[];
         foci = requested.filter(f => allFoci.includes(f));
         if (foci.length === 0) foci = allFoci;
       }
@@ -1926,7 +1947,10 @@ ${description}
         { deliverAs: "followUp" }
       );
     },
-  });
+  };
+  pi.registerCommand("flywheel-audit", codebaseAuditOptions);
+  pi.registerCommand("orchestrate-audit", { ...codebaseAuditOptions, description: "Legacy alias of /flywheel-audit" });
+  pi.registerCommand("agent-flywheel-audit", { ...codebaseAuditOptions, description: "Legacy alias of /flywheel-audit" });
 
   // ─── Command: /orchestrate-scan ──────────────────────────────
   pi.registerCommand("orchestrate-scan", {

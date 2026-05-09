@@ -3,6 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export function registerMemoryTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_memory", "orch_memory", "flywheel_memory"] as const) {
   oc.pi.registerTool({
@@ -38,6 +39,7 @@ export function registerMemoryTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("memory"));
       const { listMemoryEntries, searchMemory, getMemoryStats, getContext, markRule } =
         await import("../memory.js");
 

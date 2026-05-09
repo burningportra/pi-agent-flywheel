@@ -2,10 +2,11 @@ import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { OrchestratorContext } from "../types.js";
-import { readCheckpoint } from "../checkpoint.js";
+import { readCheckpoint, inspectZombieState } from "../checkpoint.js";
 import { AGENT_MAIL_URL, agentMailRPC } from "../agent-mail.js";
 import { brExec } from "../cli-exec.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export type DoctorSeverity = "green" | "yellow" | "red";
 
 export interface DoctorCheck {
@@ -132,7 +133,22 @@ export async function runDoctorChecks(pi: ExtensionAPI, cwd: string): Promise<Do
       return {
         severity: "yellow",
         message: `checkpoint valid with warning(s): ${checkpoint.warnings.join("; ")}`,
-        hint: "Run /orchestrate to resume or /flywheel-stop to clear stale state.",
+        hint: "Run /flywheel-start to resume or /flywheel-stop to clear stale state.",
+      };
+    }),
+    timedCheck("zombie_session", async () => {
+      // R-012: detect aged checkpoint without a selected goal — the prereq error spam happens here.
+      const z = inspectZombieState(cwd);
+      if (!z.isZombie) return { severity: "green", message: z.ageDays === null ? "no checkpoint" : `session is fresh (${z.ageDays.toFixed(1)}d old, hasGoal=${z.hasGoal})` };
+      return {
+        severity: "red",
+        message: z.reason ?? "zombie session",
+        hint:
+          "Recovery menu (R-012):\n" +
+          "       (a) flywheel_select — pick existing or new goal\n" +
+          "       (b) flywheel_profile — re-profile and start fresh\n" +
+          "       (c) /flywheel-stop — abandon this session\n" +
+          "       (override staleness window via FLYWHEEL_CHECKPOINT_TTL_DAYS)",
       };
     }),
     timedCheck("orphaned_worktrees", async () => {
@@ -174,14 +190,16 @@ export function formatDoctorReport(report: DoctorReport): string {
 }
 
 export function registerDoctorTool(oc: OrchestratorContext) {
+  for (const toolName of ["agent_flywheel_doctor", "orch_doctor", "flywheel_doctor"] as const) {
   oc.pi.registerTool({
-    name: "flywheel_doctor",
+    name: toolName,
     label: "Flywheel Doctor",
     description: "Read-only diagnostic for flywheel prerequisites and session health (git, br/bv, ntm, agent-mail, checkpoint, orphaned worktrees).",
     promptSnippet: "Run a read-only flywheel health diagnostic",
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("doctor"));
       const report = await runDoctorChecks(oc.pi, ctx.cwd);
       return {
         content: [{ type: "text", text: formatDoctorReport(report) }],
@@ -196,4 +214,5 @@ export function registerDoctorTool(oc: OrchestratorContext) {
       return new Text(theme.fg(color, `Flywheel doctor: ${report.overall} (${report.elapsedMs}ms)`), 0, 0);
     },
   });
+  }
 }

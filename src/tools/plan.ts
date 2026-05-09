@@ -15,6 +15,8 @@ import { findSessionArtifactPath, sessionArtifactPath } from "../session-artifac
 import { getDeepPlanModels, detectAvailableModels, formatDetectedModels } from "../model-detection.js";
 import { readMemory } from "../memory.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { FlywheelError } from "../errors.js";
 /**
  * Save a plan snapshot to docs/plans/ in the project repo.
  * Filenames: docs/plans/<date>-<slug>-<suffix>.md
@@ -136,7 +138,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Generate Plan",
     description:
-      "Generate a plan document for the selected goal. Supports single-model and multi-model competing-plan synthesis.",
+      "Generate a plan document for the selected goal. Supports single-model and multi-model competing-plan synthesis. [phase 4/6, prereq: flywheel_select, next: flywheel_approve_beads]",
     promptSnippet: "Generate a detailed plan document",
     parameters: Type.Object({
       mode: Type.Union([
@@ -146,8 +148,9 @@ export function registerPlanTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("plan"));
       if (!oc.state.selectedGoal || !oc.state.repoProfile) {
-        throw new Error("No selected goal or repo profile. Call agent_flywheel_profile and agent_flywheel_select first.");
+        throw new FlywheelError("NO_GOAL", "No selected goal or repo profile. Call flywheel_profile and flywheel_select first.");
       }
 
       const mode = params.mode as "single_model" | "multi_model";
@@ -277,10 +280,11 @@ export function registerPlanTool(oc: OrchestratorContext) {
         const detected = detectAvailableModels(ctx);
         const detectedInfo = formatDetectedModels(detected);
         
-        throw new Error(
+        throw new FlywheelError("PLAN_SYNTH_FAILED",
           `All competing planning agents failed. Details:\n${failures}\n\n` +
           `${detectedInfo}\n\n` +
-          `Try \`agent_flywheel_plan({ mode: "single_model" })\` as a fallback.`
+          `Try \`flywheel_plan({ mode: "single_model" })\` as a fallback.`,
+          { suggestion: "flywheel_plan({ mode: 'single_model' })" }
         );
       }
 
@@ -292,7 +296,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
       );
       const synthesizedPlan = synthesisResult[0]?.plan?.trim();
       if (!synthesizedPlan) {
-        throw new Error("Plan synthesis failed.");
+        throw new FlywheelError("PLAN_SYNTH_FAILED");
       }
 
       const artifactName = artifactNames.final;
