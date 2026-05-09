@@ -15,6 +15,7 @@ import { findSessionArtifactPath, sessionArtifactPath } from "../session-artifac
 import { getDeepPlanModels, detectAvailableModels, formatDetectedModels } from "../model-detection.js";
 import { readMemory } from "../memory.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 /**
  * Save a plan snapshot to docs/plans/ in the project repo.
  * Filenames: docs/plans/<date>-<slug>-<suffix>.md
@@ -146,8 +147,9 @@ export function registerPlanTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("plan"));
       if (!oc.state.selectedGoal || !oc.state.repoProfile) {
-        throw new Error("No selected goal or repo profile. Call agent_flywheel_profile and agent_flywheel_select first.");
+        throw new Error("No selected goal or repo profile. Call flywheel_profile and flywheel_select first.");
       }
 
       const mode = params.mode as "single_model" | "multi_model";
@@ -280,7 +282,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
         throw new Error(
           `All competing planning agents failed. Details:\n${failures}\n\n` +
           `${detectedInfo}\n\n` +
-          `Try \`agent_flywheel_plan({ mode: "single_model" })\` as a fallback.`
+          `Try \`flywheel_plan({ mode: "single_model" })\` as a fallback.`
         );
       }
 

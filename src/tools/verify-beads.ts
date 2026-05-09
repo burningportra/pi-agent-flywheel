@@ -3,6 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { getBeadById, updateBeadStatus } from "../beads.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 interface VerifyOutcome {
   verified: string[];
   autoClosed: Array<{ beadId: string; commit: string }>;
@@ -51,6 +52,7 @@ export function registerVerifyBeadsTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("verify_beads"));
       const beadIds = Array.isArray(params.beadIds) ? params.beadIds as string[] : [];
       if (beadIds.length === 0) {
         return {

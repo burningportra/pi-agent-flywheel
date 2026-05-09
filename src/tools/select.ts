@@ -4,6 +4,7 @@ import type { OrchestratorContext } from "../types.js";
 import { formatRepoProfile, beadCreationPrompt } from "../prompts.js";
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export function registerSelectTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_select", "orch_select", "flywheel_select"] as const) {
   oc.pi.registerTool({
@@ -15,8 +16,9 @@ export function registerSelectTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("select"));
       if (!oc.state.candidateIdeas || oc.state.candidateIdeas.length === 0) {
-        throw new Error("No ideas available. Call orch_discover first.");
+        throw new Error("No ideas available. Call flywheel_discover first.");
       }
 
       // Group ideas by tier for display

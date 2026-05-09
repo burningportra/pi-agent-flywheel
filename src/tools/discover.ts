@@ -6,13 +6,14 @@ import { join } from "path";
 import { tmpdir } from "os";
 import type { OrchestratorContext, CandidateIdea } from "../types.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export function registerDiscoverTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_discover", "orch_discover", "flywheel_discover"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Discover Ideas",
     description:
-      "Generate 3–7 concrete project ideas based on the repo profile. Call agent_flywheel_profile first. Returns structured ideas. After generating, call agent_flywheel_select for user selection.",
+      "Generate 3–7 concrete project ideas based on the repo profile. Call flywheel_profile first. Returns structured ideas. After generating, call agent_flywheel_select for user selection.",
     promptSnippet: "Generate project ideas from the repo profile",
     parameters: Type.Object({
       ideas: Type.Array(
@@ -44,8 +45,9 @@ export function registerDiscoverTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("discover"));
       if (!oc.state.repoProfile) {
-        throw new Error("No repo profile. Call agent_flywheel_profile first.");
+        throw new Error("No repo profile. Call flywheel_profile first.");
       }
 
       oc.state.candidateIdeas = params.ideas as CandidateIdea[];

@@ -6,6 +6,7 @@ import { readCheckpoint } from "../checkpoint.js";
 import { AGENT_MAIL_URL, agentMailRPC } from "../agent-mail.js";
 import { brExec } from "../cli-exec.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export type DoctorSeverity = "green" | "yellow" | "red";
 
 export interface DoctorCheck {
@@ -174,14 +175,16 @@ export function formatDoctorReport(report: DoctorReport): string {
 }
 
 export function registerDoctorTool(oc: OrchestratorContext) {
+  for (const toolName of ["agent_flywheel_doctor", "orch_doctor", "flywheel_doctor"] as const) {
   oc.pi.registerTool({
-    name: "flywheel_doctor",
+    name: toolName,
     label: "Flywheel Doctor",
     description: "Read-only diagnostic for flywheel prerequisites and session health (git, br/bv, ntm, agent-mail, checkpoint, orphaned worktrees).",
     promptSnippet: "Run a read-only flywheel health diagnostic",
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("doctor"));
       const report = await runDoctorChecks(oc.pi, ctx.cwd);
       return {
         content: [{ type: "text", text: formatDoctorReport(report) }],
@@ -196,4 +199,5 @@ export function registerDoctorTool(oc: OrchestratorContext) {
       return new Text(theme.fg(color, `Flywheel doctor: ${report.overall} (${report.elapsedMs}ms)`), 0, 0);
     },
   });
+  }
 }

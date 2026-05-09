@@ -1,6 +1,48 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CoordinationMode } from "../types.js";
 
+export const TOOL_CANONICAL_PREFIX = "flywheel_";
+
+const deprecationWarningEmitted = new Set<string>();
+
+export function emitToolDeprecationWarning(calledName: string, canonicalName: string): void {
+  if (calledName === canonicalName) return;
+  if (process.env.FLYWHEEL_SUPPRESS_DEPRECATION) return;
+  const key = `${calledName}->${canonicalName}`;
+  if (deprecationWarningEmitted.has(key)) return;
+  deprecationWarningEmitted.add(key);
+  console.warn(
+    `[pi-agent-flywheel] tool name '${calledName}' is deprecated; use '${canonicalName}' instead. ` +
+    `The legacy alias will be removed in v2.0.0.`
+  );
+}
+
+export const TOOL_FAMILIES = {
+  profile: ["agent_flywheel_profile", "orch_profile", "flywheel_profile"],
+  discover: ["agent_flywheel_discover", "orch_discover", "flywheel_discover"],
+  select: ["agent_flywheel_select", "orch_select", "flywheel_select"],
+  plan: ["agent_flywheel_plan", "orch_plan", "flywheel_plan"],
+  approve_beads: ["agent_flywheel_approve_beads", "orch_approve_beads", "flywheel_approve_beads"],
+  review: ["agent_flywheel_review", "orch_review", "flywheel_review"],
+  memory: ["agent_flywheel_memory", "orch_memory", "flywheel_memory"],
+  doctor: ["agent_flywheel_doctor", "orch_doctor", "flywheel_doctor"],
+  verify_beads: ["agent_flywheel_verify_beads", "orch_verify_beads", "flywheel_verify_beads"],
+  audit_beads: ["agent_flywheel_audit_beads", "orch_audit_beads", "flywheel_audit_beads"],
+  capabilities: ["flywheel_capabilities"],
+  robot_docs: ["flywheel_robot_docs"],
+  triage: ["flywheel_triage"],
+} as const;
+
+export function canonicalName(family: keyof typeof TOOL_FAMILIES): string {
+  const names = TOOL_FAMILIES[family];
+  return names[names.length - 1];
+}
+
+/** Reset memoized state. Test-only; not part of the public surface. */
+export function _resetDeprecationCache(): void {
+  deprecationWarningEmitted.clear();
+}
+
 export function formatModelRef(model: { provider?: string; id: string }): string {
   return model.provider ? `${model.provider}/${model.id}` : model.id;
 }

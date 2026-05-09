@@ -6,7 +6,7 @@ import { implementerInstructions, freshContextRefinementPrompt, computeConvergen
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
 import { sessionArtifactPath } from "../session-artifacts.js";
-import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
+import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExecJson, resilientExec } from "../cli-exec.js";
 
 // ─── Module-level bead snapshots for change detection ────────
@@ -233,8 +233,9 @@ export function registerApproveTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("approve_beads"));
       if (!oc.state.selectedGoal) {
-        throw new Error("No goal selected. Call agent_flywheel_select first.");
+        throw new Error("No goal selected. Call flywheel_select first.");
       }
 
       if (oc.state.phase === "awaiting_plan_approval" || (oc.state.phase === "planning" && oc.state.planDocument)) {

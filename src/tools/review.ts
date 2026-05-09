@@ -7,7 +7,7 @@ import { readMemory } from "../memory.js";
 import { getEpisodicContext, sanitiseSlug } from "../episodic-memory.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
-import { getParallelModelAssignments, resolveExecutionMode } from "./shared.js";
+import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessVerificationEvidence } from "../bead-review.js";
 
@@ -36,6 +36,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("review"));
       const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, extractVerificationContract } = await import("../beads.js");
 
       // Sentinel: beadId === "__gates__" while iterating = show next gate

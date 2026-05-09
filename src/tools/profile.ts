@@ -13,6 +13,7 @@ import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
 import { detectCoordinationBackend, selectMode, selectStrategy } from "../coordination.js";
 import { brExec, brExecJson } from "../cli-exec.js";
 
+import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 /** Compute weighted score for a candidate idea (for fallback sorting). */
 function weightedScore(idea: import("../types.js").CandidateIdea): number {
   if (!idea.scores) return 0;
@@ -31,6 +32,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, onUpdate, ctx) {
+      emitToolDeprecationWarning(toolName, canonicalName("profile"));
       oc.setPhase("profiling", ctx);
       ctx.ui.notify(`pi-agent-flywheel v${oc.version}`, 'info');
       onUpdate?.({
