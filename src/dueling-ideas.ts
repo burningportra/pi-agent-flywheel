@@ -164,9 +164,14 @@ export function buildDuelingIdeaSubagentConfigs(
   profile: RepoProfile,
   scanResult: ScanResult | undefined,
   existingBeadTitles: string[],
+  artifactCtx?: Pick<ExtensionContext, "cwd" | "sessionManager">,
 ) {
   return agents.map((agent) => {
     const artifactName = duelingIdeaArtifactName(agent);
+    const absoluteArtifactPath = artifactCtx ? sessionArtifactPath(artifactCtx, artifactName) : undefined;
+    const persistenceFallback = absoluteArtifactPath
+      ? `If write_artifact is not available in your tool list, use the write tool to create exactly this file instead: \`${absoluteArtifactPath}\`.`
+      : "If write_artifact is not available in your tool list, say so explicitly in your final response.";
     return {
       name: `dueling-${agent.type.toLowerCase()}-ideas`,
       agent: "planner",
@@ -175,6 +180,7 @@ export function buildDuelingIdeaSubagentConfigs(
       task:
         `${duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles)}\n\n` +
         `After you finish, save your full wizard response with write_artifact using exactly this name: \`${artifactName}\`.\n` +
+        `${persistenceFallback}\n` +
         `Do not create beads. In your final response, mention that you wrote \`${artifactName}\`.`,
     };
   });

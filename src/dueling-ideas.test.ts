@@ -59,12 +59,22 @@ describe("dueling idea prompts", () => {
   });
 
   it("builds interactive wizard subagent configs that persist idea artifacts", () => {
+    const artifactCtx = {
+      cwd: "/repo",
+      sessionManager: {
+        getSessionDir: () => "/sessions-root/project",
+        getSessionId: () => "parent-session",
+        getSessionFile: () => "/sessions-root/project/parent-session.jsonl",
+      },
+    } as unknown as ExtensionContext;
+
     const configs = buildDuelingIdeaSubagentConfigs(
       "/repo",
       [agent, other],
       makeProfile(),
       undefined,
       ["Existing bead"],
+      artifactCtx,
     );
 
     expect(configs).toHaveLength(2);
@@ -74,6 +84,8 @@ describe("dueling idea prompts", () => {
     expect(configs[0].model).toBe(agent.model);
     expect(configs[0].task).toContain("Dueling Idea Wizards");
     expect(configs[0].task).toContain("write_artifact");
+    expect(configs[0].task).toContain("If write_artifact is not available");
+    expect(configs[0].task).toContain("/sessions-root/project/artifacts/parent-session/dueling-wizards/WIZARD_IDEAS_CC.md");
     expect(configs[0].task).toContain(duelingIdeaArtifactName(agent));
     expect(configs[0].task).toContain("Existing bead");
   });
