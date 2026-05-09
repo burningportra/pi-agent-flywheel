@@ -137,7 +137,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Generate Plan",
     description:
-      "Generate a plan document for the selected goal. Supports single-model and multi-model competing-plan synthesis.",
+      "Generate a plan document for the selected goal. Supports single-model and multi-model competing-plan synthesis. [phase 4/6, prereq: flywheel_select, next: flywheel_approve_beads]",
     promptSnippet: "Generate a detailed plan document",
     parameters: Type.Object({
       mode: Type.Union([

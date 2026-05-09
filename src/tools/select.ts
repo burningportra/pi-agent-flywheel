@@ -11,7 +11,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Select Idea",
     description:
-      "Present the discovered ideas to the user and let them select one (or enter a custom goal). Returns the selected goal string.",
+      "Present the discovered ideas to the user and let them select one (or enter a custom goal). Returns the selected goal string. [phase 3/6, prereq: flywheel_discover, next: flywheel_plan]",
     promptSnippet: "Present ideas to user for selection",
     parameters: Type.Object({}),
 

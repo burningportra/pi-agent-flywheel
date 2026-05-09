@@ -27,7 +27,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Profile Repo",
     description:
-      "Scan the current repository to collect its tech stack, structure, commits, TODOs, and key files. Returns a structured profile.",
+      "Scan the current repository to collect its tech stack, structure, commits, TODOs, and key files. Returns a structured profile. [phase 1/6, prereq: none, next: flywheel_discover]",
     promptSnippet: "Profile the current repo (languages, frameworks, structure, commits, TODOs)",
     parameters: Type.Object({}),
 

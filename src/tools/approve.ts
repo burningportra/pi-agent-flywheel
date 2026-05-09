@@ -228,7 +228,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Approve Beads",
     description:
-      "Read beads created via br CLI, present them for user approval. Offers refinement passes (Phase 6) before execution. Call after the LLM has created beads with br create.",
+      "Read beads created via br CLI, present them for user approval. Offers refinement passes (Phase 6) before execution. Call after the LLM has created beads with br create. [phase 5/6, prereq: flywheel_plan, next: flywheel_review]",
     promptSnippet: "Present beads for user approval before execution",
     parameters: Type.Object({}),
 

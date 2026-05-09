@@ -13,7 +13,7 @@ export function registerDiscoverTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Discover Ideas",
     description:
-      "Generate 3–7 concrete project ideas based on the repo profile. Call flywheel_profile first. Returns structured ideas. After generating, call agent_flywheel_select for user selection.",
+      "Generate 3–7 concrete project ideas based on the repo profile. Call flywheel_profile first. Returns structured ideas. After generating, call agent_flywheel_select for user selection. [phase 2/6, prereq: flywheel_profile, next: flywheel_select]",
     promptSnippet: "Generate project ideas from the repo profile",
     parameters: Type.Object({
       ideas: Type.Array(

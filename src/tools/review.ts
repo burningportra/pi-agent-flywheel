@@ -17,7 +17,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
     name: toolName,
     label: "Review Step",
     description:
-      "Submit your implementation work for review. Provide a summary of what you changed. The tool evaluates against acceptance criteria and returns pass/fail.",
+      "Submit your implementation work for review. Provide a summary of what you changed. The tool evaluates against acceptance criteria and returns pass/fail. [phase 6/6, prereq: flywheel_approve_beads, next: none]",
     promptSnippet: "Submit implementation for review against acceptance criteria",
     parameters: Type.Object({
       beadId: Type.String({ description: "bead ID to review (from br list), \"__gates__\" for guided gates, or \"__regress_to_plan__\"/\"__regress_to_beads__\"/\"__regress_to_implement__\" for phase regression" }),
