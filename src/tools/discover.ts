@@ -7,6 +7,7 @@ import { tmpdir } from "os";
 import type { OrchestratorContext, CandidateIdea } from "../types.js";
 
 import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { FlywheelError } from "../errors.js";
 export function registerDiscoverTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_discover", "orch_discover", "flywheel_discover"] as const) {
   oc.pi.registerTool({
@@ -47,7 +48,7 @@ export function registerDiscoverTool(oc: OrchestratorContext) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       emitToolDeprecationWarning(toolName, canonicalName("discover"));
       if (!oc.state.repoProfile) {
-        throw new Error("No repo profile. Call flywheel_profile first.");
+        throw new FlywheelError("NO_PROFILE");
       }
 
       oc.state.candidateIdeas = params.ideas as CandidateIdea[];

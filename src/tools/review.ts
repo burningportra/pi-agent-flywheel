@@ -11,6 +11,7 @@ import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecation
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessVerificationEvidence } from "../bead-review.js";
 
+import { FlywheelError } from "../errors.js";
 export function registerReviewTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
@@ -169,7 +170,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
 
       const bead = await getBeadById(oc.pi, ctx.cwd, params.beadId);
       if (!bead) {
-        throw new Error(`Bead ${params.beadId} not found. Use \`br list\` to see available beads.`);
+        throw new FlywheelError("BEAD_NOT_FOUND", `Bead ${params.beadId} not found. Use \`br list\` to see available beads.`);
       }
 
       const verificationContract = extractVerificationContract(bead.description ?? "");
