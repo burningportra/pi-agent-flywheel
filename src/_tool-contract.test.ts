@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { TOOL_FAMILIES, TOOL_CANONICAL_PREFIX, canonicalName, emitToolDeprecationWarning, _resetDeprecationCache } from "./tools/shared.js";
+import { TOOL_FAMILIES, TOOL_CANONICAL_PREFIX, canonicalName, emitToolDeprecationWarning, _resetDeprecationCache, SLASH_CANONICAL, emitSlashDeprecationWarning, _resetSlashDeprecationCache } from "./tools/shared.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOOLS_DIR = join(__dirname, "tools");
@@ -111,6 +111,41 @@ describe("R-009: tool contract — canonical names pinned", () => {
       }
     }
     expect(offenders, `legacy-prefix names in throws: ${offenders.join(", ")}`).toEqual([]);
+  });
+
+  it("R-005: SLASH_CANONICAL maps every legacy alias to a flywheel-* canonical", () => {
+    for (const [alias, canonical] of Object.entries(SLASH_CANONICAL)) {
+      expect(canonical, `alias ${alias} -> ${canonical}`).toMatch(/^flywheel-/);
+      expect(alias).not.toBe(canonical);
+    }
+  });
+
+  it("R-005: slash deprecation warning fires for legacy aliases and is one-shot", () => {
+    _resetSlashDeprecationCache();
+    const warns: string[] = [];
+    const orig = console.warn;
+    const prevSuppress = process.env.FLYWHEEL_SUPPRESS_DEPRECATION;
+    delete process.env.FLYWHEEL_SUPPRESS_DEPRECATION;
+    console.warn = (msg: string) => warns.push(msg);
+    try {
+      emitSlashDeprecationWarning("agent-flywheel-doctor"); // legacy alias
+      emitSlashDeprecationWarning("agent-flywheel-doctor"); // duplicate
+      emitSlashDeprecationWarning("flywheel-doctor"); // canonical, suppressed
+      emitSlashDeprecationWarning("memory"); // not in map, suppressed
+    } finally {
+      console.warn = orig;
+      if (prevSuppress !== undefined) process.env.FLYWHEEL_SUPPRESS_DEPRECATION = prevSuppress;
+    }
+    expect(warns.length).toBe(1);
+    expect(warns[0]).toContain("agent-flywheel-doctor");
+    expect(warns[0]).toContain("flywheel-doctor");
+  });
+
+  it("R-011: codebaseAuditOptions is registered under all 3 audit aliases", () => {
+    const src = readFileSync(join(__dirname, "commands.ts"), "utf8");
+    expect(src).toContain('pi.registerCommand("flywheel-audit", codebaseAuditOptions)');
+    expect(src).toContain('pi.registerCommand("orchestrate-audit", { ...codebaseAuditOptions');
+    expect(src).toContain('pi.registerCommand("agent-flywheel-audit", { ...codebaseAuditOptions');
   });
 
   it("doctor.ts has 3-name symmetry matching the other 9 tool families", () => {
