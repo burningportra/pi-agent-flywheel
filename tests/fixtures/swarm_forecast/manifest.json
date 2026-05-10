@@ -1,0 +1,47 @@
+{
+  "scenarios": [
+    {
+      "id": "empty_queue",
+      "input_sha256": "2ed0283ecd9b124b3ff8d7e423be04f688004e7eaefd1bc8d7005cde669731c1",
+      "path": "scenarios/empty_queue.json",
+      "proves": "Green path with no work, no risks, and copy-only observe action."
+    },
+    {
+      "id": "single_critical_path",
+      "input_sha256": "9dea815fddbbfa94196d8ca9439df3304935c90d40ae8c31344cd54d28cdb3d6",
+      "path": "scenarios/single_critical_path.json",
+      "proves": "Explicit dependency chain selects a stable critical path."
+    },
+    {
+      "id": "file_contention",
+      "input_sha256": "2f0d450f9c5dcfbeeef8e685d4a107d68f28052ebfadc3f35ef58587925368ae",
+      "path": "scenarios/file_contention.json",
+      "proves": "Multiple ready beads and reservations touch the same implementation file."
+    },
+    {
+      "id": "build_lane_saturation",
+      "input_sha256": "7ee8f55e9cc1d060f423c99afb7c3cd6730b1ec97cf655fcd4d5e000f40ff4f6",
+      "path": "scenarios/build_lane_saturation.json",
+      "proves": "Validation lane pressure is the dominant bottleneck."
+    },
+    {
+      "id": "agent_capability_mix",
+      "input_sha256": "38882c2184a35c60f55ff563868f2168c794d049a048934f4ddc7d1b8b61363c",
+      "path": "scenarios/agent_capability_mix.json",
+      "proves": "Capability evidence, unknown agents, and sanitizable activity snippets."
+    },
+    {
+      "id": "stale_agent_handoff",
+      "input_sha256": "068fc5e2531f14dbc8127846ddb4daa2d811a4d87109c355f8f7675123e00e45",
+      "path": "scenarios/stale_agent_handoff.json",
+      "proves": "Expired reservation and idle holder require contact before reassignment."
+    },
+    {
+      "id": "high_cardinality_120",
+      "input_sha256": "718df25b217eab4bfc2c26ff0f4748af555aad3466c27cee8605c9ff5e5ecb46",
+      "path": "scenarios/high_cardinality_120.json",
+      "proves": "Bounded forecast output for 100+ beads and agents."
+    }
+  ],
+  "schema": "swarm-forecast-fixtures.v1"
+}

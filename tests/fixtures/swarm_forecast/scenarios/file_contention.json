@@ -1,0 +1,134 @@
+{
+  "description": "Multiple ready beads and reservations touch the same implementation file.",
+  "expected_output": {
+    "confidence": {
+      "level": "high",
+      "rationale": [
+        "contention is exact-path overlap"
+      ],
+      "score": 0.92
+    },
+    "risks": [
+      {
+        "affected_beads": [
+          "forecast-ui-a",
+          "forecast-ui-b"
+        ],
+        "affected_paths": [
+          "src/tools/review.ts"
+        ],
+        "confidence": {
+          "level": "high",
+          "rationale": [
+            "same exact path appears twice"
+          ],
+          "score": 0.94
+        },
+        "evidence": [
+          "forecast-ui-a and forecast-ui-b both list src/tools/review.ts",
+          "two active exclusive reservations target the same path"
+        ],
+        "id": "risk-file-contention-review-ts",
+        "kind": "file-contention",
+        "severity": "warn"
+      }
+    ],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "draft_coordination_text",
+        "copy_text": "Serialize forecast-ui-a and forecast-ui-b; reserve src/tools/review.ts for one holder at a time.",
+        "dry_run_only": true,
+        "id": "draft-serialize-review-ts",
+        "label": "Draft serialization note",
+        "mutation": "none",
+        "rationale": "The recommendation is coordination text only, not an automatic release."
+      }
+    ],
+    "summary": {
+      "blocked_count": 0,
+      "critical_path": [
+        "forecast-ui-a",
+        "forecast-ui-b"
+      ],
+      "forecast_horizon_minutes": 45,
+      "in_progress_count": 0,
+      "ready_count": 3
+    }
+  },
+  "id": "file_contention",
+  "input": {
+    "agent_activity": [],
+    "agents": [],
+    "beads": [
+      {
+        "depends_on": [],
+        "files": [
+          "src/tools/review.ts"
+        ],
+        "id": "forecast-ui-a",
+        "labels": [
+          "dashboard"
+        ],
+        "priority": 1,
+        "status": "open",
+        "title": "Add forecast panel shell",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/tools/review.ts"
+        ],
+        "id": "forecast-ui-b",
+        "labels": [
+          "dashboard"
+        ],
+        "priority": 1,
+        "status": "open",
+        "title": "Add forecast launch warning",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "docs/runbooks/swarm-forecast.md"
+        ],
+        "id": "forecast-docs",
+        "labels": [
+          "docs"
+        ],
+        "priority": 1,
+        "status": "open",
+        "title": "Document forecast copy text",
+        "validation_lanes": []
+      }
+    ],
+    "build_lanes": [],
+    "file_reservations": [
+      {
+        "agent": "AgentOne",
+        "exclusive": true,
+        "expires_at": "2026-05-10T15:00:00Z",
+        "id": 101,
+        "path_pattern": "src/tools/review.ts",
+        "state": "active"
+      },
+      {
+        "agent": "AgentTwo",
+        "exclusive": true,
+        "expires_at": "2026-05-10T15:00:00Z",
+        "id": 102,
+        "path_pattern": "src/tools/review.ts",
+        "state": "active"
+      }
+    ],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": []
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}

@@ -34,7 +34,7 @@ Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
   │     │     └─ Stops at steady-state or ≥90% convergence
   │     ├─► Cross-model bead review (alternative AI model)
   │     ├─► Bead dedup check (detect overlapping beads)
-  │     └─► On approve: finds ready beads via `br ready`
+  │     └─► On approve: finds ready beads via `bv --robot-*` (preferred) or `br ready` fallback
   │
   │   ┌─── Per-Bead Loop ─────────────────────────────────────┐
   │   │  Pick next ready bead (`br ready`)                      │
@@ -212,7 +212,7 @@ Before implementation begins, a deduplication prompt scans for overlapping beads
 
 #### Bead Dependencies
 
-Dependencies are managed via `br dep add <child> <parent>`. The `br ready` command returns beads whose dependencies are all satisfied. Cycle detection is handled by the br CLI.
+Dependencies are managed via `br dep add <child> <parent>`. Use `bv --robot-insights` or `bv --robot-triage` (preferred) for readiness-aware selection; `br ready` is the fallback CLI path. Cycle detection handled by br + bv.
 
 #### Bead Template Library
 
@@ -234,8 +234,8 @@ A correct draft can start with placeholders such as `{{endpointPath}}`, `{{modul
 
 The orchestrator executes beads in dependency order:
 
-1. **`br ready`** returns beads whose dependencies are satisfied
-2. The LLM implements the next ready bead
+1. Use `bv --robot-next` (preferred) or fall back to `br ready` to pick bead
+2. The LLM implements the selected bead
 3. On completion, **`br done <id>`** marks the bead complete and unlocks dependents
 4. The loop continues until all beads are done
 

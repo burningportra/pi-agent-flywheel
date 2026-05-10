@@ -264,16 +264,16 @@ On completion, the system:
 ```bash
 # CLI commands
 br list --json              # All beads
-br ready --json             # Unblocked beads
 br show <id>                # Bead details
 br update <id> --status in_progress
 br update <id> --status closed
 br dep add <id> <dep-id>    # Add dependency
 br dep cycles               # Check for cycles
 br sync --flush-only        # Flush to JSONL
-bv --robot-next             # Best next bead (single agent)
-bv --robot-triage           # Best beads (parallel agents)
-bv --robot-insights         # Graph health report
+bv --robot-next             # PREFERRED: best single bead (graph-aware)
+bv --robot-triage           # PREFERRED for swarms (parallel-safe)
+bv --robot-insights         # Graph health & bottlenecks
+br ready --json             # Fallback only when bv reports "no actionable items"
 ```
 
 ```bash

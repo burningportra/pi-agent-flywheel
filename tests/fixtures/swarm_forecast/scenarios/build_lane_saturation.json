@@ -1,0 +1,130 @@
+{
+  "description": "Validation lane pressure is the dominant bottleneck.",
+  "expected_output": {
+    "confidence": {
+      "level": "medium",
+      "rationale": [
+        "historical durations are synthetic but stable"
+      ],
+      "score": 0.8
+    },
+    "risks": [
+      {
+        "affected_beads": [
+          "forecast-test-0",
+          "forecast-test-1",
+          "forecast-test-2"
+        ],
+        "affected_paths": [
+          "src/swarm-forecast-0.test.ts",
+          "src/swarm-forecast-1.test.ts"
+        ],
+        "confidence": {
+          "level": "medium",
+          "rationale": [
+            "lane timing comes from fixture history"
+          ],
+          "score": 0.82
+        },
+        "evidence": [
+          "npm-test capacity=1 running=1 queued=2",
+          "all ready beads require npm-test"
+        ],
+        "id": "risk-npm-test-lane-saturated",
+        "kind": "build-lane-saturation",
+        "severity": "warn"
+      }
+    ],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "operator_note",
+        "dry_run_only": true,
+        "id": "sequence-npm-test",
+        "label": "Sequence npm validation",
+        "mutation": "none",
+        "rationale": "Run one npm-test-heavy task at a time and use docs/type-only tasks while the lane is held."
+      }
+    ],
+    "summary": {
+      "blocked_count": 0,
+      "critical_path": [
+        "forecast-test-0",
+        "forecast-test-1",
+        "forecast-test-2"
+      ],
+      "forecast_horizon_minutes": 68,
+      "in_progress_count": 0,
+      "ready_count": 3
+    }
+  },
+  "id": "build_lane_saturation",
+  "input": {
+    "agent_activity": [],
+    "agents": [],
+    "beads": [
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm-forecast-0.test.ts"
+        ],
+        "id": "forecast-test-0",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Run forecast validation",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm-forecast-1.test.ts"
+        ],
+        "id": "forecast-test-1",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Run forecast validation",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm-forecast-2.test.ts"
+        ],
+        "id": "forecast-test-2",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Run forecast validation",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      }
+    ],
+    "build_lanes": [
+      {
+        "capacity": 1,
+        "id": "npm-test",
+        "kind": "node",
+        "queued": 2,
+        "running": 1
+      }
+    ],
+    "file_reservations": [],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": [
+      {
+        "bead_id": "forecast-test-0",
+        "duration_seconds": 75,
+        "lane": "npm-test",
+        "status": "pass"
+      }
+    ]
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}

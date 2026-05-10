@@ -1,0 +1,123 @@
+{
+  "description": "Explicit dependency chain selects a stable critical path.",
+  "expected_output": {
+    "confidence": {
+      "level": "high",
+      "rationale": [
+        "single chain has no competing tracks"
+      ],
+      "score": 0.91
+    },
+    "risks": [
+      {
+        "affected_beads": [
+          "forecast-a",
+          "forecast-b",
+          "forecast-c"
+        ],
+        "affected_paths": [],
+        "confidence": {
+          "level": "high",
+          "rationale": [
+            "all edges are explicit"
+          ],
+          "score": 0.9
+        },
+        "evidence": [
+          "forecast-a directly unblocks forecast-b then forecast-c"
+        ],
+        "id": "risk-critical-path-forecast-a",
+        "kind": "critical-path",
+        "severity": "info"
+      }
+    ],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "read_only_command",
+        "command": "br dep tree forecast-c --no-db",
+        "dry_run_only": true,
+        "id": "inspect-critical-path",
+        "label": "Inspect dependency path",
+        "mutation": "none",
+        "rationale": "Confirms the path before any claim or reservation decision."
+      }
+    ],
+    "summary": {
+      "blocked_count": 2,
+      "critical_path": [
+        "forecast-a",
+        "forecast-b",
+        "forecast-c"
+      ],
+      "forecast_horizon_minutes": 1,
+      "in_progress_count": 0,
+      "ready_count": 1
+    }
+  },
+  "id": "single_critical_path",
+  "input": {
+    "agent_activity": [],
+    "agents": [],
+    "beads": [
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm-forecast.ts"
+        ],
+        "id": "forecast-a",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Prepare forecast contracts",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [
+          "forecast-a"
+        ],
+        "files": [
+          "src/swarm-forecast.ts"
+        ],
+        "id": "forecast-b",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Implement forecast engine",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [
+          "forecast-b"
+        ],
+        "files": [
+          "src/swarm-forecast-report.ts"
+        ],
+        "id": "forecast-c",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Wire forecast report",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      }
+    ],
+    "build_lanes": [],
+    "file_reservations": [],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": [
+      {
+        "bead_id": "forecast-a",
+        "duration_seconds": 20,
+        "lane": "npm-test",
+        "status": "pass"
+      }
+    ]
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}

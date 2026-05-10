@@ -482,8 +482,9 @@ sophia init
 
 ```bash
 br list --json
-br ready --json
-bv --robot-next
+bv --robot-next     # PREFERRED (graph-aware)
+bv --robot-triage    # PREFERRED for swarms
+br ready --json      # fallback only
 bv --robot-insights
 ```
 
@@ -652,8 +653,10 @@ Then verify bead tooling manually:
 
 ```bash
 br list --json
-br ready --json
 bv --robot-insights
+bv --robot-next   # PREFERRED
+bv --robot-triage
+br ready --json  # fallback only
 ```
 
 If your repo has no bead database yet, initialize or create beads according to your local `br` workflow.

@@ -66,7 +66,7 @@ curl -s -X POST http://127.0.0.1:8765/api -H 'Content-Type: application/json' \
 - Use thread "general" for cross-bead coordination
 - Announce start, announce completion, respond to messages promptly
 - At the start of each work session, pick a fresh callsign instead of reusing a default like `BoldForge`; mention it in the first coordination/status note.
-- Use `bv --robot-next` to pick your next bead when idle
+- Always prefer `bv --robot-next` (or `bv --robot-triage` for swarms) to pick the next bead. `br ready --json` is a fallback only when bv is unavailable or reports no actionable items.
 
 ## Episodic Memory (MemPalace) — Optional
 
@@ -100,12 +100,13 @@ python -m mempalace init
 ## Beads (br CLI)
 ```bash
 br list                    # All beads
-br ready                   # Unblocked beads
 br show <id>               # Bead details
 br update <id> --status in_progress
 br update <id> --status closed
-bv --robot-next            # Smart next-bead pick
+bv --robot-next            # Smart next-bead pick (PREFERRED)
+bv --robot-triage          # Parallel-safe work for swarms (PREFERRED)
 bv --robot-insights        # Graph health
+br ready                   # Fallback only (use bv first)
 ```
 
 ## Epistemic Discipline

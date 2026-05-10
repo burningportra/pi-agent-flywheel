@@ -75,7 +75,7 @@ Recommended conventions
 
 Typical flow (agents)
 1) **Pick ready work** (Beads)
-   - \`br ready --json\` → choose one item (highest priority, no blockers)
+   - Prefer bv --robot-next or bv --robot-triage. Fallback br ready --json only if bv unavailable.
 2) **Reserve edit surface** (Mail)
    - \`file_reservation_paths(project_key, agent_name, ["src/**"], ttl_seconds=3600, exclusive=true, reason="bd-123")\`
 3) **Announce start** (Mail)
@@ -138,7 +138,7 @@ br is the local task tracker. Tasks are stored in .beads/ JSONL files.
 
 ### Key commands
 - \`br list --json\` — all beads
-- \`br ready --json\` — unblocked beads (your work queue)
+- \`br ready --json\` — unblocked beads (fallback only; prefer bv --robot-next)
 - \`br show <id>\` — full bead details
 - \`br update <id> --status in_progress\` — claim a bead
 - \`br update <id> --status closed\` — complete a bead

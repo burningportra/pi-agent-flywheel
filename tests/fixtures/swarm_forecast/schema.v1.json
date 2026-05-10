@@ -1,0 +1,41 @@
+{
+  "$id": "swarm-forecast-input.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_activity": {
+      "type": "array"
+    },
+    "agents": {
+      "type": "array"
+    },
+    "beads": {
+      "type": "array"
+    },
+    "build_lanes": {
+      "type": "array"
+    },
+    "file_reservations": {
+      "type": "array"
+    },
+    "forecast_config": {
+      "type": "object"
+    },
+    "validation_history": {
+      "type": "array"
+    },
+    "what_if": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "beads",
+    "agents",
+    "agent_activity",
+    "file_reservations",
+    "build_lanes",
+    "validation_history"
+  ],
+  "title": "Swarm forecast fixture input",
+  "type": "object"
+}

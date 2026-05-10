@@ -551,6 +551,27 @@ export function registerReviewTool(oc: OrchestratorContext) {
             };
           });
 
+          let forecastAdvisory = "";
+          try {
+            const { buildSwarmForecastInput } = await import("../swarm-forecast-adapter.js");
+            const { writeSwarmForecastReport, formatSwarmForecastLaunchAdvisory } = await import("../swarm-forecast-report.js");
+            const allForecastBeads = await readBeads(oc.pi, ctx.cwd);
+            const forecastInput = buildSwarmForecastInput({
+              beads: allForecastBeads,
+              sourceWarnings: oc.state.coordinationBackend?.agentMail ? [] : ["Agent Mail unavailable or not enabled for forecast adapter"],
+            });
+            const report = writeSwarmForecastReport({
+              input: forecastInput,
+              source: { kind: "implementation-mode", generated_by: "orch_review" },
+              outputDir: `${ctx.cwd}/.pi-agent-flywheel/swarm-forecast`,
+              basename: "latest",
+            });
+            forecastAdvisory = `\n\n${formatSwarmForecastLaunchAdvisory(report)}`;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            forecastAdvisory = `\n\n## 🔮 Swarm Forecast (read-only)\n\n- Forecast unavailable: ${message}\n- Failing open: launch instructions are still shown.\n- No bead, reservation, Agent Mail, or Git state was mutated by the forecast path.`;
+          }
+
           // Mark all as in_progress
           for (const b of ready) {
             await updateBeadStatus(oc.pi, ctx.cwd, b.id, "in_progress");
@@ -569,7 +590,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.\n\n${launchInstruction}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead to stay inside the implementation/review workflow.`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${forecastAdvisory}\n\n${launchInstruction}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead to stay inside the implementation/review workflow.`,
               },
             ],
             details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true },

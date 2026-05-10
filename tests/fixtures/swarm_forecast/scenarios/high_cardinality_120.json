@@ -1,0 +1,2980 @@
+{
+  "description": "Bounded forecast output for 100+ beads and agents.",
+  "expected_output": {
+    "confidence": {
+      "level": "medium",
+      "rationale": [
+        "synthetic but deterministic high-cardinality corpus"
+      ],
+      "score": 0.76
+    },
+    "risks": [
+      {
+        "affected_beads": [
+          "forecast-scale-000",
+          "forecast-scale-003",
+          "forecast-scale-006",
+          "forecast-scale-009",
+          "forecast-scale-012"
+        ],
+        "affected_paths": [
+          "src/swarm_forecast/module_0.ts",
+          "src/swarm_forecast/module_1.ts",
+          "src/swarm_forecast/module_2.ts",
+          "src/swarm_forecast/module_3.ts",
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "confidence": {
+          "level": "medium",
+          "rationale": [
+            "large fixture uses synthetic lane load"
+          ],
+          "score": 0.78
+        },
+        "evidence": [
+          "npm-test capacity=2 running=2 queued=18",
+          "120 beads require bounded output"
+        ],
+        "id": "risk-scale-npm-queue",
+        "kind": "high-cardinality",
+        "severity": "warn"
+      }
+    ],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "operator_note",
+        "dry_run_only": true,
+        "id": "bound-scale-output",
+        "label": "Bound high-cardinality display",
+        "mutation": "none",
+        "rationale": "Render top risks and counts first; require expansion for full 120-item detail."
+      }
+    ],
+    "summary": {
+      "blocked_count": 0,
+      "critical_path": [
+        "forecast-scale-000",
+        "forecast-scale-001",
+        "forecast-scale-002",
+        "forecast-scale-003",
+        "forecast-scale-004"
+      ],
+      "forecast_horizon_minutes": 240,
+      "in_progress_count": 0,
+      "ready_count": 120,
+      "truncated_sections": {
+        "actions": 5,
+        "risks": 5
+      }
+    }
+  },
+  "id": "high_cardinality_120",
+  "input": {
+    "agent_activity": [],
+    "agents": [
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-000",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent000",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent001",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent002",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent003",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent004",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-005",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent005",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent006",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent007",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent008",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent009",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-010",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent010",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent011",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent012",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent013",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent014",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-015",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent015",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent016",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent017",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent018",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent019",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-020",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent020",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent021",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent022",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent023",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent024",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-025",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent025",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent026",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent027",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent028",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent029",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-030",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent030",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent031",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent032",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent033",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent034",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-035",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent035",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent036",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent037",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent038",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent039",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-040",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent040",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent041",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent042",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent043",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent044",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-045",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent045",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent046",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent047",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent048",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent049",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-050",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent050",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent051",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent052",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent053",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent054",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-055",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent055",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent056",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent057",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent058",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent059",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-060",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent060",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent061",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent062",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent063",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent064",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-065",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent065",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent066",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent067",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent068",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent069",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-070",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent070",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent071",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent072",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent073",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent074",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-075",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent075",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent076",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent077",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent078",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent079",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-080",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent080",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent081",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent082",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent083",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent084",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-085",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent085",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent086",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent087",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent088",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent089",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-090",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent090",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent091",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent092",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent093",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent094",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-095",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent095",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent096",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent097",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent098",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent099",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-100",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent100",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent101",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent102",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent103",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent104",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-105",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent105",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent106",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent107",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent108",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent109",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-110",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent110",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent111",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent112",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent113",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent114",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-scale-115",
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent115",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent116",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent117",
+        "status": "idle"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent118",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ScaleAgent119",
+        "status": "idle"
+      }
+    ],
+    "beads": [
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-000",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 000",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-001",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 001",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-002",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 002",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-003",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 003",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-004",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 004",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-005",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 005",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-006",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 006",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-007",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 007",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-008",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 008",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-009",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 009",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-010",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 010",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-011",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 011",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-012",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 012",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-013",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 013",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-014",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 014",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-015",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 015",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-016",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 016",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-017",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 017",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-018",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 018",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-019",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 019",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-020",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 020",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-021",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 021",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-022",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 022",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-023",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 023",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-024",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 024",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-025",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 025",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-026",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 026",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-027",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 027",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-028",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 028",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-029",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 029",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-030",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 030",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-031",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 031",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-032",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 032",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-033",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 033",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-034",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 034",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-035",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 035",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-036",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 036",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-037",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 037",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-038",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 038",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-039",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 039",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-040",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 040",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-041",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 041",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-042",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 042",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-043",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 043",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-044",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 044",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-045",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 045",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-046",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 046",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-047",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 047",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-048",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 048",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-049",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 049",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-050",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 050",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-051",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 051",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-052",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 052",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-053",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 053",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-054",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 054",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-055",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 055",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-056",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 056",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-057",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 057",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-058",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 058",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-059",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 059",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-060",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 060",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-061",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 061",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-062",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 062",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-063",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 063",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-064",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 064",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-065",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 065",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-066",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 066",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-067",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 067",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-068",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 068",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-069",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 069",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-070",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 070",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-071",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 071",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-072",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 072",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-073",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 073",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-074",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 074",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-075",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 075",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-076",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 076",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-077",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 077",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-078",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 078",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-079",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 079",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-080",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 080",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-081",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 081",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-082",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 082",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-083",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 083",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-084",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 084",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-085",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 085",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-086",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 086",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-087",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 087",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-088",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 088",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-089",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 089",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-090",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 090",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-091",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 091",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-092",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 092",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-093",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 093",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-094",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 094",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-095",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 095",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-096",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 096",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-097",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 097",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-098",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 098",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-099",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 099",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-100",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 100",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-101",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 101",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-102",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 102",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-103",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 103",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-104",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 104",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-105",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 105",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-106",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 106",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-107",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 107",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_0.ts"
+        ],
+        "id": "forecast-scale-108",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 108",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_1.ts"
+        ],
+        "id": "forecast-scale-109",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 109",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_2.ts"
+        ],
+        "id": "forecast-scale-110",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 110",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_3.ts"
+        ],
+        "id": "forecast-scale-111",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 111",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_4.ts"
+        ],
+        "id": "forecast-scale-112",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 112",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_5.ts"
+        ],
+        "id": "forecast-scale-113",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 113",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_6.ts"
+        ],
+        "id": "forecast-scale-114",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 114",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_7.ts"
+        ],
+        "id": "forecast-scale-115",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 115",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_8.ts"
+        ],
+        "id": "forecast-scale-116",
+        "labels": [],
+        "priority": 0,
+        "status": "open",
+        "title": "Scale forecast task 116",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_9.ts"
+        ],
+        "id": "forecast-scale-117",
+        "labels": [],
+        "priority": 1,
+        "status": "open",
+        "title": "Scale forecast task 117",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_10.ts"
+        ],
+        "id": "forecast-scale-118",
+        "labels": [],
+        "priority": 2,
+        "status": "open",
+        "title": "Scale forecast task 118",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm_forecast/module_11.ts"
+        ],
+        "id": "forecast-scale-119",
+        "labels": [],
+        "priority": 3,
+        "status": "open",
+        "title": "Scale forecast task 119",
+        "validation_lanes": [
+          "npm-build"
+        ]
+      }
+    ],
+    "build_lanes": [
+      {
+        "capacity": 2,
+        "id": "npm-test",
+        "kind": "node",
+        "queued": 18,
+        "running": 2
+      },
+      {
+        "capacity": 2,
+        "id": "npm-build",
+        "kind": "node",
+        "queued": 12,
+        "running": 1
+      }
+    ],
+    "file_reservations": [],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": []
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}

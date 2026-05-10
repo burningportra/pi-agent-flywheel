@@ -1,0 +1,42 @@
+{
+  "description": "Green path with no work, no risks, and copy-only observe action.",
+  "expected_output": {
+    "confidence": {
+      "level": "high",
+      "rationale": [
+        "empty input has no ambiguous edges"
+      ],
+      "score": 0.99
+    },
+    "risks": [],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "operator_note",
+        "dry_run_only": true,
+        "id": "observe-queue",
+        "label": "No action",
+        "mutation": "none",
+        "rationale": "The queue is empty; avoid creating synthetic urgency."
+      }
+    ],
+    "summary": {
+      "blocked_count": 0,
+      "critical_path": [],
+      "forecast_horizon_minutes": 0,
+      "in_progress_count": 0,
+      "ready_count": 0
+    }
+  },
+  "id": "empty_queue",
+  "input": {
+    "agent_activity": [],
+    "agents": [],
+    "beads": [],
+    "build_lanes": [],
+    "file_reservations": [],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": []
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}

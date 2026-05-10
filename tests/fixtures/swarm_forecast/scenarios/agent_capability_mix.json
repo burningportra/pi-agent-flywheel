@@ -1,0 +1,152 @@
+{
+  "description": "Capability evidence, unknown agents, and sanitizable activity snippets.",
+  "expected_output": {
+    "confidence": {
+      "level": "high",
+      "rationale": [
+        "single ready root has no competing track"
+      ],
+      "score": 0.91
+    },
+    "risks": [
+      {
+        "affected_beads": [
+          "forecast-dashboard"
+        ],
+        "affected_paths": [],
+        "confidence": {
+          "level": "high",
+          "rationale": [
+            "all edges are explicit"
+          ],
+          "score": 0.9
+        },
+        "evidence": [],
+        "id": "risk-critical-path-forecast-dashboard",
+        "kind": "critical-path",
+        "severity": "info"
+      }
+    ],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "read_only_command",
+        "command": "br dep tree forecast-dashboard --no-db",
+        "dry_run_only": true,
+        "id": "inspect-critical-path",
+        "label": "Inspect dependency path",
+        "mutation": "none",
+        "rationale": "Confirms the path before any claim or reservation decision."
+      }
+    ],
+    "summary": {
+      "blocked_count": 0,
+      "critical_path": [
+        "forecast-dashboard"
+      ],
+      "forecast_horizon_minutes": 1,
+      "in_progress_count": 0,
+      "ready_count": 2
+    }
+  },
+  "id": "agent_capability_mix",
+  "input": {
+    "agent_activity": [
+      {
+        "agent": "ActiveDashboard",
+        "bead_id": "forecast-dashboard",
+        "paths": [
+          "src/dashboard/render.ts"
+        ],
+        "source": "review",
+        "summary": "Edited dashboard-ui React tests with token=secret-value",
+        "tags": [
+          "dashboard"
+        ],
+        "timestamp": "2026-05-10T14:00:00Z"
+      },
+      {
+        "agent": "IdlePython",
+        "bead_id": "forecast-python-port",
+        "paths": [
+          "tests/fixtures/swarm_forecast/schema.v1.json"
+        ],
+        "source": "test",
+        "summary": "Wrote python fixture generator using Bearer abc123",
+        "tags": [
+          "python"
+        ],
+        "timestamp": "2026-05-10T13:00:00Z"
+      }
+    ],
+    "agents": [
+      {
+        "capabilities": [
+          "dashboard",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T14:00:00Z",
+        "name": "ActiveDashboard",
+        "status": "active"
+      },
+      {
+        "capabilities": [
+          "python",
+          "tests"
+        ],
+        "current_bead": null,
+        "last_active_at": "2026-05-10T13:00:00Z",
+        "name": "IdlePython",
+        "status": "idle"
+      },
+      {
+        "capabilities": [],
+        "current_bead": null,
+        "last_active_at": null,
+        "name": "MysteryAgent",
+        "status": "unknown"
+      }
+    ],
+    "beads": [
+      {
+        "depends_on": [],
+        "files": [
+          "src/dashboard/render.ts"
+        ],
+        "id": "forecast-dashboard",
+        "labels": [
+          "dashboard"
+        ],
+        "priority": 1,
+        "status": "open",
+        "title": "Render forecast card",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      },
+      {
+        "depends_on": [],
+        "files": [
+          "tests/fixtures/swarm_forecast/schema.v1.json"
+        ],
+        "id": "forecast-python-port",
+        "labels": [
+          "python",
+          "tests"
+        ],
+        "priority": 1,
+        "status": "open",
+        "title": "Port Python fixture logic",
+        "validation_lanes": [
+          "python-unittest"
+        ]
+      }
+    ],
+    "build_lanes": [],
+    "file_reservations": [],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": []
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}

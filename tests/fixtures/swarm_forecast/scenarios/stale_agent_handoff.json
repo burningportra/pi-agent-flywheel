@@ -1,0 +1,103 @@
+{
+  "description": "Expired reservation and idle holder require contact before reassignment.",
+  "expected_output": {
+    "confidence": {
+      "level": "high",
+      "rationale": [
+        "stale signals are redundant"
+      ],
+      "score": 0.93
+    },
+    "risks": [
+      {
+        "affected_beads": [
+          "forecast-stale"
+        ],
+        "affected_paths": [
+          "src/swarm-forecast-adapter.ts"
+        ],
+        "confidence": {
+          "level": "high",
+          "rationale": [
+            "inactive holder and expired reservation agree"
+          ],
+          "score": 0.95
+        },
+        "evidence": [
+          "StaleForecastAgent status=idle last_active_at=2026-05-10T12:00:00Z",
+          "reservation 301 is expired on src/swarm-forecast-adapter.ts"
+        ],
+        "id": "risk-stale-holder-staleforecastagent",
+        "kind": "stale-agent-handoff",
+        "severity": "critical"
+      }
+    ],
+    "schema": "swarm-forecast-output.v1",
+    "suggested_dry_run_actions": [
+      {
+        "action_type": "draft_coordination_text",
+        "copy_text": "Ask StaleForecastAgent for status; if abandoned, request operator confirmation before reopening forecast-stale.",
+        "dry_run_only": true,
+        "id": "draft-handoff",
+        "label": "Draft handoff request",
+        "mutation": "none",
+        "rationale": "No reservation release or bead status mutation is performed by the forecast."
+      }
+    ],
+    "summary": {
+      "blocked_count": 0,
+      "critical_path": [
+        "forecast-stale"
+      ],
+      "forecast_horizon_minutes": 30,
+      "in_progress_count": 1,
+      "ready_count": 0
+    }
+  },
+  "id": "stale_agent_handoff",
+  "input": {
+    "agent_activity": [],
+    "agents": [
+      {
+        "capabilities": [
+          "swarm",
+          "tests"
+        ],
+        "current_bead": "forecast-stale",
+        "last_active_at": "2026-05-10T12:00:00Z",
+        "name": "StaleForecastAgent",
+        "status": "idle"
+      }
+    ],
+    "beads": [
+      {
+        "depends_on": [],
+        "files": [
+          "src/swarm-forecast-adapter.ts"
+        ],
+        "id": "forecast-stale",
+        "labels": [],
+        "priority": 1,
+        "status": "in_progress",
+        "title": "Finish forecast adapter",
+        "validation_lanes": [
+          "npm-test"
+        ]
+      }
+    ],
+    "build_lanes": [],
+    "file_reservations": [
+      {
+        "agent": "StaleForecastAgent",
+        "exclusive": true,
+        "expires_at": "2026-05-10T12:30:00Z",
+        "id": 301,
+        "path_pattern": "src/swarm-forecast-adapter.ts",
+        "state": "expired"
+      }
+    ],
+    "schema": "swarm-forecast-input.v1",
+    "validation_history": []
+  },
+  "schema": "swarm-forecast-fixture.v1"
+}
