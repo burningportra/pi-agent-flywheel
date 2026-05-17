@@ -26,6 +26,10 @@ function formatBeadStaleness(beads: Bead[]): string {
       continue;
     }
     const createdMs = new Date(bead.created_at).getTime();
+    if (!Number.isFinite(createdMs)) {
+      stale.push(bead);
+      continue;
+    }
     const ageDays = (now - createdMs) / DAY_MS;
 
     if (ageDays < 1) {
@@ -58,6 +62,7 @@ function formatAge(timestamp?: string): string {
 
   const now = Date.now();
   const createdMs = new Date(timestamp).getTime();
+  if (!Number.isFinite(createdMs)) return "unknown";
   const ageDays = Math.floor((now - createdMs) / (24 * 60 * 60 * 1000));
 
   if (ageDays < 1) return "< 1d";
@@ -171,10 +176,12 @@ function parseOrchestrateArgs(rawArgs?: string): { goalArg?: string; coordinatio
   if (!input) return {};
 
   const modeMatch = input.match(/(?:^|\s)--mode(?:=(worktree|single-branch)|\s+(worktree|single-branch))(?:\s|$)/);
-  const coordinationMode = (modeMatch?.[1] ?? modeMatch?.[2]) as CoordinationMode | undefined;
-  const goalArg = coordinationMode
-    ? input.replace(modeMatch![0], " ").trim() || undefined
-    : input;
+  if (!modeMatch) {
+    return { goalArg: input };
+  }
+
+  const coordinationMode = (modeMatch[1] ?? modeMatch[2]) as CoordinationMode;
+  const goalArg = input.replace(modeMatch[0], " ").trim() || undefined;
 
   return { goalArg, coordinationMode };
 }

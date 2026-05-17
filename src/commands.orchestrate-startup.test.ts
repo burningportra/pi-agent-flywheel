@@ -11,6 +11,7 @@ const ceremonyBehavior = {
   result: { rendered: true, mode: "animated", frameCount: 3, durationMs: 10 } as const,
 };
 let activeEvents: string[] | undefined;
+const beadFixtures = vi.hoisted(() => ({ beads: [] as any[] }));
 
 vi.mock("./opening-ceremony.js", () => ({
   runOpeningCeremony: vi.fn(async (...args: unknown[]) => {
@@ -19,6 +20,14 @@ vi.mock("./opening-ceremony.js", () => ({
     return ceremonyBehavior.result;
   }),
 }));
+
+vi.mock("./beads.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./beads.js")>();
+  return {
+    ...actual,
+    readBeads: vi.fn(async () => beadFixtures.beads),
+  };
+});
 
 function makeTempDir(): string {
   return mkdtempSync(join(tmpdir(), "pi-agent-flywheel-startup-"));
@@ -116,6 +125,7 @@ describe("/agent-flywheel startup ceremony integration", () => {
     ceremonyCalls.length = 0;
     activeEvents = undefined;
     ceremonyBehavior.result = { rendered: true, mode: "animated", frameCount: 3, durationMs: 10 };
+    beadFixtures.beads = [];
     vi.restoreAllMocks();
   });
 
@@ -149,6 +159,41 @@ describe("/agent-flywheel startup ceremony integration", () => {
     expect(ceremonyCalls).toHaveLength(1);
     expect(events[0]).toBe("ceremony");
     expect(events[1]).toBe("select");
+  });
+
+  it("renders invalid bead timestamps as unknown in the startup menu", async () => {
+    const cwd = makeTempDir();
+    const events: string[] = [];
+    activeEvents = events;
+    beadFixtures.beads = [{
+      id: "pi-999",
+      title: "Malformed timestamp bead",
+      description: "Regression fixture",
+      status: "open",
+      priority: 3,
+      created_at: "not-a-date",
+      children: [],
+      labels: [],
+      type: "task",
+    }];
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { commands } = buildOrchestrator(events);
+    const handler = commands.get("agent-flywheel")?.handler;
+    const ctx = buildContext(events, cwd);
+    let resumePrompt = "";
+    ctx.ui.select = vi.fn(async (message: string) => {
+      events.push("select");
+      if (message.startsWith("Existing orchestration detected")) {
+        resumePrompt = message;
+        return "❌ Cancel";
+      }
+      return undefined;
+    });
+
+    await handler("", ctx);
+
+    expect(resumePrompt).toContain("pi-999 (unknown)");
+    expect(resumePrompt).not.toContain("NaN");
   });
 
   it.each([
