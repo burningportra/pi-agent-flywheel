@@ -1,4 +1,5 @@
 import type {
+  Bead,
   FreshEyesReviewConfig,
   FreshEyesReviewLaunchResult,
   FreshEyesReviewState,
@@ -73,6 +74,49 @@ export interface LaunchFreshEyesReviewOptions {
   runThreadId?: string;
   agentMail?: FreshEyesAgentMailBoundary;
   reviewer?: FreshEyesReviewerLaunchBoundary;
+}
+
+export interface FreshEyesAppendInput {
+  currentBeadId?: string | null;
+  reviewerAgentName?: string | null;
+  threadId?: string | null;
+  launchedForHead?: string | null;
+  timestampIso: string;
+  findings?: string[];
+  suggestedActions?: string[];
+  cleanPass?: boolean;
+  idempotencyKey?: string;
+}
+
+export interface FreshEyesBeadAppendBoundaryResult {
+  ok?: boolean;
+  warning?: string;
+}
+
+export interface FreshEyesBeadAppendBoundary {
+  getBeadById(beadId: string): Promise<Pick<Bead, "id" | "description"> | null>;
+  updateBeadDescription(beadId: string, description: string): Promise<FreshEyesBeadAppendBoundaryResult | boolean | void>;
+}
+
+export interface AppendFreshEyesReviewToBeadOptions {
+  state: FreshEyesReviewState;
+  timestampIso: string;
+  findings?: string[];
+  suggestedActions?: string[];
+  cleanPass?: boolean;
+  beads: FreshEyesBeadAppendBoundary;
+}
+
+export type FreshEyesAppendStatus = "appended" | "skipped" | "degraded";
+
+export interface FreshEyesAppendResult {
+  status: FreshEyesAppendStatus;
+  appended: boolean;
+  reason: string;
+  beadId?: string;
+  idempotencyKey?: string;
+  warning?: string;
+  nextDescription?: string;
 }
 
 export function defaultFreshEyesReviewConfig(): FreshEyesReviewConfig {
@@ -222,6 +266,124 @@ export async function launchFreshEyesReview(
   };
 }
 
+export function buildFreshEyesAppendKey(input: Pick<FreshEyesAppendInput, "threadId" | "reviewerAgentName" | "launchedForHead">): string {
+  return [
+    keyPart(input.threadId, "unknown-thread"),
+    keyPart(input.launchedForHead, "unknown-head"),
+    keyPart(input.reviewerAgentName, "unknown-reviewer"),
+  ].join("|");
+}
+
+export function findExistingFreshEyesEntry(description: string, idempotencyKey: string): boolean {
+  return description.includes(freshEyesMarker(idempotencyKey));
+}
+
+export function renderFreshEyesReviewBlock(input: FreshEyesAppendInput): string {
+  const idempotencyKey = input.idempotencyKey ?? buildFreshEyesAppendKey(input);
+  const reviewer = normalizeOptionalString(input.reviewerAgentName) ?? "unknown reviewer";
+  const threadId = normalizeOptionalString(input.threadId) ?? "unknown thread";
+  const headRef = normalizeOptionalString(input.launchedForHead) ?? "unknown head";
+  const findings = normalizeBulletList(input.findings);
+  const suggestedActions = normalizeBulletList(input.suggestedActions);
+  const isCleanPass = input.cleanPass === true || findings.length === 0;
+
+  const lines = [
+    freshEyesMarker(idempotencyKey),
+    `### ${input.timestampIso} · ${headRef}`,
+    `- Reviewer: ${reviewer}`,
+    `- Agent Mail thread: ${threadId}`,
+    `- Triggering head: ${headRef}`,
+    `- Timestamp: ${input.timestampIso}`,
+    `- Idempotency key: \`${idempotencyKey}\``,
+    "",
+  ];
+
+  if (isCleanPass) {
+    lines.push("Clean pass: no actionable fresh-eyes findings were reported.");
+  } else {
+    lines.push("Findings:");
+    lines.push(...findings.map((finding) => `- ${finding}`));
+  }
+
+  if (suggestedActions.length > 0) {
+    lines.push("", "Suggested actions:");
+    lines.push(...suggestedActions.map((action) => `- ${action}`));
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+export async function appendFreshEyesReviewToBead(
+  options: AppendFreshEyesReviewToBeadOptions
+): Promise<FreshEyesAppendResult> {
+  const currentBeadId = normalizeOptionalString(options.state.currentBeadId);
+  if (!currentBeadId) {
+    return {
+      status: "skipped",
+      appended: false,
+      reason: "missing current bead id; fresh-eyes review was not appended",
+      warning: "missing current bead id",
+    };
+  }
+
+  const input: FreshEyesAppendInput = {
+    currentBeadId,
+    reviewerAgentName: options.state.reviewerAgentName,
+    threadId: options.state.threadId,
+    launchedForHead: options.state.launchedForHead,
+    timestampIso: options.timestampIso,
+    findings: options.findings,
+    suggestedActions: options.suggestedActions,
+    cleanPass: options.cleanPass,
+  };
+  const idempotencyKey = buildFreshEyesAppendKey(input);
+
+  let bead: Pick<Bead, "id" | "description"> | null;
+  try {
+    bead = await options.beads.getBeadById(currentBeadId);
+  } catch (error) {
+    return degradedAppend(currentBeadId, idempotencyKey, `failed to read current bead: ${errorMessage(error)}`);
+  }
+
+  if (!bead) {
+    return degradedAppend(currentBeadId, idempotencyKey, `current bead ${currentBeadId} was not found`);
+  }
+
+  const existingDescription = bead.description ?? "";
+  if (findExistingFreshEyesEntry(existingDescription, idempotencyKey)) {
+    return {
+      status: "skipped",
+      appended: false,
+      reason: `fresh-eyes review ${idempotencyKey} already exists on ${currentBeadId}`,
+      beadId: currentBeadId,
+      idempotencyKey,
+      nextDescription: existingDescription,
+    };
+  }
+
+  const block = renderFreshEyesReviewBlock({ ...input, idempotencyKey });
+  const nextDescription = appendFreshEyesBlockToDescription(existingDescription, block);
+
+  try {
+    const updateResult = await options.beads.updateBeadDescription(currentBeadId, nextDescription);
+    if (updateResult === false || (typeof updateResult === "object" && updateResult?.ok === false)) {
+      const warning = typeof updateResult === "object" ? normalizeOptionalString(updateResult.warning) : undefined;
+      return degradedAppend(currentBeadId, idempotencyKey, warning ?? `failed to update current bead ${currentBeadId}`);
+    }
+  } catch (error) {
+    return degradedAppend(currentBeadId, idempotencyKey, `failed to update current bead ${currentBeadId}: ${errorMessage(error)}`);
+  }
+
+  return {
+    status: "appended",
+    appended: true,
+    reason: `fresh-eyes review appended to ${currentBeadId}`,
+    beadId: currentBeadId,
+    idempotencyKey,
+    nextDescription,
+  };
+}
+
 export function buildFreshEyesReviewPrompt(options: FreshEyesReviewPromptOptions): string {
   const currentBeadId = normalizeOptionalString(options.currentBeadId);
   const currentBead = currentBeadId ?? "unknown current bead";
@@ -255,6 +417,48 @@ Coordination instructions:
 - If findings should affect active work, format them so they can be appended to the current bead.
 - If no issues are found, send a short clean-pass note with what you inspected.
 - Do not make code changes unless explicitly asked; this pass is for independent review feedback.`;
+}
+
+const FRESH_EYES_REVIEW_HEADING = "## Fresh-Eyes Review Findings";
+
+function freshEyesMarker(idempotencyKey: string): string {
+  return `<!-- fresh-eyes-review:${idempotencyKey.replace(/--/g, "-")} -->`;
+}
+
+function appendFreshEyesBlockToDescription(description: string, block: string): string {
+  const trimmed = description.trimEnd();
+  if (!trimmed) {
+    return `${FRESH_EYES_REVIEW_HEADING}\n\n${block}\n`;
+  }
+  if (trimmed.includes(FRESH_EYES_REVIEW_HEADING)) {
+    return `${trimmed}\n\n${block}\n`;
+  }
+  return `${trimmed}\n\n${FRESH_EYES_REVIEW_HEADING}\n\n${block}\n`;
+}
+
+function normalizeBulletList(items: string[] | null | undefined): string[] {
+  return (items ?? []).map((item) => item.trim()).filter(Boolean);
+}
+
+function keyPart(value: string | null | undefined, fallback: string): string {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return fallback;
+  return normalized.toLowerCase().replace(/[^a-z0-9._:-]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+}
+
+function degradedAppend(beadId: string, idempotencyKey: string, warning: string): FreshEyesAppendResult {
+  return {
+    status: "degraded",
+    appended: false,
+    reason: warning,
+    warning,
+    beadId,
+    idempotencyKey,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function unchangedDecision(

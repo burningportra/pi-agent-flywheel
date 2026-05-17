@@ -270,9 +270,15 @@ export async function getBeadById(
   cwd: string,
   id: string
 ): Promise<Bead | null> {
-  const result = await brExecJson<Bead>(pi, ["show", id, "--json"], { timeout: 10000, cwd });
+  // `br show <id> --json` currently emits a one-element array, while older
+  // beads versions emitted a bare object. Normalize both shapes here; callers
+  // treat the result as a Bead and will otherwise crash later on fields like
+  // `title`/`description` being undefined.
+  const result = await brExecJson<Bead | Bead[]>(pi, ["show", id, "--json"], { timeout: 10000, cwd });
   if (!result.ok) return null;
-  return result.value ?? null;
+  const value = result.value;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }
 
 /**
@@ -400,6 +406,22 @@ export async function updateBeadStatus(
     cwd,
   });
   // Non-fatal: brExec logs warning on failure, caller continues regardless
+}
+
+/**
+ * Updates a bead description.
+ */
+export async function updateBeadDescription(
+  pi: ExtensionAPI,
+  cwd: string,
+  beadId: string,
+  description: string
+): Promise<boolean> {
+  const result = await brExec(pi, ["update", beadId, "--description", description], {
+    timeout: 10000,
+    cwd,
+  });
+  return result.ok;
 }
 
 /**

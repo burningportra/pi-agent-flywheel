@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   FRESH_EYES_REVIEW_LAUNCH_AFTER_COMMITS,
   FRESH_EYES_REVIEW_POLL_INTERVAL_MS,
+  appendFreshEyesReviewToBead,
+  buildFreshEyesAppendKey,
   buildFreshEyesReviewPrompt,
+  findExistingFreshEyesEntry,
+  renderFreshEyesReviewBlock,
   createFreshEyesReviewState,
   decideFreshEyesReviewLaunch,
   defaultFreshEyesReviewConfig,
@@ -297,6 +301,161 @@ describe("launchFreshEyesReview", () => {
     expect(result.launched).toBe(false);
     expect(result.status).toBe("skipped");
     expect(result.reason).toContain("waiting for 5 commits");
+  });
+});
+
+describe("fresh-eyes bead append helpers", () => {
+  const launchedState = {
+    ...baselineState,
+    launched: true,
+    launchedAt: "2026-05-17T17:00:00.000Z",
+    launchedForHead: "def5678",
+    threadId: "pi-1h3m",
+    reviewerAgentName: "VioletLantern",
+  };
+
+  it("builds stable append keys and detects existing entries", () => {
+    const key = buildFreshEyesAppendKey({
+      threadId: "pi-1h3m",
+      launchedForHead: "DEF 5678",
+      reviewerAgentName: "Violet Lantern",
+    });
+
+    expect(key).toBe("pi-1h3m|def-5678|violet-lantern");
+    expect(findExistingFreshEyesEntry(`before\n<!-- fresh-eyes-review:${key} -->\nafter`, key)).toBe(true);
+  });
+
+  it("renders bounded findings with metadata and actionable bullets", () => {
+    const block = renderFreshEyesReviewBlock({
+      threadId: "pi-1h3m",
+      reviewerAgentName: "VioletLantern",
+      launchedForHead: "def5678",
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: ["src/foo.ts misses an edge case"],
+      suggestedActions: ["Add a regression test"],
+    });
+
+    expect(block).toContain("<!-- fresh-eyes-review:pi-1h3m|def5678|violetlantern -->");
+    expect(block).toContain("Reviewer: VioletLantern");
+    expect(block).toContain("Agent Mail thread: pi-1h3m");
+    expect(block).toContain("Triggering head: def5678");
+    expect(block).toContain("- src/foo.ts misses an edge case");
+    expect(block).toContain("- Add a regression test");
+  });
+
+  it("renders short clean-pass notes when there are no findings", () => {
+    const block = renderFreshEyesReviewBlock({
+      threadId: "pi-1h3m",
+      reviewerAgentName: "VioletLantern",
+      launchedForHead: "def5678",
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: [],
+      cleanPass: true,
+    });
+
+    expect(block).toContain("Clean pass: no actionable fresh-eyes findings were reported.");
+    expect(block).not.toContain("Suggested actions:");
+    expect(block).not.toContain("TODO");
+  });
+
+  it("appends findings to the current bead and suppresses duplicates", async () => {
+    let description = "Existing bead body without trailing newline";
+    const beads = {
+      getBeadById: async (beadId: string) => ({ id: beadId, description }),
+      updateBeadDescription: async (_beadId: string, nextDescription: string) => {
+        description = nextDescription;
+        return { ok: true };
+      },
+    };
+
+    const first = await appendFreshEyesReviewToBead({
+      state: launchedState,
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: ["src/foo.ts needs bounds checking"],
+      suggestedActions: ["Add bounds-check regression coverage"],
+      beads,
+    });
+    const duplicate = await appendFreshEyesReviewToBead({
+      state: launchedState,
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: ["src/foo.ts needs bounds checking"],
+      beads,
+    });
+
+    expect(first.status).toBe("appended");
+    expect(first.appended).toBe(true);
+    expect(description).toContain("## Fresh-Eyes Review Findings");
+    expect(description.match(/fresh-eyes-review:pi-1h3m\|def5678\|violetlantern/g)).toHaveLength(1);
+    expect(duplicate.status).toBe("skipped");
+    expect(duplicate.appended).toBe(false);
+    expect(description.match(/fresh-eyes-review:pi-1h3m\|def5678\|violetlantern/g)).toHaveLength(1);
+  });
+
+  it("keeps distinct entries for different heads under an existing heading", async () => {
+    let description = "Body\n\n## Fresh-Eyes Review Findings\n\nLegacy note with malformed marker <!-- fresh-eyes-review -->";
+    const beads = {
+      getBeadById: async (beadId: string) => ({ id: beadId, description }),
+      updateBeadDescription: async (_beadId: string, nextDescription: string) => {
+        description = nextDescription;
+        return true;
+      },
+    };
+
+    await appendFreshEyesReviewToBead({
+      state: launchedState,
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: ["First head finding"],
+      beads,
+    });
+    await appendFreshEyesReviewToBead({
+      state: { ...launchedState, launchedForHead: "fedcba9" },
+      timestampIso: "2026-05-17T17:20:00.000Z",
+      findings: ["Second head finding"],
+      beads,
+    });
+
+    expect(description.match(/## Fresh-Eyes Review Findings/g)).toHaveLength(1);
+    expect(description).toContain("First head finding");
+    expect(description).toContain("Second head finding");
+    expect(description).toContain("fedcba9");
+  });
+
+  it("returns a warning without mutating when current bead is missing", async () => {
+    let touched = false;
+    const result = await appendFreshEyesReviewToBead({
+      state: { ...launchedState, currentBeadId: undefined },
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: ["Should not append"],
+      beads: {
+        getBeadById: async () => {
+          touched = true;
+          return null;
+        },
+        updateBeadDescription: async () => {
+          touched = true;
+        },
+      },
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(result.warning).toBe("missing current bead id");
+    expect(touched).toBe(false);
+  });
+
+  it("degrades non-fatally when bead update fails", async () => {
+    const result = await appendFreshEyesReviewToBead({
+      state: launchedState,
+      timestampIso: "2026-05-17T17:10:00.000Z",
+      findings: ["Finding"],
+      beads: {
+        getBeadById: async (beadId: string) => ({ id: beadId, description: "Body" }),
+        updateBeadDescription: async () => ({ ok: false, warning: "br update failed" }),
+      },
+    });
+
+    expect(result.status).toBe("degraded");
+    expect(result.appended).toBe(false);
+    expect(result.warning).toBe("br update failed");
   });
 });
 

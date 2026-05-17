@@ -8,6 +8,7 @@ import {
   extractArtifacts,
   extractVerificationContract,
   updateBeadStatus,
+  updateBeadDescription,
   validateBeads,
   validateVerificationContract,
   getBeadsSummary,
@@ -103,6 +104,29 @@ describe("getBeadById", () => {
 
     const result = await getBeadById(pi, CWD, "abc");
     expect(result?.id).toBe("abc");
+  });
+
+  it("normalizes br show --json one-element array output", async () => {
+    const bead = makeBead({ id: "abc", title: "Array-shaped bead" });
+    const pi = makePi(async () => ({
+      code: 0,
+      stdout: JSON.stringify([bead]),
+      stderr: "",
+    }));
+
+    const result = await getBeadById(pi, CWD, "abc");
+    expect(result).toMatchObject({ id: "abc", title: "Array-shaped bead" });
+  });
+
+  it("returns null on an empty br show --json array", async () => {
+    const pi = makePi(async () => ({
+      code: 0,
+      stdout: JSON.stringify([]),
+      stderr: "",
+    }));
+
+    const result = await getBeadById(pi, CWD, "missing");
+    expect(result).toBeNull();
   });
 
   it("returns null on failure", async () => {
@@ -259,6 +283,29 @@ describe("updateBeadStatus", () => {
 });
 
 // ─── validateBeads ───────────────────────────────────────────
+
+describe("updateBeadDescription", () => {
+  it("updates bead descriptions through br update", async () => {
+    const pi = makePi(async () => ({ code: 0, stdout: "", stderr: "" }));
+
+    const ok = await updateBeadDescription(pi, CWD, "pi-1h8u", "New description");
+
+    expect(ok).toBe(true);
+    expect((pi.exec as any).mock.calls[0]).toEqual([
+      "br",
+      ["update", "pi-1h8u", "--description", "New description"],
+      { timeout: 10000, cwd: CWD },
+    ]);
+  });
+
+  it("returns false when br update fails", async () => {
+    const pi = makePi(async () => ({ code: 1, stdout: "", stderr: "nope" }));
+
+    const ok = await updateBeadDescription(pi, CWD, "pi-1h8u", "New description");
+
+    expect(ok).toBe(false);
+  });
+});
 
 describe("validateBeads", () => {
   it("returns ok=true when no cycles", async () => {
