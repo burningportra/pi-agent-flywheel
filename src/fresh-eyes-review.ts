@@ -1,5 +1,6 @@
 import type {
   Bead,
+  FreshEyesMonitorState,
   FreshEyesReviewConfig,
   FreshEyesReviewLaunchResult,
   FreshEyesReviewState,
@@ -62,6 +63,38 @@ export interface FreshEyesReviewerLaunchBoundary {
     reason: string;
     cwd?: string;
   }): Promise<FreshEyesReviewerLaunchResult | void>;
+}
+
+export interface InitializeFreshEyesMonitorStateOptions {
+  existing?: FreshEyesMonitorState;
+  baselineRef: string;
+  baselineCommitCount: number;
+  currentBeadId?: string | null;
+  config?: Partial<FreshEyesReviewConfig>;
+}
+
+export interface FreshEyesMonitorPollDecision {
+  shouldPoll: boolean;
+  reason: string;
+  elapsedMs?: number;
+}
+
+export interface RunFreshEyesMonitorTickOptions extends Omit<LaunchFreshEyesReviewOptions, "state" | "commitsSinceBaseline" | "headRef" | "nowIso"> {
+  monitor: FreshEyesMonitorState;
+  currentHeadRef: string;
+  currentCommitCount: number;
+  currentBeadId?: string | null;
+  nowIso: string;
+  launch?: (options: LaunchFreshEyesReviewOptions) => Promise<FreshEyesReviewLaunchResult>;
+}
+
+export interface FreshEyesMonitorTickResult {
+  polled: boolean;
+  status: FreshEyesMonitorState["lastStatus"];
+  reason: string;
+  commitsSinceBaseline: number;
+  launchResult?: FreshEyesReviewLaunchResult;
+  nextState: FreshEyesMonitorState;
 }
 
 export interface LaunchFreshEyesReviewOptions {
@@ -138,6 +171,141 @@ export function createFreshEyesReviewState(options: CreateFreshEyesReviewStateOp
     baselineCommitCount: options.baselineCommitCount,
     launched: false,
     ...(currentBeadId ? { currentBeadId } : {}),
+  };
+}
+
+export function initializeFreshEyesMonitorState(
+  options: InitializeFreshEyesMonitorStateOptions
+): FreshEyesMonitorState {
+  if (options.existing?.baselineRef) {
+    const currentBeadId = normalizeOptionalString(options.currentBeadId) ?? options.existing.currentBeadId;
+    return {
+      ...options.existing,
+      enabled: options.config?.enabled ?? options.existing.enabled ?? true,
+      ...(currentBeadId ? { currentBeadId } : {}),
+    };
+  }
+
+  const reviewState = createFreshEyesReviewState({
+    baselineRef: options.baselineRef,
+    baselineCommitCount: options.baselineCommitCount,
+    currentBeadId: options.currentBeadId,
+  });
+
+  return {
+    ...reviewState,
+    enabled: options.config?.enabled ?? true,
+    lastStatus: "initialized",
+    lastStatusText: `fresh-eyes baseline recorded at ${options.baselineRef} (${options.baselineCommitCount} commits)`,
+  };
+}
+
+export function shouldPollFreshEyesReview(
+  state: Pick<FreshEyesMonitorState, "enabled" | "lastCheckedAt">,
+  nowIso: string,
+  config: Partial<FreshEyesReviewConfig> = {}
+): FreshEyesMonitorPollDecision {
+  const resolvedConfig = { ...defaultFreshEyesReviewConfig(), ...config };
+  if (!state.enabled || !resolvedConfig.enabled) {
+    return { shouldPoll: false, reason: "fresh-eyes monitor is disabled" };
+  }
+
+  if (!state.lastCheckedAt) {
+    return { shouldPoll: true, reason: "fresh-eyes monitor has not checked yet" };
+  }
+
+  const elapsedMs = Date.parse(nowIso) - Date.parse(state.lastCheckedAt);
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    return { shouldPoll: true, reason: "fresh-eyes monitor timestamp is missing or invalid", elapsedMs };
+  }
+
+  if (elapsedMs < resolvedConfig.pollIntervalMs) {
+    return {
+      shouldPoll: false,
+      reason: `waiting for ${resolvedConfig.pollIntervalMs}ms cadence; ${elapsedMs}ms elapsed`,
+      elapsedMs,
+    };
+  }
+
+  return { shouldPoll: true, reason: `fresh-eyes poll cadence reached after ${elapsedMs}ms`, elapsedMs };
+}
+
+export async function runFreshEyesMonitorTick(
+  options: RunFreshEyesMonitorTickOptions
+): Promise<FreshEyesMonitorTickResult> {
+  const config = { ...defaultFreshEyesReviewConfig(), ...options.config };
+  const currentBeadId = normalizeOptionalString(options.currentBeadId) ?? options.monitor.currentBeadId;
+  const pollDecision = shouldPollFreshEyesReview(options.monitor, options.nowIso, config);
+  const commitsSinceBaseline = Math.max(0, options.currentCommitCount - (options.monitor.baselineCommitCount ?? 0));
+
+  if (!pollDecision.shouldPoll) {
+    const nextState: FreshEyesMonitorState = {
+      ...options.monitor,
+      ...(currentBeadId ? { currentBeadId } : {}),
+      lastStatus: "waiting",
+      lastStatusText: pollDecision.reason,
+    };
+    return { polled: false, status: "waiting", reason: pollDecision.reason, commitsSinceBaseline, nextState };
+  }
+
+  const launch = options.launch ?? launchFreshEyesReview;
+  const launchResult = await launch({
+    state: {
+      baselineRef: options.monitor.baselineRef,
+      baselineCommitCount: options.monitor.baselineCommitCount,
+      launched: options.monitor.launched,
+      launchedAt: options.monitor.launchedAt,
+      launchedForHead: options.monitor.launchedForHead,
+      reviewerAgentName: options.monitor.reviewerAgentName,
+      threadId: options.monitor.threadId,
+      ...(currentBeadId ? { currentBeadId } : {}),
+    },
+    commitsSinceBaseline,
+    headRef: options.currentHeadRef,
+    nowIso: options.nowIso,
+    config,
+    cwd: options.cwd,
+    runThreadId: options.runThreadId,
+    agentMail: options.agentMail,
+    reviewer: options.reviewer,
+  });
+
+  const status = launchResult.status === "launched"
+    ? "launched"
+    : launchResult.status === "degraded"
+      ? "degraded"
+      : "waiting";
+  const nextState: FreshEyesMonitorState = {
+    ...options.monitor,
+    ...launchResult.nextState,
+    enabled: config.enabled,
+    ...(currentBeadId ? { currentBeadId } : {}),
+    lastCheckedAt: options.nowIso,
+    lastStatus: status,
+    lastStatusText: launchResult.warning ?? launchResult.reason,
+  };
+
+  return {
+    polled: true,
+    status,
+    reason: launchResult.reason,
+    commitsSinceBaseline,
+    launchResult,
+    nextState,
+  };
+}
+
+export function degradeFreshEyesMonitorState(
+  monitor: FreshEyesMonitorState | undefined,
+  nowIso: string,
+  warning: string
+): FreshEyesMonitorState | undefined {
+  if (!monitor) return undefined;
+  return {
+    ...monitor,
+    lastCheckedAt: nowIso,
+    lastStatus: "degraded",
+    lastStatusText: warning,
   };
 }
 

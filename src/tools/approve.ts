@@ -1493,6 +1493,23 @@ cd ${ctx.cwd}`;
         };
       }
 
+      try {
+        const { initializeFreshEyesMonitorState } = await import("../fresh-eyes-review.js");
+        const headResult = await resilientExec(oc.pi, "git", ["rev-parse", "HEAD"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+        const countResult = await resilientExec(oc.pi, "git", ["rev-list", "--count", "HEAD"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+        if (headResult.ok && countResult.ok) {
+          oc.state.freshEyesReviewMonitor = initializeFreshEyesMonitorState({
+            existing: oc.state.freshEyesReviewMonitor,
+            baselineRef: headResult.value.stdout.trim(),
+            baselineCommitCount: Number.parseInt(countResult.value.stdout.trim(), 10) || 0,
+            currentBeadId: ready[0]?.id,
+          });
+          oc.persistState();
+        }
+      } catch {
+        // Fresh-eyes monitoring is fail-open; implementation launch continues.
+      }
+
       // Determine if we can run in parallel
       const hasParallel = ready.length > 1;
 

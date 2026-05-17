@@ -38,7 +38,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       emitToolDeprecationWarning(toolName, canonicalName("review"));
-      const { getBeadById, readyBeads, updateBeadStatus, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, extractVerificationContract } = await import("../beads.js");
+      const { getBeadById, readyBeads, updateBeadStatus, updateBeadDescription, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, extractVerificationContract } = await import("../beads.js");
 
       // Sentinel: beadId === "__gates__" while iterating = show next gate
       if (oc.state.phase === "iterating" && params.beadId === "__gates__") {
@@ -441,7 +441,74 @@ export function registerReviewTool(oc: OrchestratorContext) {
           };
         }
 
-        // Auto-accepted — check for next ready beads
+        // Auto-accepted — tick the implementation-time fresh-eyes monitor, then check for next ready beads.
+        let freshEyesStatusText = "";
+        try {
+          if (oc.state.freshEyesReviewMonitor) {
+            const { degradeFreshEyesMonitorState, runFreshEyesMonitorTick } = await import("../fresh-eyes-review.js");
+            const nowIso = new Date().toISOString();
+            const headResult = await resilientExec(oc.pi, "git", ["rev-parse", "HEAD"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+            const countResult = await resilientExec(oc.pi, "git", ["rev-list", "--count", "HEAD"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+            if (headResult.ok && countResult.ok) {
+              const currentHeadRef = headResult.value.stdout.trim();
+              const currentBeadId = oc.state.currentBeadId ?? params.beadId;
+              const reviewerName = `fresh-eyes-${currentBeadId}`;
+              const { appendFreshEyesReviewToBead } = await import("../fresh-eyes-review.js");
+              const { prepareThread, sendMessage } = await import("../agent-mail.js");
+              const agentMail = oc.state.coordinationBackend?.agentMail ? {
+                prepareThread: async ({ threadId }: { threadId: string }) => {
+                  const result = await prepareThread(oc.pi.exec, ctx.cwd, reviewerName, threadId);
+                  return result ? { ok: true, agentName: reviewerName } : { ok: false, warning: "Agent Mail thread preparation returned no result" };
+                },
+                sendMessage: async ({ threadId, subject, body, importance }: { threadId: string; subject: string; body: string; importance: "normal" | "high" }) => {
+                  const result = await sendMessage(oc.pi.exec, ctx.cwd, reviewerName, [], subject, body, { threadId, importance });
+                  return result ? { ok: true, agentName: reviewerName } : { ok: false, warning: "Agent Mail review request returned no result" };
+                },
+              } : undefined;
+              const reviewer = {
+                launch: async ({ threadId, prompt }: { threadId: string; prompt: string }) => {
+                  const hitMe = await oc.runHitMeAgents([{ name: reviewerName, task: prompt }], ctx.cwd, ctx);
+                  await appendFreshEyesReviewToBead({
+                    state: {
+                      ...oc.state.freshEyesReviewMonitor!,
+                      currentBeadId,
+                      threadId,
+                      reviewerAgentName: reviewerName,
+                      launchedForHead: currentHeadRef,
+                    },
+                    timestampIso: nowIso,
+                    findings: hitMe.text.trim() ? [hitMe.text.trim()] : [],
+                    cleanPass: !hitMe.text.trim(),
+                    beads: {
+                      getBeadById: (id) => getBeadById(oc.pi, ctx.cwd, id),
+                      updateBeadDescription: (id, description) => updateBeadDescription(oc.pi, ctx.cwd, id, description),
+                    },
+                  });
+                  return { agentName: reviewerName };
+                },
+              };
+              const tick = await runFreshEyesMonitorTick({
+                monitor: oc.state.freshEyesReviewMonitor,
+                currentHeadRef,
+                currentCommitCount: Number.parseInt(countResult.value.stdout.trim(), 10) || 0,
+                currentBeadId,
+                nowIso,
+                agentMail,
+                reviewer,
+              });
+              oc.state.freshEyesReviewMonitor = tick.nextState;
+              freshEyesStatusText = `\n\n👀 Fresh-eyes monitor: ${tick.nextState.lastStatusText ?? tick.reason}`;
+            } else {
+              const warning = "fresh-eyes monitor could not read git head/count";
+              oc.state.freshEyesReviewMonitor = degradeFreshEyesMonitorState(oc.state.freshEyesReviewMonitor, nowIso, warning);
+              freshEyesStatusText = `\n\n👀 Fresh-eyes monitor: ${warning}`;
+            }
+            oc.persistState();
+          }
+        } catch (error) {
+          freshEyesStatusText = `\n\n👀 Fresh-eyes monitor: degraded (${error instanceof Error ? error.message : String(error)})`;
+        }
+
         const ready = await readyBeads(oc.pi, ctx.cwd);
 
         if (ready.length === 0) {
@@ -469,6 +536,8 @@ export function registerReviewTool(oc: OrchestratorContext) {
             oc.swarmTender.stop();
             oc.swarmTender = undefined;
           }
+
+          beadsReviewInfo += freshEyesStatusText;
 
           ctx.ui.notify("🔄 All beads done — entering review gates", "info");
           oc.setPhase("iterating", ctx);
@@ -499,7 +568,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.\n\n---\nMoving to Bead ${nextBead.id}:\n\n${implInstr}`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}\n\n---\nMoving to Bead ${nextBead.id}:\n\n${implInstr}`,
               },
             ],
             details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id },
@@ -590,7 +659,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${forecastAdvisory}\n\n${launchInstruction}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead to stay inside the implementation/review workflow.`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n${launchInstruction}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead to stay inside the implementation/review workflow.`,
               },
             ],
             details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true },

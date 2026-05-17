@@ -270,6 +270,15 @@ export interface FreshEyesReviewState {
   currentBeadId?: string;
 }
 
+export type FreshEyesMonitorStatus = "initialized" | "waiting" | "launched" | "skipped" | "degraded";
+
+export interface FreshEyesMonitorState extends FreshEyesReviewState {
+  enabled: boolean;
+  lastCheckedAt?: string;
+  lastStatus?: FreshEyesMonitorStatus;
+  lastStatusText?: string;
+}
+
 export type FreshEyesReviewLaunchStatus = "launched" | "skipped" | "degraded";
 
 export interface FreshEyesReviewLaunchResult {
@@ -402,6 +411,9 @@ export interface OrchestratorState {
   coordinationMode?: CoordinationMode;
   /** Whether agent-mail session was bootstrapped for this orchestration */
   agentMailSessionActive?: boolean;
+
+  /** Serializable implementation-time fresh-eyes monitor state. */
+  freshEyesReviewMonitor?: FreshEyesMonitorState;
 
   // ─── Bead-centric state (new) ──────────────────────────────
   /** Bead IDs created for this orchestration (ordered). */

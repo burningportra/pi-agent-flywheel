@@ -10,7 +10,11 @@ import {
   createFreshEyesReviewState,
   decideFreshEyesReviewLaunch,
   defaultFreshEyesReviewConfig,
+  degradeFreshEyesMonitorState,
+  initializeFreshEyesMonitorState,
   launchFreshEyesReview,
+  runFreshEyesMonitorTick,
+  shouldPollFreshEyesReview,
 } from "./fresh-eyes-review.js";
 
 const baselineState = createFreshEyesReviewState({
@@ -48,6 +52,149 @@ describe("createFreshEyesReviewState", () => {
     expect(createFreshEyesReviewState({ baselineRef: "abc1234", currentBeadId: "   " })).toEqual({
       baselineRef: "abc1234",
       launched: false,
+    });
+  });
+});
+
+describe("fresh-eyes monitor integration helpers", () => {
+  it("initializes a serializable baseline and preserves it on resume", () => {
+    const initial = initializeFreshEyesMonitorState({
+      baselineRef: "abc1234",
+      baselineCommitCount: 10,
+      currentBeadId: "pi-1h3m",
+    });
+    const resumed = initializeFreshEyesMonitorState({
+      existing: initial,
+      baselineRef: "should-not-replace",
+      baselineCommitCount: 99,
+      currentBeadId: "pi-next",
+    });
+
+    expect(initial).toMatchObject({
+      enabled: true,
+      baselineRef: "abc1234",
+      baselineCommitCount: 10,
+      currentBeadId: "pi-1h3m",
+      launched: false,
+      lastStatus: "initialized",
+    });
+    expect(JSON.parse(JSON.stringify(initial))).toEqual(initial);
+    expect(resumed.baselineRef).toBe("abc1234");
+    expect(resumed.baselineCommitCount).toBe(10);
+    expect(resumed.currentBeadId).toBe("pi-next");
+  });
+
+  it("enforces the explicit 7-minute cadence", () => {
+    const state = initializeFreshEyesMonitorState({ baselineRef: "abc1234", baselineCommitCount: 10 });
+    expect(shouldPollFreshEyesReview(state, "2026-05-17T17:00:00.000Z").shouldPoll).toBe(true);
+    expect(
+      shouldPollFreshEyesReview(
+        { ...state, lastCheckedAt: "2026-05-17T17:00:00.000Z" },
+        "2026-05-17T17:06:59.000Z"
+      )
+    ).toMatchObject({ shouldPoll: false, elapsedMs: 419000 });
+    expect(
+      shouldPollFreshEyesReview(
+        { ...state, lastCheckedAt: "2026-05-17T17:00:00.000Z" },
+        "2026-05-17T17:07:00.000Z"
+      ).shouldPoll
+    ).toBe(true);
+  });
+
+  it("records below-threshold polling without launching", async () => {
+    const monitor = initializeFreshEyesMonitorState({ baselineRef: "abc1234", baselineCommitCount: 10, currentBeadId: "pi-1h3m" });
+    const result = await runFreshEyesMonitorTick({
+      monitor,
+      currentHeadRef: "def5678",
+      currentCommitCount: 14,
+      currentBeadId: "pi-1h3m",
+      nowIso: "2026-05-17T17:07:00.000Z",
+      launch: async (options) => decideFreshEyesReviewLaunch(options),
+    });
+
+    expect(result.polled).toBe(true);
+    expect(result.commitsSinceBaseline).toBe(4);
+    expect(result.status).toBe("waiting");
+    expect(result.nextState.launched).toBe(false);
+    expect(result.nextState.lastCheckedAt).toBe("2026-05-17T17:07:00.000Z");
+  });
+
+  it("launches once when the first eligible poll observes more than five commits", async () => {
+    const monitor = initializeFreshEyesMonitorState({ baselineRef: "abc1234", baselineCommitCount: 10, currentBeadId: "pi-1h3m" });
+    const first = await runFreshEyesMonitorTick({
+      monitor,
+      currentHeadRef: "def5678",
+      currentCommitCount: 18,
+      currentBeadId: "pi-1h3m",
+      nowIso: "2026-05-17T17:07:00.000Z",
+      launch: async (options) => ({
+        launched: true,
+        status: "launched",
+        reason: "fake launched",
+        commitsSinceBaseline: options.commitsSinceBaseline,
+        threadId: options.state.currentBeadId,
+        reviewerAgentName: "VioletLantern",
+        launchedAt: options.nowIso,
+        launchedForHead: options.headRef,
+        nextState: {
+          ...options.state,
+          launched: true,
+          launchedAt: options.nowIso,
+          launchedForHead: options.headRef,
+          threadId: options.state.currentBeadId,
+          reviewerAgentName: "VioletLantern",
+        },
+      }),
+    });
+    const second = await runFreshEyesMonitorTick({
+      monitor: first.nextState,
+      currentHeadRef: "fedcba9",
+      currentCommitCount: 25,
+      currentBeadId: "pi-1h3m",
+      nowIso: "2026-05-17T17:14:00.000Z",
+      launch: async (options) => decideFreshEyesReviewLaunch(options),
+    });
+
+    expect(first.status).toBe("launched");
+    expect(first.commitsSinceBaseline).toBe(8);
+    expect(first.nextState.launched).toBe(true);
+    expect(first.nextState.reviewerAgentName).toBe("VioletLantern");
+    expect(second.status).toBe("waiting");
+    expect(second.launchResult?.launched).toBe(false);
+    expect(second.reason).toBe("fresh-eyes review already launched");
+  });
+
+  it("stores degraded launch outcomes without marking launched", async () => {
+    const monitor = initializeFreshEyesMonitorState({ baselineRef: "abc1234", baselineCommitCount: 10, currentBeadId: "pi-1h3m" });
+    const result = await runFreshEyesMonitorTick({
+      monitor,
+      currentHeadRef: "def5678",
+      currentCommitCount: 15,
+      currentBeadId: "pi-1h3m",
+      nowIso: "2026-05-17T17:07:00.000Z",
+      launch: async (options) => ({
+        launched: false,
+        status: "degraded",
+        reason: "Agent Mail offline",
+        warning: "Agent Mail offline",
+        commitsSinceBaseline: options.commitsSinceBaseline,
+        nextState: options.state,
+      }),
+    });
+
+    expect(result.status).toBe("degraded");
+    expect(result.nextState.launched).toBe(false);
+    expect(result.nextState.lastStatusText).toBe("Agent Mail offline");
+  });
+
+  it("captures git lookup degradation as serializable monitor state", () => {
+    const monitor = initializeFreshEyesMonitorState({ baselineRef: "abc1234", baselineCommitCount: 10 });
+    const degraded = degradeFreshEyesMonitorState(monitor, "2026-05-17T17:07:00.000Z", "git rev-list failed");
+
+    expect(degraded).toMatchObject({
+      lastCheckedAt: "2026-05-17T17:07:00.000Z",
+      lastStatus: "degraded",
+      lastStatusText: "git rev-list failed",
     });
   });
 });
