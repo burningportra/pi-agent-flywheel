@@ -245,6 +245,46 @@ export interface BeadReview {
   revisionInstructions?: string;
 }
 
+// ─── Fresh-eyes implementation review ───────────────────────
+export type FreshEyesReviewCoordination = "agent-mail";
+export type FreshEyesReviewOutputMode = "append-current-bead";
+export type FreshEyesReviewScope = "full";
+
+export interface FreshEyesReviewConfig {
+  enabled: boolean;
+  launchAfterCommits: number;
+  pollIntervalMs: number;
+  coordination: FreshEyesReviewCoordination;
+  outputMode: FreshEyesReviewOutputMode;
+  reviewScope: FreshEyesReviewScope;
+}
+
+export interface FreshEyesReviewState {
+  baselineRef: string;
+  baselineCommitCount?: number;
+  launched: boolean;
+  launchedAt?: string;
+  launchedForHead?: string;
+  reviewerAgentName?: string;
+  threadId?: string;
+  currentBeadId?: string;
+}
+
+export type FreshEyesReviewLaunchStatus = "launched" | "skipped" | "degraded";
+
+export interface FreshEyesReviewLaunchResult {
+  launched: boolean;
+  status: FreshEyesReviewLaunchStatus;
+  reason: string;
+  commitsSinceBaseline: number;
+  threadId?: string;
+  reviewerAgentName?: string;
+  launchedAt?: string;
+  launchedForHead?: string;
+  warning?: string;
+  nextState: FreshEyesReviewState;
+}
+
 export interface BeadTemplatePlaceholder {
   name: string;
   description: string;
