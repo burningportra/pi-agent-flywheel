@@ -237,6 +237,17 @@ describe("formatSessionContext", () => {
     expect(output).not.toContain("A".repeat(80));
   });
 
+  it("formats refined markdown goals as one-line previews", () => {
+    const refinedGoal = "## Goal\nLaunch a fresh-eyes reviewer\n\n## Implementation Notes\n- after 5 commits";
+    const state = makeState({ phase: "refining_beads", selectedGoal: refinedGoal });
+    const stage = detectSessionStage(state, []);
+    const output = formatSessionContext(stage);
+    expect(stage.goal).toBe("Launch a fresh-eyes reviewer");
+    expect(output).toContain("Launch a fresh-eyes reviewer");
+    expect(output).not.toContain("## Goal");
+    expect(output).not.toContain("Implementation Notes");
+  });
+
   it("includes confidence signal", () => {
     const state = makeState({ phase: "implementing" });
     const stage = detectSessionStage(state, []);
@@ -294,5 +305,51 @@ describe("buildResumeLabel", () => {
     const label = buildResumeLabel(stage);
     expect(label).toContain("📂");
     expect(label).toContain("no active session");
+  });
+});
+
+// ─── Planning-workflow field on OrchestratorState ─────────────
+
+describe("planningWorkflow field", () => {
+  it("is omitted by default from createInitialState", () => {
+    const state = createInitialState();
+    expect("planningWorkflow" in state ? state.planningWorkflow : undefined).toBeUndefined();
+  });
+
+  it("does not affect detectSessionStage when present", () => {
+    const stateWith = makeState({
+      phase: "planning",
+      selectedGoal: "Use Superpowers spec workflow",
+      planningWorkflow: {
+        schemaVersion: 1,
+        adapterId: "superpowers",
+        stage: "spec",
+        generationMode: "superpowers",
+        goalFingerprint: "deadbeef",
+        specArtifact: "superpowers/specs/use-superpowers-spec-workflow.md",
+      },
+    });
+    const stage = detectSessionStage(stateWith, []);
+    expect(stage.phase).toBe("planning");
+    expect(stage.confidence).toBe("high");
+  });
+
+  it("loads legacy state (no planningWorkflow field) without errors", () => {
+    // simulate a checkpoint written before the planningWorkflow field existed
+    const legacy = {
+      phase: "implementing",
+      constraints: [],
+      retryCount: 0,
+      maxRetries: 3,
+      maxReviewPasses: 2,
+      iterationRound: 0,
+      currentGateIndex: 0,
+      polishRound: 0,
+      polishChanges: [],
+      polishConverged: false,
+    } as OrchestratorState;
+    const stage = detectSessionStage(legacy, []);
+    expect(stage.phase).toBe("implementing");
+    expect(legacy.planningWorkflow).toBeUndefined();
   });
 });

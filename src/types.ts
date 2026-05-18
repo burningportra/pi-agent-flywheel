@@ -300,6 +300,15 @@ export interface BeadReview {
   revisionInstructions?: string;
 }
 
+export interface WorkspaceChangeBaseline {
+  /** Git HEAD when implementation work started. */
+  head?: string;
+  /** Files already modified/untracked when implementation started. */
+  changedFiles: string[];
+  /** ISO timestamp for diagnostics. */
+  capturedAt: string;
+}
+
 // ─── Fresh-eyes implementation review ───────────────────────
 export type FreshEyesReviewCoordination = "agent-mail";
 export type FreshEyesReviewOutputMode = "append-current-bead";
@@ -485,6 +494,8 @@ export interface OrchestratorState {
   beadHitMeCompleted?: Record<string, boolean>;
   /** Review pass counts per bead ID. */
   beadReviewPassCounts?: Record<string, number>;
+  /** Workspace state captured when implementation starts, used to isolate current-bead changes from pre-existing dirty files. */
+  workspaceChangeBaseline?: WorkspaceChangeBaseline;
 
   // ─── Polish loop state ─────────────────────────────────────
   /** Current polish round (0-indexed). */
@@ -515,6 +526,18 @@ export interface OrchestratorState {
   planConvergenceScore?: number;
   /** Plan quality readiness score from the Plan Quality Oracle. */
   planReadinessScore?: import("./plan-quality.js").PlanQualityScore;
+
+  // ─── Planning-workflow adapter state ───────────────────────
+  /**
+   * Optional planning-workflow state for the multi-adapter planning system.
+   * Absent on legacy checkpoints (and on sessions that never opted into a
+   * non-native adapter); see `src/workflows/types.ts` for the shape.
+   *
+   * planDocument above is reserved for the final implementation plan
+   * consumed by the existing approval and bead-generation path. Spec
+   * artifacts live at `planningWorkflow.specArtifact` instead.
+   */
+  planningWorkflow?: import("./workflows/types.js").PlanningWorkflowState;
 
   // ─── Research pipeline state ───────────────────────────────
   /**

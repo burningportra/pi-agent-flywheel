@@ -24,6 +24,26 @@ export function sessionArtifactPath(ctx: ArtifactContext, name: string): string 
   return join(sessionArtifactRoot(ctx), name);
 }
 
+function slugifyArtifactName(input: string, fallback: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || fallback;
+}
+
+export function brainstormingDecisionRecordArtifactName(rawGoal: string): string {
+  return `brainstorming/${slugifyArtifactName(rawGoal, "goal")}-decision.md`;
+}
+
+/**
+ * Re-export of the Superpowers-style spec artifact namer from
+ * `workflows/artifacts.ts`. Kept here so callers can import every
+ * artifact-naming helper from `session-artifacts.ts` without knowing the
+ * internal workflow module layout.
+ */
+export { specArtifactName, finalPlanArtifactName } from "./workflows/artifacts.js";
+
 function safeReaddir(path: string): string[] {
   try {
     return readdirSync(path);
