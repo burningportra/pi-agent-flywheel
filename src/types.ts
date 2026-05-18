@@ -176,6 +176,61 @@ export interface Bead {
   closed_at?: string;
 }
 
+export type BeadDependencyType = "blocks" | "parent-child" | "related";
+
+export interface StagedBeadVerification {
+  commandsChecks: string;
+  successLooksLike: string;
+  manualProofFallback: string;
+}
+
+export interface StagedBeadCreation {
+  /** Stable local reference used by dependencies before br assigns a final ID. */
+  localId: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: number;
+  files: string[];
+  verification: StagedBeadVerification;
+  labels?: string[];
+  estimate?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StagedBeadDependency {
+  /** Local or existing bead reference for the bead that depends on another bead. */
+  from: string;
+  /** Local or existing bead reference for the bead being depended on. */
+  to: string;
+  type: BeadDependencyType;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StagedBeadMutationPlan {
+  beads: StagedBeadCreation[];
+  dependencies: StagedBeadDependency[];
+  metadata?: Record<string, unknown>;
+}
+
+export type BeadMutationDiagnosticCode =
+  | "invalid-plan"
+  | "missing-field"
+  | "invalid-field"
+  | "invalid-dependency-type";
+
+export interface BeadMutationDiagnostic {
+  code: BeadMutationDiagnosticCode;
+  path: string;
+  message: string;
+  beadRef?: string;
+  dependencyIndex?: number;
+}
+
+export type NormalizeBeadMutationPlanResult =
+  | { ok: true; plan: StagedBeadMutationPlan; diagnostics: [] }
+  | { ok: false; diagnostics: BeadMutationDiagnostic[] };
+
 export type VerificationContractRequirement =
   | "commands-checks"
   | "success-expectations"

@@ -11,6 +11,9 @@ import {
   updateBeadDescription,
   validateBeads,
   validateVerificationContract,
+  normalizeBeadMutationPlan,
+  validateBeadMutationPlan,
+  executeBeadMutationPlan,
   getBeadsSummary,
   detectBv,
   bvInsights,
@@ -44,6 +47,314 @@ function makeBead(overrides: Partial<Bead> = {}): Bead {
     ...overrides,
   };
 }
+
+// ─── Structured bead mutation plans ─────────────────────────
+
+function makeMutationBead(overrides: Record<string, unknown> = {}) {
+  return {
+    localId: "base",
+    title: "Base bead",
+    description: `Implement the base bead.
+
+Acceptance criteria:
+- [ ] Add the implementation.
+- [ ] Add tests.
+
+${VALID_VERIFICATION_SECTION}
+### Files:
+- src/beads.ts`,
+    priority: 1,
+    type: "task",
+    files: ["src/beads.ts"],
+    verification: {
+      commandsChecks: "run npm test -- src/beads.test.ts",
+      successLooksLike: "tests pass and TypeScript compiles",
+      manualProofFallback: "inspect src/beads.ts if commands cannot run",
+    },
+    ...overrides,
+  };
+}
+
+describe("normalizeBeadMutationPlan", () => {
+  it("normalizes staged bead creations and dependency edges without shell commands", () => {
+    const result = normalizeBeadMutationPlan({
+      metadata: { source: "test" },
+      beads: [{
+        ref: "add-contract",
+        title: "Add mutation contract",
+        description: "Create a typed bead mutation contract.",
+        priority: 1,
+        type: "task",
+        files: ["src/types.ts", "src/beads.ts"],
+        verification: {
+          commandsChecks: "run npm test -- src/beads.test.ts",
+          successLooksLike: "tests pass and TypeScript compiles",
+          manualProofFallback: "inspect src/types.ts and src/beads.ts if commands cannot run",
+        },
+        metadata: { owner: "planner" },
+      }],
+      dependencies: [{ from: "wire-approval", to: "add-contract", type: "parent-child" }],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected normalization to pass");
+    expect(result.plan.beads[0]).toMatchObject({
+      localId: "add-contract",
+      title: "Add mutation contract",
+      priority: 1,
+      files: ["src/types.ts", "src/beads.ts"],
+    });
+    expect(result.plan.dependencies[0]).toEqual({ from: "wire-approval", to: "add-contract", type: "parent-child" });
+    expect(result.plan.metadata).toEqual({ source: "test" });
+  });
+
+  it("reports field-level diagnostics for incomplete bead creations", () => {
+    const result = normalizeBeadMutationPlan({
+      beads: [{
+        ref: "incomplete",
+        title: "Incomplete bead",
+        priority: 2,
+        files: [],
+        verification: { commandsChecks: "run npm test" },
+      }],
+      dependencies: [],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected normalization to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "beads[0].description", beadRef: "incomplete" }),
+      expect.objectContaining({ path: "beads[0].files", beadRef: "incomplete" }),
+      expect.objectContaining({ path: "beads[0].verification.successLooksLike", beadRef: "incomplete" }),
+      expect.objectContaining({ path: "beads[0].verification.manualProofFallback", beadRef: "incomplete" }),
+    ]));
+  });
+
+  it("reports dependency diagnostics with exact edge indexes", () => {
+    const result = normalizeBeadMutationPlan({
+      beads: [{
+        localId: "base",
+        title: "Base bead",
+        description: "Create the base work.",
+        priority: 1,
+        files: ["src/types.ts"],
+        verification: {
+          commandsChecks: "run npm test",
+          successLooksLike: "tests pass",
+          manualProofFallback: "inspect src/types.ts",
+        },
+      }],
+      dependencies: [{ from: "child", type: "surprising" }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected normalization to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "dependencies[0].to", dependencyIndex: 0 }),
+      expect.objectContaining({ code: "invalid-dependency-type", path: "dependencies[0].type", dependencyIndex: 0 }),
+    ]));
+  });
+});
+
+describe("validateBeadMutationPlan", () => {
+  it("accepts a complete staged plan without invoking br", () => {
+    const result = validateBeadMutationPlan({
+      beads: [makeMutationBead(), makeMutationBead({ localId: "child", title: "Child bead" })],
+      dependencies: [{ from: "child", to: "base", type: "blocks" }],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected validation to pass");
+    expect(result.plan.dependencies[0]).toMatchObject({ from: "child", to: "base", type: "blocks" });
+  });
+
+  it("rejects unresolved template artifacts and missing Verification/Files sections", () => {
+    const result = validateBeadMutationPlan({
+      beads: [makeMutationBead({
+        localId: "bad-template",
+        description: `Please [Use template: add-tests]
+Details can see template for the rest.
+
+Acceptance criteria:
+- [ ] Cover {{featureName}}`,
+      })],
+      dependencies: [],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected validation to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "beads[0].description", beadRef: "bad-template", message: expect.stringContaining("missing required ### Files") }),
+      expect.objectContaining({ path: "beads[0].description", beadRef: "bad-template", message: expect.stringContaining("missing required ### Verification") }),
+      expect.objectContaining({ path: "beads[0].description", beadRef: "bad-template", message: expect.stringContaining("raw template marker") }),
+      expect.objectContaining({ path: "beads[0].description", beadRef: "bad-template", message: expect.stringContaining("template shorthand") }),
+      expect.objectContaining({ path: "beads[0].description", beadRef: "bad-template", message: expect.stringContaining("unresolved template placeholder") }),
+    ]));
+  });
+
+  it("rejects descriptions with incomplete verification sections", () => {
+    const result = validateBeadMutationPlan({
+      beads: [makeMutationBead({
+        localId: "weak-verification",
+        description: `Implement the weak verification bead.
+
+Acceptance criteria:
+- [ ] Add behavior.
+- [ ] Add coverage.
+
+### Verification:
+- Commands/checks: run npm test -- src/beads.test.ts
+
+### Files:
+- src/beads.ts`,
+      })],
+      dependencies: [],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected validation to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ beadRef: "weak-verification", message: expect.stringContaining("success expectations") }),
+      expect.objectContaining({ beadRef: "weak-verification", message: expect.stringContaining("manual proof guidance") }),
+    ]));
+  });
+
+  it("rejects invalid dependency types before semantic validation", () => {
+    const result = validateBeadMutationPlan({
+      beads: [makeMutationBead()],
+      dependencies: [{ from: "base", to: "base", type: "surprising" }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "invalid-dependency-type", path: "dependencies[0].type", dependencyIndex: 0 }),
+    ]));
+  });
+
+  it("rejects duplicate, self, missing-endpoint, and cyclic dependencies", () => {
+    const result = validateBeadMutationPlan({
+      beads: [
+        makeMutationBead({ localId: "a", title: "A" }),
+        makeMutationBead({ localId: "b", title: "B" }),
+        makeMutationBead({ localId: "a", title: "Duplicate A" }),
+      ],
+      dependencies: [
+        { from: "a", to: "b", type: "blocks" },
+        { from: "b", to: "a", type: "blocks" },
+        { from: "a", to: "b", type: "related" },
+        { from: "a", to: "a", type: "blocks" },
+        { from: "missing", to: "a", type: "blocks" },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected validation to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "beads[2].localId", message: expect.stringContaining("duplicate staged bead") }),
+      expect.objectContaining({ path: "dependencies[2]", message: expect.stringContaining("duplicate dependency edge") }),
+      expect.objectContaining({ path: "dependencies[3]", message: expect.stringContaining("cannot point to itself") }),
+      expect.objectContaining({ path: "dependencies[4].from", message: expect.stringContaining("unknown bead missing") }),
+      expect.objectContaining({ path: "dependencies", message: expect.stringContaining("dependency cycle detected") }),
+    ]));
+  });
+
+  it("rejects staged dependencies that duplicate or cycle with existing graph edges", () => {
+    const result = validateBeadMutationPlan({
+      beads: [makeMutationBead({ localId: "new-c", title: "New C" })],
+      dependencies: [
+        { from: "existing-a", to: "existing-b", type: "blocks" },
+        { from: "existing-b", to: "new-c", type: "blocks" },
+        { from: "new-c", to: "existing-a", type: "blocks" },
+      ],
+    }, {
+      existingBeads: [{ id: "existing-a" }, { id: "existing-b" }],
+      existingDependencies: [{ from: "existing-a", to: "existing-b", type: "blocks" }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected validation to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "dependencies[0]", message: expect.stringContaining("duplicate dependency edge already exists") }),
+      expect.objectContaining({ path: "dependencies", message: expect.stringContaining("dependency cycle detected") }),
+    ]));
+  });
+
+  it("rejects staged local IDs that collide with existing beads", () => {
+    const result = validateBeadMutationPlan({
+      beads: [makeMutationBead({ localId: "pi-existing" })],
+      dependencies: [],
+    }, { existingBeads: [{ id: "pi-existing" }] });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected validation to fail");
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "beads[0].localId", message: expect.stringContaining("collides with existing bead") }),
+    ]));
+  });
+});
+
+describe("executeBeadMutationPlan", () => {
+  it("validates before invoking any mutation command", async () => {
+    const runner = { run: vi.fn(async () => ({ ok: true, stdout: "" })) };
+    const result = await executeBeadMutationPlan({
+      beads: [makeMutationBead({ localId: "bad", description: "Missing required sections" })],
+      dependencies: [],
+    }, { runner });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("validation-failed");
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("creates beads before dependencies and reports provenance", async () => {
+    const calls: string[][] = [];
+    const runner = {
+      run: vi.fn(async (args: string[]) => {
+        calls.push(args);
+        if (args[0] === "create" && args[1] === "Base bead") return { ok: true, stdout: "✓ Created bead pi-base: Base bead" };
+        if (args[0] === "create" && args[1] === "Child bead") return { ok: true, stdout: "✓ Created pi-child: Child bead" };
+        return { ok: true, stdout: "✓ Added dependency: pi-child -> pi-base (blocks)" };
+      }),
+    };
+
+    const result = await executeBeadMutationPlan({
+      beads: [makeMutationBead(), makeMutationBead({ localId: "child", title: "Child bead" })],
+      dependencies: [{ from: "child", to: "base", type: "blocks" }],
+    }, { runner });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected execution to pass");
+    expect(calls.map((args) => args[0])).toEqual(["create", "create", "dep"]);
+    expect(calls[2]).toEqual(["dep", "add", "pi-child", "pi-base", "--type", "blocks"]);
+    expect(result.createdBeads).toEqual([
+      { localId: "base", beadId: "pi-base", title: "Base bead" },
+      { localId: "child", beadId: "pi-child", title: "Child bead" },
+    ]);
+    expect(result.dependencyEdges).toEqual([{ from: "pi-child", to: "pi-base", type: "blocks" }]);
+    expect(result.commands).toHaveLength(3);
+  });
+
+  it("returns partial-failure diagnostics when an injected command fails", async () => {
+    const runner = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "create") return { ok: true, stdout: `✓ Created ${args[1] === "Base bead" ? "pi-base" : "pi-child"}: ${args[1]}` };
+        return { ok: false, stdout: "", stderr: "dependency failed" };
+      }),
+    };
+
+    const result = await executeBeadMutationPlan({
+      beads: [makeMutationBead(), makeMutationBead({ localId: "child", title: "Child bead" })],
+      dependencies: [{ from: "child", to: "base", type: "blocks" }],
+    }, { runner });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected execution to fail");
+    expect(result.status).toBe("partial-failure");
+    expect(result.createdBeads).toHaveLength(2);
+    expect(result.dependencyEdges).toEqual([]);
+    expect(result.diagnostics).toEqual([expect.objectContaining({ message: "dependency failed" })]);
+  });
+});
 
 // ─── readBeads ───────────────────────────────────────────────
 

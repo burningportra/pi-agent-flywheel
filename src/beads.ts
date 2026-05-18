@@ -52,6 +52,501 @@ export interface PlanToBeadAudit {
   weakMappings: PlanAuditSection[];
 }
 
+export type BeadDependencyType = "blocks" | "parent-child" | "related";
+
+export interface StagedBeadVerification {
+  commandsChecks: string;
+  successLooksLike: string;
+  manualProofFallback: string;
+}
+
+export interface StagedBeadCreation {
+  /** Stable local reference used by dependencies before br assigns a final ID. */
+  localId: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: number;
+  files: string[];
+  verification: StagedBeadVerification;
+  labels?: string[];
+  estimate?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StagedBeadDependency {
+  /** Local or existing bead reference for the bead that depends on another bead. */
+  from: string;
+  /** Local or existing bead reference for the bead being depended on. */
+  to: string;
+  type: BeadDependencyType;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StagedBeadMutationPlan {
+  beads: StagedBeadCreation[];
+  dependencies: StagedBeadDependency[];
+  metadata?: Record<string, unknown>;
+}
+
+export type BeadMutationDiagnosticCode =
+  | "invalid-plan"
+  | "missing-field"
+  | "invalid-field"
+  | "invalid-dependency-type";
+
+export interface BeadMutationDiagnostic {
+  code: BeadMutationDiagnosticCode;
+  path: string;
+  message: string;
+  beadRef?: string;
+  dependencyIndex?: number;
+}
+
+export type NormalizeBeadMutationPlanResult =
+  | { ok: true; plan: StagedBeadMutationPlan; diagnostics: [] }
+  | { ok: false; diagnostics: BeadMutationDiagnostic[] };
+
+const BEAD_DEPENDENCY_TYPES = new Set<BeadDependencyType>(["blocks", "parent-child", "related"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringField(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function numberField(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringArrayField(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const strings = value.map((item) => stringField(item));
+  if (strings.some((item) => item === null)) return null;
+  return strings as string[];
+}
+
+function addMissingFieldDiagnostic(
+  diagnostics: BeadMutationDiagnostic[],
+  path: string,
+  message: string,
+  beadRef?: string,
+  dependencyIndex?: number
+): void {
+  diagnostics.push({ code: "missing-field", path, message, beadRef, dependencyIndex });
+}
+
+function addInvalidFieldDiagnostic(
+  diagnostics: BeadMutationDiagnostic[],
+  path: string,
+  message: string,
+  beadRef?: string,
+  dependencyIndex?: number
+): void {
+  diagnostics.push({ code: "invalid-field", path, message, beadRef, dependencyIndex });
+}
+
+function normalizeStagedBead(
+  value: unknown,
+  index: number,
+  diagnostics: BeadMutationDiagnostic[]
+): StagedBeadCreation | null {
+  const path = `beads[${index}]`;
+  if (!isRecord(value)) {
+    addInvalidFieldDiagnostic(diagnostics, path, "bead creation entry must be an object");
+    return null;
+  }
+
+  const localId = stringField(value.localId ?? value.ref ?? value.id);
+  const beadRef = localId ?? `${path}`;
+  const title = stringField(value.title);
+  const description = stringField(value.description);
+  const type = stringField(value.type) ?? "task";
+  const priority = numberField(value.priority);
+  const files = stringArrayField(value.files);
+  const labels = value.labels === undefined ? undefined : stringArrayField(value.labels);
+  const estimate = value.estimate === undefined ? undefined : numberField(value.estimate);
+  const verification = isRecord(value.verification) ? value.verification : null;
+  const commandsChecks = verification ? stringField(verification.commandsChecks ?? verification.commands ?? verification.checks) : null;
+  const successLooksLike = verification ? stringField(verification.successLooksLike ?? verification.success) : null;
+  const manualProofFallback = verification ? stringField(verification.manualProofFallback ?? verification.manualProof ?? verification.fallback) : null;
+
+  if (!localId) addMissingFieldDiagnostic(diagnostics, `${path}.localId`, "bead creation is missing a localId/ref used by dependencies", beadRef);
+  if (!title) addMissingFieldDiagnostic(diagnostics, `${path}.title`, "bead creation is missing a title", beadRef);
+  if (!description) addMissingFieldDiagnostic(diagnostics, `${path}.description`, "bead creation is missing a description", beadRef);
+  if (priority === null) addMissingFieldDiagnostic(diagnostics, `${path}.priority`, "bead creation is missing a numeric priority", beadRef);
+  if (!files || files.length === 0) addMissingFieldDiagnostic(diagnostics, `${path}.files`, "bead creation is missing a non-empty files list", beadRef);
+  if (!verification) addMissingFieldDiagnostic(diagnostics, `${path}.verification`, "bead creation is missing verification guidance", beadRef);
+  if (verification && !commandsChecks) addMissingFieldDiagnostic(diagnostics, `${path}.verification.commandsChecks`, "verification is missing commands/checks guidance", beadRef);
+  if (verification && !successLooksLike) addMissingFieldDiagnostic(diagnostics, `${path}.verification.successLooksLike`, "verification is missing success expectations", beadRef);
+  if (verification && !manualProofFallback) addMissingFieldDiagnostic(diagnostics, `${path}.verification.manualProofFallback`, "verification is missing manual proof fallback guidance", beadRef);
+  if (value.labels !== undefined && labels === null) addInvalidFieldDiagnostic(diagnostics, `${path}.labels`, "labels must be an array of strings", beadRef);
+  if (value.estimate !== undefined && estimate === null) addInvalidFieldDiagnostic(diagnostics, `${path}.estimate`, "estimate must be numeric when provided", beadRef);
+
+  if (!localId || !title || !description || priority === null || !files || files.length === 0 || !verification || !commandsChecks || !successLooksLike || !manualProofFallback || labels === null || estimate === null) {
+    return null;
+  }
+
+  return {
+    localId,
+    title,
+    description,
+    type,
+    priority,
+    files,
+    verification: { commandsChecks, successLooksLike, manualProofFallback },
+    ...(labels ? { labels } : {}),
+    ...(typeof estimate === "number" ? { estimate } : {}),
+    ...(isRecord(value.metadata) ? { metadata: value.metadata } : {}),
+  };
+}
+
+function normalizeStagedDependency(
+  value: unknown,
+  index: number,
+  diagnostics: BeadMutationDiagnostic[]
+): StagedBeadDependency | null {
+  const path = `dependencies[${index}]`;
+  if (!isRecord(value)) {
+    addInvalidFieldDiagnostic(diagnostics, path, "dependency entry must be an object", undefined, index);
+    return null;
+  }
+
+  const from = stringField(value.from ?? value.issue ?? value.child);
+  const to = stringField(value.to ?? value.dependsOn ?? value.depends_on ?? value.parent);
+  const typeValue = stringField(value.type) ?? "blocks";
+
+  if (!from) addMissingFieldDiagnostic(diagnostics, `${path}.from`, "dependency is missing the dependent bead reference", undefined, index);
+  if (!to) addMissingFieldDiagnostic(diagnostics, `${path}.to`, "dependency is missing the depended-on bead reference", undefined, index);
+  if (!BEAD_DEPENDENCY_TYPES.has(typeValue as BeadDependencyType)) {
+    diagnostics.push({
+      code: "invalid-dependency-type",
+      path: `${path}.type`,
+      message: `dependency type must be one of: ${Array.from(BEAD_DEPENDENCY_TYPES).join(", ")}`,
+      dependencyIndex: index,
+    });
+  }
+
+  if (!from || !to || !BEAD_DEPENDENCY_TYPES.has(typeValue as BeadDependencyType)) return null;
+
+  return {
+    from,
+    to,
+    type: typeValue as BeadDependencyType,
+    ...(isRecord(value.metadata) ? { metadata: value.metadata } : {}),
+  };
+}
+
+/**
+ * Normalizes a structured bead mutation request into a staged plan.
+ *
+ * This is the boundary between planner/approval code and br mutations: callers
+ * pass data, not shell commands. The result is either a typed plan that can be
+ * validated/applied later, or field-level diagnostics that point at the exact
+ * bead/dependency entry that needs repair.
+ */
+export function normalizeBeadMutationPlan(input: unknown): NormalizeBeadMutationPlanResult {
+  const diagnostics: BeadMutationDiagnostic[] = [];
+  if (!isRecord(input)) {
+    return { ok: false, diagnostics: [{ code: "invalid-plan", path: "$", message: "bead mutation plan must be an object" }] };
+  }
+
+  const rawBeads = input.beads ?? input.creations;
+  const rawDependencies = input.dependencies ?? input.edges ?? [];
+  if (!Array.isArray(rawBeads)) {
+    diagnostics.push({ code: "missing-field", path: "beads", message: "bead mutation plan is missing a beads array" });
+  }
+  if (!Array.isArray(rawDependencies)) {
+    diagnostics.push({ code: "invalid-field", path: "dependencies", message: "dependencies must be an array when provided" });
+  }
+
+  const beads = Array.isArray(rawBeads)
+    ? rawBeads.flatMap((entry, index) => {
+        const bead = normalizeStagedBead(entry, index, diagnostics);
+        return bead ? [bead] : [];
+      })
+    : [];
+  const dependencies = Array.isArray(rawDependencies)
+    ? rawDependencies.flatMap((entry, index) => {
+        const dependency = normalizeStagedDependency(entry, index, diagnostics);
+        return dependency ? [dependency] : [];
+      })
+    : [];
+
+  if (diagnostics.length > 0) return { ok: false, diagnostics };
+  return {
+    ok: true,
+    diagnostics: [],
+    plan: {
+      beads,
+      dependencies,
+      ...(isRecord(input.metadata) ? { metadata: input.metadata } : {}),
+    },
+  };
+}
+
+export interface ValidateBeadMutationPlanOptions {
+  existingBeads?: Pick<Bead, "id">[];
+  existingDependencies?: StagedBeadDependency[];
+}
+
+export type ValidateBeadMutationPlanResult =
+  | { ok: true; plan: StagedBeadMutationPlan; diagnostics: [] }
+  | { ok: false; diagnostics: BeadMutationDiagnostic[]; plan?: StagedBeadMutationPlan };
+
+/**
+ * Validates a staged bead mutation plan without invoking br or mutating .beads/.
+ */
+export function validateBeadMutationPlan(input: unknown, options: ValidateBeadMutationPlanOptions = {}): ValidateBeadMutationPlanResult {
+  const normalized = normalizeBeadMutationPlan(input);
+  if (!normalized.ok) return normalized;
+
+  const diagnostics: BeadMutationDiagnostic[] = [];
+  const plan = normalized.plan;
+  const existingIds = new Set((options.existingBeads ?? []).map((bead) => bead.id));
+  const knownIds = new Set(existingIds);
+  const seenLocalIds = new Map<string, number>();
+
+  for (const [index, bead] of plan.beads.entries()) {
+    const priorIndex = seenLocalIds.get(bead.localId);
+    if (priorIndex !== undefined) {
+      diagnostics.push({
+        code: "invalid-field",
+        path: `beads[${index}].localId`,
+        beadRef: bead.localId,
+        message: `duplicate staged bead localId also appears at beads[${priorIndex}]`,
+      });
+    }
+    if (existingIds.has(bead.localId)) {
+      diagnostics.push({
+        code: "invalid-field",
+        path: `beads[${index}].localId`,
+        beadRef: bead.localId,
+        message: `staged bead localId collides with existing bead ${bead.localId}`,
+      });
+    }
+    seenLocalIds.set(bead.localId, index);
+    knownIds.add(bead.localId);
+
+    if (!/^###\s+Files\s*:/im.test(bead.description)) {
+      diagnostics.push({ code: "missing-field", path: `beads[${index}].description`, beadRef: bead.localId, message: "bead description is missing required ### Files: section" });
+    }
+
+    for (const issue of validateVerificationContract({ id: bead.localId, title: bead.title, description: bead.description, status: "open", priority: bead.priority, type: bead.type, labels: [] })) {
+      diagnostics.push({
+        code: issue.issueType === "missing-section" ? "missing-field" : "invalid-field",
+        path: `beads[${index}].description`,
+        beadRef: bead.localId,
+        message: issue.reason,
+      });
+    }
+
+    for (const issue of validateTemplateHygiene({ id: bead.localId, description: bead.description, status: "open" })) {
+      diagnostics.push({
+        code: "invalid-field",
+        path: `beads[${index}].description`,
+        beadRef: bead.localId,
+        message: issue.reason,
+      });
+    }
+  }
+
+  const seenEdges = new Map<string, string>();
+  for (const dependency of options.existingDependencies ?? []) {
+    seenEdges.set(dependencyEdgeKey(dependency), "existing dependency");
+  }
+
+  for (const [index, dependency] of plan.dependencies.entries()) {
+    if (dependency.from === dependency.to) {
+      diagnostics.push({ code: "invalid-field", path: `dependencies[${index}]`, dependencyIndex: index, message: "dependency cannot point to itself" });
+    }
+    if (!knownIds.has(dependency.from)) {
+      diagnostics.push({ code: "missing-field", path: `dependencies[${index}].from`, dependencyIndex: index, message: `dependency references unknown bead ${dependency.from}` });
+    }
+    if (!knownIds.has(dependency.to)) {
+      diagnostics.push({ code: "missing-field", path: `dependencies[${index}].to`, dependencyIndex: index, message: `dependency references unknown bead ${dependency.to}` });
+    }
+
+    const edgeKey = dependencyEdgeKey(dependency);
+    const duplicateOf = seenEdges.get(edgeKey);
+    if (duplicateOf) {
+      diagnostics.push({
+        code: "invalid-field",
+        path: `dependencies[${index}]`,
+        dependencyIndex: index,
+        message: duplicateOf === "existing dependency"
+          ? "duplicate dependency edge already exists"
+          : `duplicate dependency edge in staged plan (first seen at ${duplicateOf})`,
+      });
+    } else {
+      seenEdges.set(edgeKey, `dependencies[${index}]`);
+    }
+  }
+
+  const cycle = findDependencyCycle([...plan.dependencies, ...(options.existingDependencies ?? [])], knownIds);
+  if (cycle.length > 0) {
+    diagnostics.push({ code: "invalid-field", path: "dependencies", message: `dependency cycle detected: ${cycle.join(" -> ")}` });
+  }
+
+  if (diagnostics.length > 0) return { ok: false, diagnostics, plan };
+  return { ok: true, diagnostics: [], plan };
+}
+
+function dependencyEdgeKey(dependency: StagedBeadDependency): string {
+  return `${dependency.from}\u0000${dependency.to}`;
+}
+
+export interface BeadMutationCommandResult {
+  ok: boolean;
+  stdout: string;
+  stderr?: string;
+}
+
+export interface BeadMutationCommandRunner {
+  run(args: string[]): Promise<BeadMutationCommandResult>;
+}
+
+export interface BeadMutationAppliedCommand {
+  args: string[];
+  ok: boolean;
+  stdout: string;
+  stderr?: string;
+}
+
+export interface AppliedBeadMutation {
+  localId: string;
+  beadId: string;
+  title: string;
+}
+
+export interface AppliedDependencyMutation {
+  from: string;
+  to: string;
+  type: BeadDependencyType;
+}
+
+export type ExecuteBeadMutationPlanResult =
+  | {
+      ok: true;
+      status: "applied";
+      createdBeads: AppliedBeadMutation[];
+      dependencyEdges: AppliedDependencyMutation[];
+      commands: BeadMutationAppliedCommand[];
+    }
+  | {
+      ok: false;
+      status: "validation-failed" | "partial-failure";
+      diagnostics: BeadMutationDiagnostic[];
+      createdBeads: AppliedBeadMutation[];
+      dependencyEdges: AppliedDependencyMutation[];
+      commands: BeadMutationAppliedCommand[];
+    };
+
+export interface ExecuteBeadMutationPlanOptions extends ValidateBeadMutationPlanOptions {
+  runner: BeadMutationCommandRunner;
+}
+
+/**
+ * Applies a staged bead mutation plan through one controlled command boundary.
+ * Validation always runs before the first command is invoked.
+ */
+export async function executeBeadMutationPlan(input: unknown, options: ExecuteBeadMutationPlanOptions): Promise<ExecuteBeadMutationPlanResult> {
+  const validation = validateBeadMutationPlan(input, options);
+  if (!validation.ok) {
+    return { ok: false, status: "validation-failed", diagnostics: validation.diagnostics, createdBeads: [], dependencyEdges: [], commands: [] };
+  }
+
+  const localToCreated = new Map<string, string>();
+  const createdBeads: AppliedBeadMutation[] = [];
+  const dependencyEdges: AppliedDependencyMutation[] = [];
+  const commands: BeadMutationAppliedCommand[] = [];
+
+  const run = async (args: string[]): Promise<BeadMutationCommandResult> => {
+    const result = await options.runner.run(args);
+    commands.push({ args, ok: result.ok, stdout: result.stdout, ...(result.stderr ? { stderr: result.stderr } : {}) });
+    return result;
+  };
+
+  for (const bead of validation.plan.beads) {
+    const result = await run(["create", bead.title, "-t", bead.type, "-p", String(bead.priority), "-d", bead.description]);
+    if (!result.ok) {
+      return {
+        ok: false,
+        status: "partial-failure",
+        diagnostics: [{ code: "invalid-field", path: `beads.${bead.localId}`, beadRef: bead.localId, message: result.stderr || result.stdout || "bead creation command failed" }],
+        createdBeads,
+        dependencyEdges,
+        commands,
+      };
+    }
+    const beadId = extractCreatedBeadId(result.stdout) ?? bead.localId;
+    localToCreated.set(bead.localId, beadId);
+    createdBeads.push({ localId: bead.localId, beadId, title: bead.title });
+  }
+
+  for (const dependency of validation.plan.dependencies) {
+    const from = localToCreated.get(dependency.from) ?? dependency.from;
+    const to = localToCreated.get(dependency.to) ?? dependency.to;
+    const result = await run(["dep", "add", from, to, "--type", dependency.type]);
+    if (!result.ok) {
+      return {
+        ok: false,
+        status: "partial-failure",
+        diagnostics: [{ code: "invalid-field", path: `dependencies.${dependency.from}->${dependency.to}`, message: result.stderr || result.stdout || "dependency command failed" }],
+        createdBeads,
+        dependencyEdges,
+        commands,
+      };
+    }
+    dependencyEdges.push({ from, to, type: dependency.type });
+  }
+
+  return { ok: true, status: "applied", createdBeads, dependencyEdges, commands };
+}
+
+function extractCreatedBeadId(stdout: string): string | null {
+  return stdout.match(/Created(?:\s+bead)?\s+([a-z][a-z0-9]*-[A-Za-z0-9]+)/i)?.[1] ?? null;
+}
+
+function findDependencyCycle(dependencies: StagedBeadDependency[], knownIds: Set<string>): string[] {
+  const graph = new Map<string, string[]>();
+  for (const id of knownIds) graph.set(id, []);
+  for (const dep of dependencies) {
+    if (!knownIds.has(dep.from) || !knownIds.has(dep.to)) continue;
+    graph.get(dep.from)!.push(dep.to);
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const stack: string[] = [];
+
+  const visit = (id: string): string[] => {
+    if (visiting.has(id)) {
+      const start = stack.indexOf(id);
+      return [...stack.slice(Math.max(start, 0)), id];
+    }
+    if (visited.has(id)) return [];
+    visiting.add(id);
+    stack.push(id);
+    for (const next of graph.get(id) ?? []) {
+      const cycle = visit(next);
+      if (cycle.length > 0) return cycle;
+    }
+    stack.pop();
+    visiting.delete(id);
+    visited.add(id);
+    return [];
+  };
+
+  for (const id of graph.keys()) {
+    const cycle = visit(id);
+    if (cycle.length > 0) return cycle;
+  }
+  return [];
+}
+
 function tokenizePlanAudit(text: string): string[] {
   return Array.from(
     new Set(
@@ -392,6 +887,64 @@ export function validateVerificationContract(bead: Bead): VerificationContractIs
     }));
 }
 
+export function validateTemplateHygiene(bead: Pick<Bead, "id" | "description" | "status">): TemplateHygieneIssue[] {
+  if (bead.status !== "open") return [];
+  const desc = bead.description ?? "";
+  const lines = desc.split("\n");
+  const hasFilesSection = desc.includes("### Files:") || /^[-*]\s+(?:src|lib|test|tests|dist|docs)\/\S+/m.test(desc);
+  const acceptanceCriteriaCount = lines.filter((line) => line.trim().startsWith("- [ ]") || line.trim().startsWith("- [x]")).length;
+  const templateSignals = new Set<TemplateHygieneIssue["issueType"]>();
+  const issues: TemplateHygieneIssue[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (/(?:^|\[|\b)use template:/i.test(line)) {
+      templateSignals.add("raw-template-marker");
+      issues.push({
+        beadId: bead.id,
+        issueType: "raw-template-marker",
+        excerpt: line,
+        reason: `bead ${bead.id} has a raw template marker instead of expanded instructions`,
+      });
+      continue;
+    }
+
+    if (/\bsee\s+(?:the\s+)?template\b/i.test(line) || /\buse\s+the\s+template\b/i.test(line)) {
+      templateSignals.add("template-shorthand");
+      issues.push({
+        beadId: bead.id,
+        issueType: "template-shorthand",
+        excerpt: line,
+        reason: `bead ${bead.id} uses template shorthand without expanded implementation details`,
+      });
+    }
+  }
+
+  for (const match of desc.matchAll(/{{\s*\w+\s*}}|<[A-Z][A-Z0-9_]{2,}>/g)) {
+    const excerpt = match[0];
+    templateSignals.add("unresolved-placeholder");
+    issues.push({
+      beadId: bead.id,
+      issueType: "unresolved-placeholder",
+      excerpt,
+      reason: `bead ${bead.id} still contains an unresolved template placeholder`,
+    });
+  }
+
+  if (templateSignals.size > 0 && (!hasFilesSection || acceptanceCriteriaCount < 2)) {
+    issues.push({
+      beadId: bead.id,
+      issueType: "template-missing-structure",
+      excerpt: !hasFilesSection ? "missing ### Files:" : `acceptance criteria count: ${acceptanceCriteriaCount}`,
+      reason: `bead ${bead.id} has template artifacts but is missing concrete file scope or enough acceptance criteria`,
+    });
+  }
+
+  return issues;
+}
+
 /**
  * Updates the status of a bead.
  */
@@ -567,58 +1120,7 @@ export async function validateBeads(
         verificationIssues.push(...validateVerificationContract(bead));
       }
 
-      if (bead.status !== "open") continue;
-
-      const lines = desc.split("\n");
-      const hasFilesSection = desc.includes("### Files:") || /^[-*]\s+(?:src|lib|test|tests|dist|docs)\/\S+/m.test(desc);
-      const acceptanceCriteriaCount = lines.filter((line) => line.trim().startsWith("- [ ]") || line.trim().startsWith("- [x]")).length;
-      const templateSignals = new Set<TemplateHygieneIssue["issueType"]>();
-
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line) continue;
-
-        if (/^\[?use template:/i.test(line)) {
-          templateSignals.add("raw-template-marker");
-          templateIssues.push({
-            beadId: bead.id,
-            issueType: "raw-template-marker",
-            excerpt: line,
-            reason: `bead ${bead.id} has a raw template marker instead of expanded instructions`,
-          });
-          continue;
-        }
-
-        if (/^see template\b/i.test(line) || /^use the template\b/i.test(line)) {
-          templateSignals.add("template-shorthand");
-          templateIssues.push({
-            beadId: bead.id,
-            issueType: "template-shorthand",
-            excerpt: line,
-            reason: `bead ${bead.id} uses template shorthand without expanded implementation details`,
-          });
-        }
-      }
-
-      for (const match of desc.matchAll(/{{\s*\w+\s*}}|<[A-Z][A-Z0-9_]{2,}>/g)) {
-        const excerpt = match[0];
-        templateSignals.add("unresolved-placeholder");
-        templateIssues.push({
-          beadId: bead.id,
-          issueType: "unresolved-placeholder",
-          excerpt,
-          reason: `bead ${bead.id} still contains an unresolved template placeholder`,
-        });
-      }
-
-      if (templateSignals.size > 0 && (!hasFilesSection || acceptanceCriteriaCount < 2)) {
-        templateIssues.push({
-          beadId: bead.id,
-          issueType: "template-missing-structure",
-          excerpt: !hasFilesSection ? "missing ### Files:" : `acceptance criteria count: ${acceptanceCriteriaCount}`,
-          reason: `bead ${bead.id} has template artifacts but is missing concrete file scope or enough acceptance criteria`,
-        });
-      }
+      templateIssues.push(...validateTemplateHygiene(bead));
     }
   } catch {
     // Non-fatal
