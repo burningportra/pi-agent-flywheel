@@ -1425,12 +1425,19 @@ export function competingPlanAgentPrompt(
   goal: string,
   profile: RepoProfile,
   scanResult?: ScanResult,
-  cassContext?: string
+  cassContext?: string,
+  approvedSpec?: string,
 ): string {
   const repoContext = formatRepoProfile(profile, scanResult);
   const memorySection =
     cassContext && cassContext.trim().length > 0
       ? `\n## Memory from Prior Orchestrations\n${cassContext.trim()}\n`
+      : "";
+  const approvedSpecSection =
+    approvedSpec && approvedSpec.trim().length > 0
+      ? `\n## Approved Spec (source of truth — every plan section MUST trace back to this)\n${approvedSpec.trim()}\n\n` +
+        `Treat the spec above as already accepted by the user. Do NOT introduce behavior the spec did not authorize, ` +
+        `and do NOT rewrite the spec — your job is to plan the implementation that satisfies it through your focus lens.\n`
       : "";
   const lensInstructions = {
     correctness: [
@@ -1456,8 +1463,7 @@ export function competingPlanAgentPrompt(
 ${goal}
 
 ## Focus Lens: ${focus}
-${lensInstructions[focus].map((line) => `- ${line}`).join("\n")}${memorySection}
-
+${lensInstructions[focus].map((line) => `- ${line}`).join("\n")}${memorySection}${approvedSpecSection}
 ## Repository Context
 ${repoContext}
 

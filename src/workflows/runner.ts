@@ -29,6 +29,19 @@ export type PlanningPhase = "planning" | "awaiting_plan_approval";
 export type PlanningToolCall = "flywheel_plan" | "flywheel_approve_beads";
 
 /**
+ * Which document a workflow-stage-aware {@link PlanningToolCall} should
+ * produce for the *current* state.
+ *
+ * - "spec" — the Superpowers-style spec document. The plan tool must write
+ *   it to `planningWorkflow.specArtifact` and MUST NOT touch
+ *   `oc.state.planDocument` (saved-plan discovery reserves that field for
+ *   final implementation plans).
+ * - "plan" — the final implementation plan consumed by bead generation.
+ *   The plan tool writes it to `oc.state.planDocument` as it does today.
+ */
+export type PlanningDocumentKind = "spec" | "plan";
+
+/**
  * Returned when the runner rejects a tool call because it does not match the
  * current workflow stage. The `message` is intended to be surfaced verbatim
  * to the agent as a {@link FlywheelError} payload so the agent can correct
@@ -118,4 +131,48 @@ export function checkPlanningToolOrdering(
   }
 
   return null;
+}
+
+/**
+ * Determine which document the planner should write for the active workflow
+ * state. Native workflows (and legacy sessions) always produce an
+ * implementation plan; non-native adapters branch on stage and which
+ * document was last approved.
+ *
+ * Rules:
+ *  - No `planningWorkflow` → "plan" (legacy native default).
+ *  - Native adapter → "plan" regardless of stage.
+ *  - Non-native adapter:
+ *      - `idle` or `brainstorming` → "spec" (about to start the workflow).
+ *      - `spec` or `awaiting_spec_approval` → "spec".
+ *      - `awaiting_plan_approval` with `lastApprovedDocumentKind === "spec"`
+ *        → "plan" (spec just approved, time to write the impl plan).
+ *      - `plan` → "plan" (in-flight implementation plan).
+ *      - `awaiting_plan_approval` with `lastApprovedDocumentKind === "plan"`
+ *        or any unknown shape → "plan" (the plan is already approved or
+ *        being re-approved; downstream callers will short-circuit).
+ *      - `handoff` → "plan" (planning is done; callers should refuse the
+ *        request elsewhere, this is just a safe default).
+ *
+ * The tool layer uses this to decide which prompt to emit and whether to
+ * touch `planDocument` vs `planningWorkflow.specArtifact`.
+ */
+export function planningDocumentKindFor(state: OrchestratorState): PlanningDocumentKind {
+  const wf = state.planningWorkflow;
+  if (!wf) return "plan";
+  if (wf.adapterId === NATIVE_ADAPTER_ID) return "plan";
+
+  switch (wf.stage) {
+    case "brainstorming":
+    case "idle":
+    case "spec":
+    case "awaiting_spec_approval":
+      return "spec";
+    case "awaiting_plan_approval":
+      return wf.lastApprovedDocumentKind === "spec" ? "plan" : "plan";
+    case "plan":
+    case "handoff":
+    default:
+      return "plan";
+  }
 }

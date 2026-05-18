@@ -9,9 +9,10 @@ import type { PlanningWorkflowAdapter } from "./native.js";
 import { NATIVE_ADAPTER_ID } from "./native.js";
 import {
   checkPlanningToolOrdering,
+  planningDocumentKindFor,
   stageToPlanningPhase,
 } from "./runner.js";
-import type { WorkflowStage } from "./types.js";
+import type { ApprovedDocumentKind, WorkflowStage } from "./types.js";
 
 beforeEach(() => {
   _resetPlanningWorkflowRegistryForTesting();
@@ -207,6 +208,77 @@ describe("runner — checkPlanningToolOrdering (non-native adapter guardrails)",
       toolName: "flywheel_plan",
       stage: "spec",
     });
+  });
+});
+
+describe("runner — planningDocumentKindFor", () => {
+  function stateWith(opts: {
+    stage?: WorkflowStage;
+    adapterId?: string;
+    lastApprovedDocumentKind?: ApprovedDocumentKind;
+  }): OrchestratorState {
+    const state = createInitialState();
+    if (opts.stage || opts.adapterId) {
+      state.planningWorkflow = {
+        schemaVersion: 1,
+        adapterId: opts.adapterId ?? NATIVE_ADAPTER_ID,
+        stage: opts.stage ?? "idle",
+        generationMode: opts.adapterId === "superpowers" ? "superpowers" : "native",
+        goalFingerprint: "fp",
+        lastApprovedDocumentKind: opts.lastApprovedDocumentKind,
+      };
+    }
+    return state;
+  }
+
+  it("returns 'plan' for legacy sessions with no planningWorkflow (native default)", () => {
+    expect(planningDocumentKindFor(createInitialState())).toBe("plan");
+  });
+
+  it("returns 'plan' for native adapter regardless of stage (parity)", () => {
+    for (const stage of [
+      "idle",
+      "plan",
+      "awaiting_plan_approval",
+      "handoff",
+    ] as WorkflowStage[]) {
+      expect(planningDocumentKindFor(stateWith({ stage }))).toBe("plan");
+    }
+  });
+
+  it("returns 'spec' for non-native adapter while still in spec stages", () => {
+    expect(
+      planningDocumentKindFor(stateWith({ adapterId: "superpowers", stage: "idle" })),
+    ).toBe("spec");
+    expect(
+      planningDocumentKindFor(stateWith({ adapterId: "superpowers", stage: "brainstorming" })),
+    ).toBe("spec");
+    expect(
+      planningDocumentKindFor(stateWith({ adapterId: "superpowers", stage: "spec" })),
+    ).toBe("spec");
+    expect(
+      planningDocumentKindFor(
+        stateWith({ adapterId: "superpowers", stage: "awaiting_spec_approval" }),
+      ),
+    ).toBe("spec");
+  });
+
+  it("returns 'plan' for non-native adapter after spec approval and onward", () => {
+    expect(
+      planningDocumentKindFor(
+        stateWith({
+          adapterId: "superpowers",
+          stage: "awaiting_plan_approval",
+          lastApprovedDocumentKind: "spec",
+        }),
+      ),
+    ).toBe("plan");
+    expect(
+      planningDocumentKindFor(stateWith({ adapterId: "superpowers", stage: "plan" })),
+    ).toBe("plan");
+    expect(
+      planningDocumentKindFor(stateWith({ adapterId: "superpowers", stage: "handoff" })),
+    ).toBe("plan");
   });
 });
 
