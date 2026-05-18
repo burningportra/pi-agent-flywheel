@@ -20,6 +20,7 @@ export type FlywheelErrorCode =
   | "NO_PLAN"
   | "PLAN_SYNTH_FAILED"
   | "BEAD_NOT_FOUND"
+  | "OUT_OF_ORDER_TOOL_CALL"
   | "INVALID_INPUT"
   | "INTERNAL";
 

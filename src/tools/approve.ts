@@ -10,6 +10,7 @@ import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecation
 import { brExecJson, resilientExec } from "../cli-exec.js";
 
 import { FlywheelError } from "../errors.js";
+import { checkPlanningToolOrdering } from "../workflows/runner.js";
 // ─── Module-level bead snapshots for change detection ────────
 // These live at module scope so they persist across multiple calls to
 // orch_approve_beads within the same orchestration session. Each call
@@ -237,6 +238,10 @@ export function registerApproveTool(oc: OrchestratorContext) {
       emitToolDeprecationWarning(toolName, canonicalName("approve_beads"));
       if (!oc.state.selectedGoal) {
         throw new FlywheelError("NO_GOAL");
+      }
+      const orderingRejection = checkPlanningToolOrdering("flywheel_approve_beads", oc.state);
+      if (orderingRejection) {
+        throw new FlywheelError("OUT_OF_ORDER_TOOL_CALL", orderingRejection.message);
       }
 
       if (oc.state.phase === "awaiting_plan_approval" || (oc.state.phase === "planning" && oc.state.planDocument)) {

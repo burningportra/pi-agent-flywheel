@@ -17,6 +17,7 @@ import { readMemory } from "../memory.js";
 
 import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { FlywheelError } from "../errors.js";
+import { checkPlanningToolOrdering } from "../workflows/runner.js";
 /**
  * Save a plan snapshot to docs/plans/ in the project repo.
  * Filenames: docs/plans/<date>-<slug>-<suffix>.md
@@ -151,6 +152,12 @@ export function registerPlanTool(oc: OrchestratorContext) {
       emitToolDeprecationWarning(toolName, canonicalName("plan"));
       if (!oc.state.selectedGoal || !oc.state.repoProfile) {
         throw new FlywheelError("NO_GOAL", "No selected goal or repo profile. Call flywheel_profile and flywheel_select first.");
+      }
+      const orderingRejection = checkPlanningToolOrdering("flywheel_plan", oc.state);
+      if (orderingRejection) {
+        throw new FlywheelError("OUT_OF_ORDER_TOOL_CALL", orderingRejection.message, {
+          suggestion: orderingRejection.recommendedTool ?? "flywheel_approve_beads",
+        });
       }
 
       const mode = params.mode as "single_model" | "multi_model";

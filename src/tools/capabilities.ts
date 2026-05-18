@@ -97,6 +97,11 @@ export const ERROR_CATEGORIES: Record<string, ErrorCategory> = {
     fix_command: "br list",
     message_template: "Bead not found. Use `br list` to see available beads.",
   },
+  OUT_OF_ORDER_TOOL_CALL: {
+    code: "OUT_OF_ORDER_TOOL_CALL",
+    fix_command: "flywheel_approve_beads",
+    message_template: "Tool call does not match current planning-workflow stage. Wait for the previous step to finish, then resume from the recommended tool.",
+  },
 };
 
 export const ENV_VARS: EnvVarDefinition[] = [
@@ -115,6 +120,7 @@ const TOOL_DESCRIPTIONS: Record<string, { description: string; phase_position: n
   doctor: { description: "Read-only diagnostic for flywheel prerequisites and session health.", phase_position: null, prereq: null, next: null },
   verify_beads: { description: "Reconcile a completed implementation wave: verify bead IDs are closed.", phase_position: null, prereq: null, next: null },
   audit_beads: { description: "Audit closed beads for compliance with their stated implementation.", phase_position: null, prereq: null, next: null },
+  research: { description: "Study an external repo and synthesize a research-reimagine proposal for this project.", phase_position: null, prereq: null, next: "flywheel_approve_beads" },
   capabilities: { description: "Return the machine-readable tool contract for pi-agent-flywheel.", phase_position: null, prereq: null, next: null },
   robot_docs: { description: "Return a paste-ready agent handbook (canonical phase order, common errors, examples).", phase_position: null, prereq: null, next: null },
   triage: { description: "Mega-command: quick_ref + recommendations + commands + health in one call.", phase_position: null, prereq: null, next: null },
