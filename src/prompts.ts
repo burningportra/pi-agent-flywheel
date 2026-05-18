@@ -1958,3 +1958,182 @@ git add .beads/ && git commit -m "chore: add fix beads from audit"
 
 After creating beads, call \`orch_approve_beads\` to review before implementing.`;
 }
+
+// ─── Superpowers spec-first workflow prompts ────────────────
+//
+// The Superpowers adapter writes a SPEC (design document) before any
+// implementation plan exists. The three prompts below must stay
+// document-kind-aware: a "spec" describes WHAT and WHY (interface,
+// constraints, acceptance, non-goals) without prescribing the
+// implementation steps that belong in `planDocumentPrompt`. Keeping
+// the two vocabularies separate is what lets the adapter store specs
+// at `planningWorkflow.specArtifact` while reserving `planDocument` for
+// the final implementation plan that downstream bead generation reads.
+
+/**
+ * Prompt for generating the initial Superpowers spec from a refined goal.
+ *
+ * The spec is a design document — it must describe the desired behavior,
+ * interfaces, constraints, and acceptance criteria without committing to a
+ * file-by-file implementation sequence. That sequencing belongs to the
+ * later `implementationPlanFromSpecPrompt`.
+ */
+export function superpowersSpecPrompt(
+  goal: string,
+  profile: RepoProfile,
+  constraints: string[] = [],
+  scanResult?: ScanResult,
+): string {
+  const repoContext = formatRepoProfile(profile, scanResult);
+  const constraintsSection = constraints.length
+    ? `## Constraints & Non-Goals\n${constraints.map((c) => `- ${c}`).join("\n")}\n`
+    : "";
+
+  return `You are an expert software architect writing a Superpowers-style **specification document**. This is NOT an implementation plan — it captures WHAT should be built and WHY, not the step-by-step HOW.
+
+## Goal
+${goal}
+
+## Repository Context
+${repoContext}
+
+${constraintsSection}
+## Spec Requirements
+Produce a markdown spec covering ALL of the following sections. Use the words "spec" or "specification" — not "plan" — when referring to the output.
+
+### 1. Problem Statement
+- What user-visible problem this spec resolves
+- Why solving it now is worth the effort
+
+### 2. Desired Behavior
+- The observable behavior after this spec is satisfied
+- User journeys, command surfaces, or API responses described from the outside
+
+### 3. Interfaces & Contracts
+- Public types, function signatures, CLI flags, or HTTP routes
+- Inputs, outputs, and error shapes the rest of the system can rely on
+
+### 4. Constraints & Non-Goals
+- Hard constraints (compatibility, performance budgets, dependencies)
+- Explicit non-goals so future plans do not drift in scope
+
+### 5. Acceptance Criteria
+- Observable, testable statements that prove the spec is satisfied
+- Should map cleanly to verification steps in a later implementation plan
+
+### 6. Open Questions
+- Anything still ambiguous that the user must answer before planning
+
+## Output Rules
+- Save the spec as a session artifact under \`superpowers/specs/<slug>.md\` using \`write_artifact\`.
+- Do NOT use \`plans/...\` as the artifact path — that namespace is reserved for the implementation plan generated AFTER spec approval.
+- Do NOT include "Architecture Overview", "File Structure", or "Sequencing" sections — those belong in the implementation plan, not the spec.
+- Ground every claim in the repository context above — do not invent capabilities that the codebase does not provide.`;
+}
+
+/**
+ * Prompt for refining an existing Superpowers spec in a fresh review pass.
+ *
+ * Vocabulary is intentionally distinct from `planRefinementPrompt` so the
+ * agent does not slip into implementation-plan refinement language. The
+ * round counter mirrors `specRefinementRound` in `PlanningWorkflowState`.
+ */
+export function superpowersSpecRefinementPrompt(
+  specPath: string,
+  roundNumber: number,
+  openQuestions: string[] = [],
+): string {
+  const questionsSection = openQuestions.length
+    ? `## Open Questions From Prior Round\n${openQuestions.map((q) => `- ${q}`).join("\n")}\n`
+    : "";
+
+  return `You are a fresh reviewer with NO prior context on this **specification document**. Use ultrathink to critically evaluate the spec — not an implementation plan.
+
+## Spec Refinement Round ${roundNumber}
+
+This is spec refinement round ${roundNumber}. The artifact under review is a Superpowers spec describing WHAT to build, not HOW to build it. Each round uses a fresh session to prevent anchoring.
+
+${questionsSection}
+## Instructions
+1. Read the spec artifact at: ${specPath}
+2. Evaluate the spec critically — look for:
+   - Vague or untestable acceptance criteria
+   - Interfaces or contracts that leak implementation detail (file paths, internal modules)
+   - Missing non-goals that would let a later implementation plan drift in scope
+   - Ambiguous behavior the user has not yet pinned down
+   - Open questions that block a downstream implementation plan
+3. If the spec needs improvement, rewrite the FULL refined spec and save it back to the SAME artifact via \`write_artifact\` using the exact same artifact name: ${specPath}
+4. Preserve the strongest parts of the current spec while fixing weaknesses — do not regress coverage or specificity.
+5. If the spec is already solid, make no artifact changes and say \`NO_CHANGES\` with a brief explanation.
+
+## Boundary Rules
+- Do NOT propose a file-by-file implementation sequence — that is the job of the later implementation plan.
+- Do NOT rewrite this artifact as an implementation plan or save it under \`plans/...\`.
+- Keep the refinement vocabulary in spec terms: "behavior", "contract", "acceptance criteria", "non-goal" — not "sequencing", "file structure", or "implementation order".
+
+Focus on substance over style. Each round should find fewer issues as the spec converges.`;
+}
+
+/**
+ * Prompt for generating the final implementation plan FROM an approved spec.
+ *
+ * The prompt embeds the full approved spec text so the planning agent can
+ * answer "what does success look like?" without re-reading artifacts. The
+ * agent is told to save its output to `plans/<slug>.md` (the normal
+ * implementation-plan namespace consumed by downstream bead generation).
+ */
+export function implementationPlanFromSpecPrompt(
+  goal: string,
+  approvedSpec: string,
+  profile: RepoProfile,
+  constraints: string[] = [],
+  scanResult?: ScanResult,
+): string {
+  const repoContext = formatRepoProfile(profile, scanResult);
+  const constraintsSection = constraints.length
+    ? `## Constraints (from approved spec)\n${constraints.map((c) => `- ${c}`).join("\n")}\n`
+    : "";
+
+  return `You are an expert software architect. The user has already approved a Superpowers **specification** that defines WHAT to build. Your job is to write the implementation plan that defines HOW to build it. Use ultrathink.
+
+## Goal
+${goal}
+
+## Approved Spec (already accepted by the user — treat as source of truth)
+${approvedSpec}
+
+${constraintsSection}
+## Repository Context
+${repoContext}
+
+## Instructions
+Produce a detailed markdown implementation plan that satisfies every acceptance criterion in the approved spec above. Cover ALL of the following sections:
+
+### 1. Architecture Overview
+- High-level component design that satisfies the spec's interfaces & contracts
+- Trade-offs against the alternatives the spec did NOT pick
+
+### 2. Data Model / Types
+- Concrete TypeScript / schema definitions for the contracts the spec defined
+
+### 3. File Structure
+- Files to create or modify, grouped by module
+- Where each spec section lands in the codebase
+
+### 4. Sequencing
+- Implementation order with explicit dependencies between steps
+- What can be parallelized vs. must be sequential
+
+### 5. Testing Strategy
+- Test cases that prove each spec acceptance criterion
+- Edge cases, fixtures, and any mocking strategy
+
+### 6. Risk & Rollback
+- What can go wrong, and how to detect / unwind it
+
+## Output Rules
+- Save the plan as a session artifact under \`plans/<goal-slug>.md\` using \`write_artifact\`. The \`plans/\` prefix is required so downstream bead generation can find it.
+- Do NOT overwrite the approved spec at \`superpowers/specs/...\` — leave it untouched.
+- Every plan section must trace back to the approved spec above. Do not introduce behavior the spec did not authorize.
+- Ground every recommendation in the repository context — do not hallucinate capabilities that do not exist.`;
+}
