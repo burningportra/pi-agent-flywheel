@@ -1,11 +1,197 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   researchBlunderHuntPrompt,
   researchFeedbackPrompt,
   researchSynthesisPrompt,
   extractProjectName,
+  runResearchPhase,
+  type ResearchPipelineState,
 } from "./research-pipeline.js";
 import type { DeepPlanResult } from "./deep-plan.js";
+
+// ─── runResearchPhase — error propagation ───────────────────
+
+vi.mock("./deep-plan.js", () => ({
+  runDeepPlanAgents: vi.fn(),
+}));
+
+// Import after mock so the mock is in place
+import { runDeepPlanAgents } from "./deep-plan.js";
+
+const mockPi = {} as any;
+
+const baseState: ResearchPipelineState = {
+  externalUrl: "https://github.com/test/repo",
+  externalName: "repo",
+  projectName: "this-project",
+  currentPhase: "investigate",
+  proposal: "",
+  artifactName: "research/repo-proposal.md",
+  phasesCompleted: [],
+};
+
+function failedResult(overrides: Partial<DeepPlanResult> = {}): DeepPlanResult {
+  return {
+    name: "research-investigate",
+    model: "claude-opus-4-7",
+    plan: "",
+    exitCode: 1,
+    elapsed: 2,
+    error: "No API key found for anthropic",
+    ...overrides,
+  };
+}
+
+function successResult(plan: string, overrides: Partial<DeepPlanResult> = {}): DeepPlanResult {
+  return {
+    name: "research-investigate",
+    model: "claude-opus-4-7",
+    plan,
+    exitCode: 0,
+    elapsed: 5,
+    ...overrides,
+  };
+}
+
+describe("runResearchPhase — investigate error propagation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("propagates error from DeepPlanResult when agent fails", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ error: "No API key found for anthropic" }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", baseState);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("No API key found for anthropic");
+  });
+
+  it("includes exit code in error message", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ exitCode: 2, error: "model unavailable" }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", baseState);
+
+    expect(result.error).toContain("exit=2");
+  });
+
+  it("includes model name in error message when known", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ model: "claude-opus-4-7" }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", baseState);
+
+    expect(result.error).toContain("claude-opus-4-7");
+  });
+
+  it("includes agent name in error message", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ name: "research-investigate" }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", baseState);
+
+    expect(result.error).toContain("research-investigate");
+  });
+
+  it("falls back to state.proposal when agent returns empty plan", async () => {
+    const stateWithPrior = { ...baseState, proposal: "prior proposal content" };
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([failedResult({ plan: "" })]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", stateWithPrior);
+
+    expect(result.proposal).toBe("prior proposal content");
+  });
+
+  it("returns success and no error when agent produces substantial plan", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      successResult("A".repeat(200)),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", baseState);
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.proposal).toHaveLength(200);
+  });
+
+  it("returns error when agent exits 0 but plan is empty (no content produced)", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      successResult(""),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "investigate", baseState);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("empty output");
+  });
+});
+
+describe("runResearchPhase — deepen error propagation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const stateWithProposal = { ...baseState, proposal: "existing proposal text that is long enough" };
+
+  it("propagates error when deepen agent fails", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ name: "research-deepen", error: "timeout", exitCode: 1 }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "deepen", stateWithProposal);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("timeout");
+    expect(result.error).toContain("exit=1");
+  });
+
+  it("preserves prior proposal when deepen fails", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ name: "research-deepen", plan: "" }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "deepen", stateWithProposal);
+
+    expect(result.proposal).toBe(stateWithProposal.proposal);
+  });
+});
+
+describe("runResearchPhase — inversion error propagation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const stateWithProposal = { ...baseState, proposal: "existing proposal that is long enough to count" };
+
+  it("propagates error when inversion agent fails", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ name: "research-inversion", error: "model not available", exitCode: 1 }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "inversion", stateWithProposal);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("model not available");
+  });
+
+  it("preserves prior proposal when inversion fails", async () => {
+    vi.mocked(runDeepPlanAgents).mockResolvedValue([
+      failedResult({ name: "research-inversion" }),
+    ]);
+
+    const result = await runResearchPhase(mockPi, "/tmp", "inversion", stateWithProposal);
+
+    expect(result.proposal).toBe(stateWithProposal.proposal);
+  });
+});
 
 // ─── researchBlunderHuntPrompt ──────────────────────────────
 

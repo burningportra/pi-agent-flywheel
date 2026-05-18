@@ -23,6 +23,23 @@ import {
   pickRefinementModel,
 } from "./prompts.js";
 
+/**
+ * Build an actionable error string from a DeepPlanResult.
+ * Returns undefined when the result is clean (exit 0 + non-trivial plan).
+ * Otherwise returns a message with agent/model/exit/error detail.
+ */
+function buildAgentError(r: DeepPlanResult | undefined, fallbackName: string): string | undefined {
+  if (!r) return `${fallbackName}: no result from agent`;
+  if (r.exitCode === 0 && r.plan.trim().length > 0) return undefined;
+  const parts: string[] = [`agent=${r.name || fallbackName}`];
+  if (r.model && r.model !== "default") parts.push(`model=${r.model}`);
+  if (r.exitCode !== 0) parts.push(`exit=${r.exitCode}`);
+  if (r.error) parts.push(r.error);
+  else if (r.plan.trim().length === 0) parts.push("empty output");
+  else parts.push(`short output (${r.plan.trim().length} chars)`);
+  return parts.join(" | ");
+}
+
 // ─── Types ──────────────────────────────────────────────────
 
 export type ResearchPhase =
@@ -180,12 +197,15 @@ export async function runResearchPhase(
         model: pickRefinementModel(0),
         task: prompt,
       }], signal);
-      const proposal = results[0]?.plan?.trim() ?? "";
+      const r = results[0];
+      const proposal = r?.plan?.trim() ?? "";
+      const error = buildAgentError(r, "research-investigate");
       return {
         phase,
-        success: proposal.length > 100,
+        success: !error,
         proposal: proposal || state.proposal,
-        model: results[0]?.model,
+        model: r?.model,
+        error,
       };
     }
 
@@ -196,12 +216,15 @@ export async function runResearchPhase(
         model: pickRefinementModel(1),
         task: prompt,
       }], signal);
-      const proposal = results[0]?.plan?.trim() ?? "";
+      const r = results[0];
+      const proposal = r?.plan?.trim() ?? "";
+      const error = buildAgentError(r, "research-deepen");
       return {
         phase,
-        success: proposal.length > 100,
+        success: !error,
         proposal: proposal || state.proposal,
-        model: results[0]?.model,
+        model: r?.model,
+        error,
       };
     }
 
@@ -212,12 +235,15 @@ export async function runResearchPhase(
         model: pickRefinementModel(2),
         task: prompt,
       }], signal);
-      const proposal = results[0]?.plan?.trim() ?? "";
+      const r = results[0];
+      const proposal = r?.plan?.trim() ?? "";
+      const error = buildAgentError(r, "research-inversion");
       return {
         phase,
-        success: proposal.length > 100,
+        success: !error,
         proposal: proposal || state.proposal,
-        model: results[0]?.model,
+        model: r?.model,
+        error,
       };
     }
 
