@@ -58,3 +58,28 @@ describe("select.ts — S5: skip refinement for system ideas", () => {
     expect(selectSource).toContain("No idea selected");
   });
 });
+
+describe("select.ts — Superpowers workflow option", () => {
+  it("exposes the Superpowers spec-first option in the workflow picker", () => {
+    expect(selectSource).toContain("🪄 Superpowers Planning");
+    expect(selectSource).toContain("spec-first");
+  });
+
+  it("preserves the original four native workflow options", () => {
+    expect(selectSource).toContain("📋 Plan first");
+    expect(selectSource).toContain("🧠 Multi-model plan");
+    expect(selectSource).toContain("🧠 Deep plan");
+    expect(selectSource).toContain("⚡ Direct to beads");
+  });
+
+  it("initializes planningWorkflow state when Superpowers is selected", () => {
+    expect(selectSource).toContain("initSuperpowersWorkflow");
+    expect(selectSource).toContain("oc.state.planningWorkflow");
+  });
+
+  it("imports initSuperpowersWorkflow from the workflows module", () => {
+    expect(selectSource).toMatch(
+      /import\s*\{\s*initSuperpowersWorkflow\s*\}\s*from\s*"\.\.\/workflows\/superpowers\.js"/
+    );
+  });
+});

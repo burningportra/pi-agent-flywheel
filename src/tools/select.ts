@@ -3,6 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { formatRepoProfile, beadCreationPrompt } from "../prompts.js";
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
+import { initSuperpowersWorkflow } from "../workflows/superpowers.js";
 
 import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { FlywheelError } from "../errors.js";
@@ -145,12 +146,13 @@ export function registerSelectTool(oc: OrchestratorContext) {
       }
       oc.persistState();
 
-      // ── Workflow choice: plan first, deep plan, or direct to beads ──
+      // ── Workflow choice: plan first, deep plan, direct to beads, or Superpowers spec-first ──
       const workflowOptions = [
         "📋 Plan first — generate a single plan document before creating beads",
         "🧠 Multi-model plan — competing planners synthesize one plan document",
         "🧠 Deep plan (beads) — multi-model planning agents create beads",
         "⚡ Direct to beads — jump straight to bead creation",
+        "🪄 Superpowers Planning — spec-first: brainstorm → spec → approve → plan",
       ];
 
       let workflowChoice: string | undefined;
@@ -224,6 +226,33 @@ export function registerSelectTool(oc: OrchestratorContext) {
         };
       }
 
+      if (workflowChoice.startsWith("🪄")) {
+        // Superpowers spec-first workflow: stash adapter state and stay in planning phase.
+        oc.state.planRefinementRound = 0;
+        oc.state.planningWorkflow = initSuperpowersWorkflow({
+          goal,
+          constraints: oc.state.constraints,
+        });
+        oc.setPhase("planning", ctx);
+        oc.persistState();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `**NEXT: Call \`orch_plan\` with mode \`superpowers\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nGenerate the Superpowers spec artifact (stored at \`planningWorkflow.specArtifact\`, NOT \`planDocument\`). After the spec is approved via \`orch_approve_beads\`, the implementation plan stage runs and only then are beads created.`,
+            },
+          ],
+          details: {
+            selected: true,
+            goal,
+            constraints: oc.state.constraints,
+            workflow: "superpowers",
+            planningWorkflow: oc.state.planningWorkflow,
+          },
+        };
+      }
+
       // Default: Direct to beads
       const instructions = beadCreationPrompt(goal, repoContext, oc.state.constraints);
       oc.setPhase("creating_beads", ctx);
@@ -233,7 +262,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
         content: [
           {
             type: "text",
-            text: `**NEXT: Create beads for this goal using \`br create\` and \`br dep add\` in bash NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nStay inside the orchestrate workflow: once the beads exist, return to \`orch_approve_beads\` for bead approval before implementation.\n\n---\n\n${instructions}`,
+            text: `**NEXT: Draft a structured staged bead mutation plan for this goal, then call \`orch_approve_beads\` to validate/apply it before implementation.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nStay inside the orchestrate workflow: once the staged plan is ready, return to \`orch_approve_beads\` for validation and bead approval before implementation.\n\n---\n\n${instructions}`,
           },
         ],
         details: { selected: true, goal, constraints: oc.state.constraints, workflow: "direct" },

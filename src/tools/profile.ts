@@ -12,6 +12,7 @@ import {
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
 import { detectCoordinationBackend, selectMode, selectStrategy } from "../coordination.js";
 import { brExec, brExecJson } from "../cli-exec.js";
+import { initSuperpowersWorkflow } from "../workflows/superpowers.js";
 
 import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 /** Compute weighted score for a candidate idea (for fallback sorting). */
@@ -58,6 +59,19 @@ export function activeWorkflowContinuation(state: OrchestratorState): ProfileCon
     };
   }
 
+  const researchState = state.researchState;
+  if (researchState?.url && !state.selectedGoal) {
+    return {
+      text:
+        `**NEXT: Continue external-repo research with \`flywheel_research\` NOW.**\n\n` +
+        `Research target: ${researchState.url}\n` +
+        `External project: ${researchState.externalName}\n` +
+        `Completed phases: ${(researchState.phasesCompleted ?? []).join(", ") || "none"}\n\n` +
+        `Do not open repo-profile discovery or Dueling Idea Wizards; this run is researching the external repo, then handing off to \`flywheel_approve_beads\`.`,
+      details: { continuation: true, phase: state.phase, research: true, url: researchState.url, artifactName: researchState.artifactName },
+    };
+  }
+
   if (!state.selectedGoal) return undefined;
 
   const currentConstraints = state.constraints ?? [];
@@ -89,7 +103,7 @@ export function activeWorkflowContinuation(state: OrchestratorState): ProfileCon
     case "creating_beads":
       return {
         text:
-          `**NEXT: Create beads for the selected goal using \`br create\` and \`br dep add\`, then call \`agent_flywheel_approve_beads\`.**\n\n${goalLine}\n\n` +
+          `**NEXT: Draft a structured staged bead mutation plan for the selected goal, then call \`agent_flywheel_approve_beads\` to validate/apply it.**\n\n${goalLine}\n\n` +
           "Discovery and goal selection are already complete; do not call `agent_flywheel_profile` again unless the user explicitly starts over.",
         details: { continuation: true, phase: state.phase, goal: state.selectedGoal },
       };
@@ -237,6 +251,8 @@ export function registerProfileTool(oc: OrchestratorContext) {
       const totalBeadCount = existingBeadCount + deferredBeadCount;
       const allBeadIds = [...existingBeadIds, ...deferredBeadIds];
 
+      const preselectedGoal = oc.state.selectedGoal?.trim();
+
       // Offer discovery mode choice — unified menu replaces the old two-step flow
       const discoveryChoices: string[] = [];
       if (existingBeadCount > 0) {
@@ -256,17 +272,19 @@ export function registerProfileTool(oc: OrchestratorContext) {
       }
       discoveryChoices.push("❌ Cancel");
 
-      const discoveryMode = await ctx.ui.select(
-        "How should we discover improvement ideas?",
-        discoveryChoices
-      );
+      const discoveryMode = preselectedGoal
+        ? "✏️  I know what I want — enter a custom goal"
+        : await ctx.ui.select(
+          "How should we discover improvement ideas?",
+          discoveryChoices
+        );
 
       if (discoveryMode?.startsWith("✏️")) {
         // Custom goal — skip discovery + selection, go straight to workflow choice
-        const goal = await ctx.ui.input(
+        const goal = preselectedGoal ?? (await ctx.ui.input(
           "Enter your goal:",
           "e.g., Add API rate limiting with Redis"
-        );
+        ));
         if (!goal) {
           return {
             content: [{ type: "text", text: "No goal entered." }],
@@ -294,12 +312,13 @@ export function registerProfileTool(oc: OrchestratorContext) {
         }
         oc.persistState();
 
-        // Workflow choice: plan first, deep plan, or direct to beads
+        // Workflow choice: plan first, deep plan, direct to beads, or Superpowers spec-first
         const workflowOptions = [
           "📋 Plan first — generate a single plan document before creating beads",
           "🧠 Multi-model plan — competing planners synthesize one plan document",
           "🧠 Deep plan (beads) — multi-model planning agents create beads",
           "⚡ Direct to beads — jump straight to bead creation",
+          "🪄 Superpowers Planning — spec-first: brainstorm → spec → approve → plan",
         ];
 
         let workflowChoice: string | undefined;
@@ -363,6 +382,33 @@ export function registerProfileTool(oc: OrchestratorContext) {
           };
         }
 
+        if (workflowChoice.startsWith("🪄")) {
+          // Superpowers spec-first workflow: stash adapter state and stay in planning phase.
+          oc.state.planRefinementRound = 0;
+          oc.state.planningWorkflow = initSuperpowersWorkflow({
+            goal: enrichedGoal,
+            constraints: oc.state.constraints,
+          });
+          oc.setPhase("planning", ctx);
+          oc.persistState();
+          return {
+            content: [{
+              type: "text",
+              text: `**NEXT: Call \`agent_flywheel_plan\` with mode \`superpowers\` NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nGenerate the Superpowers spec artifact (stored at \`planningWorkflow.specArtifact\`, NOT \`planDocument\`). After the spec is approved via \`agent_flywheel_approve_beads\`, the implementation plan stage runs and only then are beads created.`,
+            }],
+            details: {
+              profile,
+              scanResult,
+              customGoal: goal,
+              selected: true,
+              goal: enrichedGoal,
+              constraints: oc.state.constraints,
+              workflow: "superpowers",
+              planningWorkflow: oc.state.planningWorkflow,
+            },
+          };
+        }
+
         // Default: Direct to beads
         const instructions = beadCreationPrompt(enrichedGoal, repoContext, oc.state.constraints);
         oc.setPhase("creating_beads", ctx);
@@ -370,7 +416,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         return {
           content: [{
             type: "text",
-            text: `**NEXT: Create beads for this goal using \`br create\` and \`br dep add\` in bash NOW.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nStay inside the AgentFlywheel workflow: once the beads exist, return to \`agent_flywheel_approve_beads\` for bead approval before implementation.\n\n---\n\n${instructions}`,
+            text: `**NEXT: Draft a structured staged bead mutation plan for this goal, then call \`agent_flywheel_approve_beads\` to validate/apply it before implementation.**\n\nGoal: "${enrichedGoal}"${constraintsSummary}\n\nStay inside the AgentFlywheel workflow: once the staged plan is ready, return to \`agent_flywheel_approve_beads\` for validation and bead approval before implementation.\n\n---\n\n${instructions}`,
           }],
           details: { profile, scanResult, customGoal: goal, selected: true, goal: enrichedGoal, constraints: oc.state.constraints, workflow: "direct" },
         };
@@ -406,6 +452,9 @@ export function registerProfileTool(oc: OrchestratorContext) {
           runDuelingIdeaWizards,
           selectDuelingIdeaAgents,
         } = await import("../dueling-ideas.js");
+        const duelingResearchFocus = oc.state.researchState?.url
+          ? { externalUrl: oc.state.researchState.url, externalName: oc.state.researchState.externalName }
+          : undefined;
         const wizardAgents = selectDuelingIdeaAgents(ctx, 3);
         const missingWizardAgents = ctx.hasUI ? getMissingDuelingIdeaAgents(ctx, wizardAgents) : [];
         const shouldPromptForWizards = missingWizardAgents.length > 0 && !oc.state.duelingWizardLaunchRequested;
@@ -420,6 +469,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
             scanResult,
             existingBeadTitles,
             ctx,
+            duelingResearchFocus,
           );
           const completedAgents = wizardAgents
             .filter((agent) => !missingWizardAgents.some((missing) => missing.type === agent.type))
@@ -433,10 +483,10 @@ export function registerProfileTool(oc: OrchestratorContext) {
               type: "text",
               text:
                 `**Workflow:** ${roadmap}\n\n` +
-                `**NEXT: Spawn interactive Dueling Idea Wizard sub-agents using \`subagent\` NOW.**\n\n` +
+                `**NEXT: Spawn autonomous Dueling Idea Wizard sub-agents using \`subagent\` NOW.**\n\n` +
                 `${statusLine}\n\n` +
                 `Launch one \`subagent\` call for each pending wizard config below. ` +
-                `Each wizard runs in its own interactive pane and writes its independent ideas to a session artifact. ` +
+                `Each wizard writes independent ideas to a session artifact, sends one final response, and exits. ` +
                 `After all wizard sub-agents complete, call \`agent_flywheel_profile\` again and choose Dueling Idea Wizards to continue cross-scoring and synthesis.\n\n` +
                 `\`\`\`json\n${JSON.stringify(pendingConfigs, null, 2)}\n\`\`\``,
             }],
@@ -444,7 +494,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
               profile,
               scanResult,
               dueling: true,
-              interactive: true,
+              interactive: false,
               awaitingWizardArtifacts: true,
               agents: wizardAgents,
               pendingWizardCount: pendingConfigs.length,
@@ -467,6 +517,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
           existingBeadTitles,
           signal,
           (message) => ctx.ui.notify(message, "info"),
+          duelingResearchFocus,
         );
 
         if (duel.consensusIdeas.length === 0) {
