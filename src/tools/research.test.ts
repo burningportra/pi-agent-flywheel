@@ -241,3 +241,104 @@ describe("flywheel_research tool — investigate failure aborts pipeline", () =>
     expect(vi.mocked(runResearchPhase).mock.calls.length).toBeGreaterThan(1);
   });
 });
+
+describe("flywheel_research tool — no 'partial output' in user-facing messages", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does not emit 'partial output' in abort response text when investigate fails", async () => {
+    vi.mocked(runResearchPhase).mockResolvedValue(
+      makePhaseResult({
+        phase: "investigate",
+        success: false,
+        proposal: "",
+        error: "exit=1 | No API key found for anthropic",
+      })
+    );
+
+    const oc = buildOc();
+    const ctx = buildCtx();
+    const result = await invokeResearchTool(oc, ctx, { url: "https://github.com/test/repo" });
+
+    const text = result.content?.[0]?.text ?? "";
+    expect(text).not.toContain("partial output");
+  });
+
+  it("does not emit 'partial output' in ui.notify when investigate fails (abort path)", async () => {
+    vi.mocked(runResearchPhase).mockResolvedValue(
+      makePhaseResult({
+        phase: "investigate",
+        success: false,
+        proposal: "",
+        error: "exit=1 | model unavailable",
+      })
+    );
+
+    const oc = buildOc();
+    const ctx = buildCtx();
+    await invokeResearchTool(oc, ctx, { url: "https://github.com/test/repo" });
+
+    const allNotifications = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => c[0] as string);
+    expect(allNotifications.some((n) => n.includes("partial output"))).toBe(false);
+  });
+
+  it("does not emit 'partial output' in ui.notify when deepen fails with no error field", async () => {
+    // Simulate a future edge case: deepen returns success=false but no error set
+    vi.mocked(runResearchPhase)
+      .mockResolvedValueOnce(makePhaseResult({
+        phase: "investigate",
+        success: true,
+        proposal: "A".repeat(300),
+      }))
+      .mockResolvedValueOnce(makePhaseResult({
+        phase: "deepen",
+        success: false,
+        proposal: "A".repeat(300),
+        error: undefined, // no error detail — the old path that produced "partial output"
+      }))
+      .mockResolvedValue(makePhaseResult({ success: true, proposal: "A".repeat(300) }));
+
+    const oc = buildOc();
+    const ctx = buildCtx();
+    await invokeResearchTool(oc, ctx, { url: "https://github.com/test/repo" });
+
+    const allNotifications = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => c[0] as string);
+    // "partial output" must never appear, even when result.error is undefined
+    expect(allNotifications.some((n) => n.includes("partial output"))).toBe(false);
+    // The fallback should include phase info instead
+    const warnMsg = allNotifications.find((n) => n.includes("Deepening analysis") && n.includes("had issues"));
+    expect(warnMsg).toBeDefined();
+    expect(warnMsg).toContain("phase=deepen");
+  });
+
+  it("includes phase and proposal-length in fallback when no error detail is available", async () => {
+    // Use mockImplementation so the right phase failure is keyed to "inversion", not call order
+    vi.mocked(runResearchPhase).mockImplementation(async (_pi, _cwd, phase) => {
+      if (phase === "inversion") {
+        return makePhaseResult({
+          phase: "inversion",
+          success: false,
+          proposal: "A".repeat(300),
+          error: undefined,
+        });
+      }
+      return makePhaseResult({ success: true, proposal: "A".repeat(300) });
+    });
+
+    const oc = buildOc();
+    const ctx = buildCtx();
+    await invokeResearchTool(oc, ctx, { url: "https://github.com/test/repo" });
+
+    const warnMsg = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => c[0] as string)
+      .find((n) => n.includes("Inversion analysis") && n.includes("had issues"));
+
+    expect(warnMsg).toBeDefined();
+    expect(warnMsg).toContain("phase=inversion");
+    expect(warnMsg).toContain("proposal-length=300");
+    expect(warnMsg).toContain("no error detail returned");
+  });
+});

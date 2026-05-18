@@ -182,7 +182,14 @@ export function registerResearchTool(oc: OrchestratorContext) {
                 details: { error: true, phase: "investigate", errDetail },
               };
             }
-            const warn = `⚠️ ${emoji} **${label}** had issues: ${result.error ?? "partial output"}. Continuing.`;
+            const warnDetail = result.error
+              ?? [
+                  `phase=${phase}`,
+                  result.model ? `model=${result.model}` : null,
+                  `proposal-length=${pipelineState.proposal.length}`,
+                  "no error detail returned",
+                ].filter(Boolean).join(" | ");
+            const warn = `⚠️ ${emoji} **${label}** had issues: ${warnDetail}. Continuing.`;
             ctx.ui.notify(warn, "warning");
             phaseLog.push(warn);
           } else {
