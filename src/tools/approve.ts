@@ -1,16 +1,21 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { readFileSync } from "fs";
-import type { OrchestratorContext, Bead, VerificationContractIssue } from "../types.js";
-import { implementerInstructions, freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, SWARM_STAGGER_DELAY_MS, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, type BeadQualityAuditResult } from "../prompts.js";
+import type { OrchestratorContext, Bead, OrchestratorState, VerificationContractIssue } from "../types.js";
+import { implementerInstructions, freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, SWARM_STAGGER_DELAY_MS, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, superpowersSpecRefinementPrompt, type BeadQualityAuditResult } from "../prompts.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
-import { sessionArtifactPath } from "../session-artifacts.js";
+import { sessionArtifactPath, findSessionArtifactPath } from "../session-artifacts.js";
 import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExecJson, resilientExec } from "../cli-exec.js";
 
 import { FlywheelError } from "../errors.js";
 import { checkPlanningToolOrdering } from "../workflows/runner.js";
+import {
+  buildSuperpowersSpecApprovalStage,
+  resetSuperpowersWorkflowAfterSpecRejection,
+  SUPERPOWERS_ADAPTER_ID,
+} from "../workflows/superpowers.js";
 // ─── Module-level bead snapshots for change detection ────────
 // These live at module scope so they persist across multiple calls to
 // orch_approve_beads within the same orchestration session. Each call
@@ -224,6 +229,58 @@ function formatPlanSummary(plan: string): string {
   return summary.join("\n");
 }
 
+// ─── Superpowers spec approval helpers ───────────────────────
+//
+// The Superpowers planning workflow inserts a spec-approval gate before the
+// implementation-plan generation. Specs are intentionally short documents
+// and must not be subjected to the implementation-plan size gate, plan
+// quality scoring, docs/plans mirroring, or bead-creation handoff. The
+// helpers below are kept pure so tests can assert these invariants without
+// driving the full approve tool.
+
+/** True when the orchestrator is sitting at a Superpowers spec-approval gate. */
+export function isSuperpowersSpecApprovalStage(state: OrchestratorState): boolean {
+  const wf = state.planningWorkflow;
+  if (!wf) return false;
+  if (wf.adapterId !== SUPERPOWERS_ADAPTER_ID) return false;
+  if (!wf.specArtifact) return false;
+  return wf.stage === "awaiting_spec_approval";
+}
+
+/**
+ * Render a short, spec-flavored preview of a Superpowers spec artifact.
+ *
+ * Vocabulary is intentionally distinct from {@link formatPlanSummary} so the
+ * reviewer is reminded they are evaluating WHAT/WHY, not implementation
+ * sequencing.
+ */
+export function formatSpecPreview(spec: string): string {
+  const lines = spec.split("\n");
+  const headings = lines.filter((line) => /^#{1,3}\s/.test(line.trim())).slice(0, 8);
+  const preview = lines
+    .filter((line) => line.trim().length > 0)
+    .slice(0, 12)
+    .join("\n")
+    .slice(0, 2000);
+
+  const parts = [
+    `📄 **Spec artifact preview** (${lines.length} lines, ${spec.length} chars)`,
+    headings.length > 0 ? `\n**Sections:**\n${headings.map((h) => `- ${h.trim()}`).join("\n")}` : "",
+    `\n**Preview:**\n${preview}${preview.length < spec.length ? "\n...(truncated)" : ""}`,
+  ].filter(Boolean);
+
+  return parts.join("\n");
+}
+
+/** Options shown to the user at the spec-approval gate. */
+export function superpowersSpecApprovalOptions(round: number): string[] {
+  return [
+    "✅ Accept spec and generate implementation plan",
+    `🔍 Refine spec (round ${round + 1})`,
+    "❌ Reject spec",
+  ];
+}
+
 export function registerApproveTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_approve_beads", "orch_approve_beads", "flywheel_approve_beads"] as const) {
   oc.pi.registerTool({
@@ -242,6 +299,130 @@ export function registerApproveTool(oc: OrchestratorContext) {
       const orderingRejection = checkPlanningToolOrdering("flywheel_approve_beads", oc.state);
       if (orderingRejection) {
         throw new FlywheelError("OUT_OF_ORDER_TOOL_CALL", orderingRejection.message);
+      }
+
+      // ─── Superpowers spec approval gate ─────────────────────────
+      // This branch runs BEFORE the implementation-plan approval block so
+      // specs never trigger plan size gates, plan quality scoring,
+      // docs/plans mirroring, or bead creation. Spec refinement writes back
+      // to planningWorkflow.specArtifact (NEVER planDocument).
+      if (isSuperpowersSpecApprovalStage(oc.state)) {
+        const wf = oc.state.planningWorkflow!;
+        const specArtifactName = wf.specArtifact!;
+        const specPath = findSessionArtifactPath(ctx, specArtifactName) ?? sessionArtifactPath(ctx, specArtifactName);
+        let specBody: string;
+        try {
+          specBody = readFileSync(specPath, "utf8");
+        } catch {
+          throw new FlywheelError(
+            "NO_PLAN",
+            `Cannot load Superpowers spec artifact \`${specArtifactName}\` for approval. Re-run \`flywheel_plan\` to regenerate the spec.`,
+            { suggestion: "flywheel_plan" },
+          );
+        }
+
+        const specRound = wf.specRefinementRound ?? 0;
+        const roundHeader = specRound > 0
+          ? `\n🔄 Spec refinement round ${specRound}`
+          : "";
+        const specOptions = superpowersSpecApprovalOptions(specRound);
+        const specChoice = await ctx.ui.select(
+          `Review **spec** for: ${oc.state.selectedGoal}${roundHeader}\n\nThis is a Superpowers specification (WHAT/WHY) — implementation sequencing belongs to the plan that follows spec approval.\n\n${formatSpecPreview(specBody)}`,
+          specOptions,
+        );
+
+        // ── Reject spec ────────────────────────────────────
+        if (!specChoice || specChoice.startsWith("❌")) {
+          oc.state.planningWorkflow = resetSuperpowersWorkflowAfterSpecRejection(wf);
+          // Spec generation never writes to planDocument, but clear it
+          // defensively so no stale value can leak into the impl-plan path.
+          oc.state.planDocument = undefined;
+          oc.state.planRefinementRound = 0;
+          oc.state.planConvergenceScore = undefined;
+          oc.state.planReadinessScore = undefined;
+          oc.orchestratorActive = false;
+          oc.setPhase("idle", ctx);
+          oc.persistState();
+          return {
+            content: [{ type: "text", text: "Spec rejected. Superpowers planning workflow reset; orchestration stopped." }],
+            details: { approved: false, spec: true, adapter: SUPERPOWERS_ADAPTER_ID },
+          };
+        }
+
+        // ── Refine spec ────────────────────────────────────
+        if (specChoice.startsWith("🔍")) {
+          const nextRound = specRound + 1;
+          oc.state.planningWorkflow = {
+            ...wf,
+            stage: "awaiting_spec_approval",
+            specRefinementRound: nextRound,
+          };
+          // Stage stays at awaiting_spec_approval so the next
+          // flywheel_approve_beads call comes straight back here.
+          oc.setPhase("planning", ctx);
+          oc.persistState();
+
+          const refinementModel = pickRefinementModel(specRound);
+          const refinementPrompt = superpowersSpecRefinementPrompt(specArtifactName, nextRound, []);
+          const launchConfig = {
+            name: `fresh-spec-refine-r${nextRound}`,
+            task:
+              `${refinementPrompt}\n\nAfter refining, write the updated spec back to the SAME artifact: \`${specArtifactName}\` (do NOT save under \`plans/...\`). Use write_artifact with name "${specArtifactName}".`,
+            model: refinementModel,
+            cwd: ctx.cwd,
+          };
+          return {
+            content: [{
+              type: "text",
+              text:
+                `**NEXT: Spawn a fresh sub-agent for spec refinement, then call \`flywheel_approve_beads\` again to return to the spec-approval menu.**\n\n` +
+                `Use \`subagent\` with these parameters:\n\`\`\`json\n${JSON.stringify(launchConfig, null, 2)}\n\`\`\`\n\n` +
+                `This uses **${refinementModel}** (model rotation prevents taste convergence).\n` +
+                `The sub-agent has NO prior context — fresh eyes are deliberate. Specs MUST be saved back to \`${specArtifactName}\`; never under \`plans/...\`.`,
+            }],
+            details: {
+              approved: false,
+              spec: true,
+              refining: true,
+              freshAgent: true,
+              model: refinementModel,
+              specArtifact: specArtifactName,
+              specRefinementRound: nextRound,
+              adapter: SUPERPOWERS_ADAPTER_ID,
+            },
+          };
+        }
+
+        // ── Accept spec → advance to plan generation ───────
+        const approvalResult = buildSuperpowersSpecApprovalStage({
+          workflow: wf,
+          approvedSpecBody: specBody,
+          goal: oc.state.selectedGoal!,
+          constraints: oc.state.constraints ?? [],
+        });
+        oc.state.planningWorkflow = approvalResult.nextState;
+        // Spec approval must NOT leave a stale planDocument behind — the
+        // implementation-plan path will set this once flywheel_plan runs.
+        oc.state.planDocument = undefined;
+        oc.state.planRefinementRound = 0;
+        oc.state.planConvergenceScore = undefined;
+        oc.state.planReadinessScore = undefined;
+        oc.setPhase("planning", ctx);
+        oc.persistState();
+
+        return {
+          content: [{
+            type: "text",
+            text: `**NEXT: Call \`flywheel_plan({ mode: "superpowers" })\` to generate the implementation plan from the approved spec.**\n\nApproved spec: \`${specArtifactName}\`\n\nThe spec is now the source of truth for the implementation plan. Stay inside the AgentFlywheel workflow: spec approved → implementation plan → review/approve plan → create beads.`,
+          }],
+          details: {
+            approved: true,
+            spec: true,
+            specArtifact: specArtifactName,
+            adapter: SUPERPOWERS_ADAPTER_ID,
+            approvedSpecFingerprint: approvalResult.nextState.approvedSpecFingerprint,
+          },
+        };
       }
 
       if (oc.state.phase === "awaiting_plan_approval" || (oc.state.phase === "planning" && oc.state.planDocument)) {

@@ -272,6 +272,32 @@ export function buildSuperpowersPlanApprovalStage(input: {
   };
 }
 
+/**
+ * Reset Superpowers planning-workflow state in response to a spec rejection.
+ *
+ * Returns a fresh state at stage="idle" with all spec-specific fields
+ * cleared: specArtifact, approvedSpecFingerprint, specRefinementRound, and
+ * lastApprovedDocumentKind. The adapterId is preserved so subsequent
+ * planning calls still know which adapter to dispatch to.
+ *
+ * This helper deliberately only touches `PlanningWorkflowState`. Callers
+ * must clear any external state (e.g. `oc.state.planDocument`) themselves
+ * — though in a spec-rejection path that field should already be empty,
+ * since spec generation never writes to it.
+ */
+export function resetSuperpowersWorkflowAfterSpecRejection(
+  workflow: PlanningWorkflowState,
+): PlanningWorkflowState {
+  return {
+    schemaVersion: 1,
+    adapterId: workflow.adapterId,
+    stage: "idle",
+    generationMode: workflow.generationMode,
+    goalFingerprint: workflow.goalFingerprint,
+    brainstormDecisionArtifact: workflow.brainstormDecisionArtifact,
+  };
+}
+
 // ─── Tiny artifact-IO helpers (used by the runner) ───────────
 
 /**

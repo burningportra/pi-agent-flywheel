@@ -1,8 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { approvalValidationBlocksStart, diffBeadSnapshots, formatApprovalValidationWarning, formatDiffSummary, verificationContractFailureLines, type DiffSummary } from "./approve.js";
+import {
+  approvalValidationBlocksStart,
+  diffBeadSnapshots,
+  formatApprovalValidationWarning,
+  formatDiffSummary,
+  formatSpecPreview,
+  isSuperpowersSpecApprovalStage,
+  superpowersSpecApprovalOptions,
+  verificationContractFailureLines,
+  type DiffSummary,
+} from "./approve.js";
 import { computeConvergenceScore } from "../prompts.js";
 import { createInitialState } from "../types.js";
 import type { OrchestratorState } from "../types.js";
+import { SUPERPOWERS_ADAPTER_ID } from "../workflows/superpowers.js";
+import type { PlanningWorkflowState } from "../workflows/types.js";
 
 // ─── Re-export tests from convergence.test.ts and diff-beads.test.ts ────
 // Those files contain the bulk of tests. This file adds approve-specific
@@ -344,5 +356,165 @@ describe("plan-to-bead audit integration", () => {
     expect(approveSource).toContain("auditPlanToBeads");
     expect(approveSource).toContain("formatPlanToBeadAuditWarnings");
     expect(approveSource).toContain("oc.state.planDocument");
+  });
+});
+
+// ─── Superpowers spec approval gate ───────────────────────────
+describe("Superpowers spec approval — isSuperpowersSpecApprovalStage", () => {
+  function makeSpecState(overrides: Partial<PlanningWorkflowState> = {}): OrchestratorState {
+    const state = createInitialState();
+    const wf: PlanningWorkflowState = {
+      schemaVersion: 1,
+      adapterId: SUPERPOWERS_ADAPTER_ID,
+      stage: "awaiting_spec_approval",
+      generationMode: "superpowers",
+      goalFingerprint: "f".repeat(64),
+      specArtifact: "superpowers/specs/example.md",
+      specRefinementRound: 0,
+      ...overrides,
+    };
+    state.planningWorkflow = wf;
+    return state;
+  }
+
+  it("returns true when stage is awaiting_spec_approval and specArtifact is set", () => {
+    expect(isSuperpowersSpecApprovalStage(makeSpecState())).toBe(true);
+  });
+
+  it("returns false when there is no planning workflow at all", () => {
+    const state = createInitialState();
+    expect(isSuperpowersSpecApprovalStage(state)).toBe(false);
+  });
+
+  it("returns false when the workflow is using the native adapter", () => {
+    expect(
+      isSuperpowersSpecApprovalStage(
+        makeSpecState({ adapterId: "native", generationMode: "native" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false when stage is awaiting_plan_approval (implementation plan)", () => {
+    expect(isSuperpowersSpecApprovalStage(makeSpecState({ stage: "awaiting_plan_approval" }))).toBe(false);
+  });
+
+  it("returns false when specArtifact is missing", () => {
+    expect(isSuperpowersSpecApprovalStage(makeSpecState({ specArtifact: undefined }))).toBe(false);
+  });
+});
+
+describe("Superpowers spec approval — formatSpecPreview", () => {
+  it("renders spec-flavored copy and never the implementation-plan vocabulary", () => {
+    const spec = "# Goal\n\n## 1. Problem Statement\nshort\n\n## 2. Desired Behavior\nshort";
+    const preview = formatSpecPreview(spec);
+    expect(preview).toContain("Spec artifact preview");
+    expect(preview).not.toContain("Plan artifact preview");
+    expect(preview).toContain("Sections");
+  });
+
+  it("truncates long specs and reports total length", () => {
+    const spec = `# Section\n${"line\n".repeat(40)}`;
+    const preview = formatSpecPreview(spec);
+    expect(preview).toContain(`${spec.split("\n").length} lines`);
+    expect(preview).toContain(`${spec.length} chars`);
+  });
+});
+
+describe("Superpowers spec approval — approval options", () => {
+  it("never includes implementation-plan or bead-creation copy", () => {
+    const options = superpowersSpecApprovalOptions(0);
+    expect(options.length).toBe(3);
+    expect(options[0]).toContain("Accept spec and generate implementation plan");
+    expect(options[1]).toContain("Refine spec (round 1)");
+    expect(options[2]).toContain("Reject spec");
+    for (const opt of options) {
+      expect(opt).not.toContain("create beads");
+      expect(opt).not.toContain("create-beads");
+    }
+  });
+
+  it("bumps the refine round number for repeat passes", () => {
+    expect(superpowersSpecApprovalOptions(2)[1]).toContain("round 3");
+  });
+});
+
+describe("Superpowers spec approval — early branch wiring in approve.ts source", () => {
+  const { readFileSync } = require("fs");
+  const { join } = require("path");
+  const approveSource = readFileSync(join(__dirname, "approve.ts"), "utf8");
+
+  it("evaluates the spec branch BEFORE the implementation-plan approval block", () => {
+    const specBranchIdx = approveSource.indexOf("isSuperpowersSpecApprovalStage(oc.state)");
+    const planBranchIdx = approveSource.indexOf(
+      "oc.state.phase === \"awaiting_plan_approval\" || (oc.state.phase === \"planning\" && oc.state.planDocument)",
+    );
+    expect(specBranchIdx).toBeGreaterThan(0);
+    expect(planBranchIdx).toBeGreaterThan(specBranchIdx);
+  });
+
+  it("does NOT trigger plan size gates, plan quality scoring, docs/plans mirroring, or bead creation inside the spec branch", () => {
+    const specBranchStart = approveSource.indexOf("Superpowers spec approval gate");
+    expect(specBranchStart).toBeGreaterThan(0);
+    const specBranchEnd = approveSource.indexOf(
+      "if (oc.state.phase === \"awaiting_plan_approval\" || (oc.state.phase === \"planning\" && oc.state.planDocument)",
+      specBranchStart,
+    );
+    expect(specBranchEnd).toBeGreaterThan(specBranchStart);
+    const specBranchSlice = approveSource.slice(specBranchStart, specBranchEnd);
+
+    // Plan size gate vocabulary
+    expect(specBranchSlice).not.toContain("Plan too short");
+    expect(specBranchSlice).not.toContain("planLineCount");
+    // Plan quality scoring
+    expect(specBranchSlice).not.toContain("planQualityScoringPrompt");
+    expect(specBranchSlice).not.toContain("formatPlanQualityScore");
+    expect(specBranchSlice).not.toContain("parsePlanQualityScore");
+    // docs/plans mirroring
+    expect(specBranchSlice).not.toContain("saveDocsPlan");
+    // Bead creation handoff
+    expect(specBranchSlice).not.toContain("planToBeadsPrompt");
+    expect(specBranchSlice).not.toContain("beadCreationPrompt(");
+    expect(specBranchSlice).not.toContain("creating_beads");
+  });
+
+  it("refinement path writes back to specArtifact, not planDocument", () => {
+    const specBranchStart = approveSource.indexOf("Superpowers spec approval gate");
+    const specBranchEnd = approveSource.indexOf(
+      "if (oc.state.phase === \"awaiting_plan_approval\" || (oc.state.phase === \"planning\" && oc.state.planDocument)",
+      specBranchStart,
+    );
+    const specBranchSlice = approveSource.slice(specBranchStart, specBranchEnd);
+    // The refinement instructions should reference the spec artifact, not a planDocument path
+    expect(specBranchSlice).toContain("specArtifactName");
+    expect(specBranchSlice).toContain("write the updated spec back to the SAME artifact");
+    expect(specBranchSlice).not.toContain("write the updated plan to the artifact");
+  });
+
+  it("acceptance path does not advance to bead creation or set planDocument", () => {
+    const specBranchStart = approveSource.indexOf("Superpowers spec approval gate");
+    const specBranchEnd = approveSource.indexOf(
+      "if (oc.state.phase === \"awaiting_plan_approval\" || (oc.state.phase === \"planning\" && oc.state.planDocument)",
+      specBranchStart,
+    );
+    const specBranchSlice = approveSource.slice(specBranchStart, specBranchEnd);
+    expect(specBranchSlice).toContain("buildSuperpowersSpecApprovalStage");
+    expect(specBranchSlice).toContain("oc.state.planDocument = undefined");
+    expect(specBranchSlice).toContain("flywheel_plan");
+    // Acceptance branch must NOT set creating_beads phase
+    const acceptIdx = specBranchSlice.indexOf("Accept spec → advance to plan generation");
+    expect(acceptIdx).toBeGreaterThan(0);
+    const acceptSlice = specBranchSlice.slice(acceptIdx);
+    expect(acceptSlice).not.toContain("creating_beads");
+  });
+
+  it("rejection path resets only the Superpowers workflow state and clears any stale planDocument", () => {
+    const specBranchStart = approveSource.indexOf("Superpowers spec approval gate");
+    const specBranchEnd = approveSource.indexOf(
+      "if (oc.state.phase === \"awaiting_plan_approval\" || (oc.state.phase === \"planning\" && oc.state.planDocument)",
+      specBranchStart,
+    );
+    const specBranchSlice = approveSource.slice(specBranchStart, specBranchEnd);
+    expect(specBranchSlice).toContain("resetSuperpowersWorkflowAfterSpecRejection");
+    expect(specBranchSlice).toContain("oc.state.planDocument = undefined");
   });
 });

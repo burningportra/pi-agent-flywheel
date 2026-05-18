@@ -7,6 +7,7 @@ import {
   buildSuperpowersSpecRefinementStage,
   buildSuperpowersSpecStage,
   initSuperpowersWorkflow,
+  resetSuperpowersWorkflowAfterSpecRejection,
   SUPERPOWERS_ADAPTER_ID,
   SUPERPOWERS_STAGE_ORDER,
 } from "./superpowers.js";
@@ -224,6 +225,48 @@ describe("buildSuperpowersPlanApprovalStage", () => {
     const handed = buildSuperpowersPlanApprovalStage({ workflow: approved.nextState });
     expect(handed.nextState.stage).toBe("handoff");
     expect(handed.nextState.lastApprovedDocumentKind).toBe("plan");
+  });
+});
+
+describe("resetSuperpowersWorkflowAfterSpecRejection", () => {
+  it("clears spec artifacts and approval metadata but keeps adapter identity", () => {
+    const initial = buildSuperpowersSpecStage({
+      goal: "Reset spec workflow",
+      profile,
+      constraints: ["no-new-deps"],
+    });
+    const approved = buildSuperpowersSpecApprovalStage({
+      workflow: { ...initial.nextState, specRefinementRound: 3 },
+      approvedSpecBody: "spec body",
+      goal: "Reset spec workflow",
+      constraints: ["no-new-deps"],
+    });
+    // Pretend we are partway through plan approval state but the user
+    // rejected the spec — the reset must still wipe spec-specific fields.
+    const reset = resetSuperpowersWorkflowAfterSpecRejection(approved.nextState);
+    expect(reset.adapterId).toBe(SUPERPOWERS_ADAPTER_ID);
+    expect(reset.generationMode).toBe("superpowers");
+    expect(reset.stage).toBe("idle");
+    expect(reset.goalFingerprint).toBe(approved.nextState.goalFingerprint);
+    expect(reset.specArtifact).toBeUndefined();
+    expect(reset.approvedSpecFingerprint).toBeUndefined();
+    expect(reset.specRefinementRound).toBeUndefined();
+    expect(reset.lastApprovedDocumentKind).toBeUndefined();
+  });
+
+  it("preserves the brainstormDecisionArtifact reference for resume continuity", () => {
+    const initial = initSuperpowersWorkflow({
+      goal: "Keep brainstorm artifact",
+      constraints: [],
+      brainstormDecisionArtifact: "brainstorming/keep-brainstorm.md",
+    });
+    const reset = resetSuperpowersWorkflowAfterSpecRejection({
+      ...initial,
+      stage: "awaiting_spec_approval",
+      specArtifact: "superpowers/specs/keep-brainstorm.md",
+      specRefinementRound: 2,
+    });
+    expect(reset.brainstormDecisionArtifact).toBe("brainstorming/keep-brainstorm.md");
   });
 });
 
