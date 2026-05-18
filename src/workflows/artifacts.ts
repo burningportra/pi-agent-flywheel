@@ -69,7 +69,8 @@ function normalizeConstraints(constraints?: string[]): string[] {
  *  - all string inputs are normalized to NFC then concatenated with a
  *    delimiter the user cannot type literally
  *  - missing optional inputs become the empty string (NOT the word
- *    "undefined") so absence vs. an empty value remain distinguishable
+ *    "undefined"); callers that need to distinguish absence from an
+ *    intentionally empty artifact reference should pass an explicit sentinel
  *
  * The output is a hex SHA-256 digest. We do not truncate — drift checks
  * compare full strings, and the 64-char cost is negligible.
