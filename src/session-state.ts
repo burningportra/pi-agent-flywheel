@@ -5,6 +5,7 @@
  * session restart where `oc.state.phase` may have been reset to "idle" —
  * by cross-checking the persisted state against on-disk evidence:
  *   • bead statuses from `br list`
+ *   • planningWorkflow normalized stage
  *   • presence of a plan artifact
  *   • presence of a repo profile
  *
@@ -15,7 +16,10 @@
  *   - rates its own confidence (high / medium / low)
  */
 
+import { goalPreviewText } from "./goal-preview.js";
 import type { OrchestratorPhase, OrchestratorState, Bead } from "./types.js";
+import { getPlanningWorkflowAdapter } from "./workflows/registry.js";
+import { NATIVE_ADAPTER_ID } from "./workflows/native.js";
 
 // ─── Public types ─────────────────────────────────────────────
 
@@ -62,7 +66,7 @@ interface PhaseMeta {
   buildResumePrompt: (stage: Omit<SessionStage, "resumePrompt">) => string;
 }
 
-const PHASE_META: Record<OrchestratorPhase, PhaseMeta> = {
+const PHASE_META: Record<OrchestratorPhase | "spec" | "refine_spec" | "awaiting_spec_approval", PhaseMeta> = {
   idle: {
     label: "Idle",
     emoji: "💤",
@@ -96,6 +100,31 @@ const PHASE_META: Record<OrchestratorPhase, PhaseMeta> = {
     buildResumePrompt: (s) =>
       `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
       `Call \`agent_flywheel_plan\` to continue or re-generate the plan.`,
+  },
+  // Work-in-progress superpowers stages mappings
+  spec: {
+    label: "Writing spec",
+    emoji: "📄",
+    nextAction: "Call `agent_flywheel_plan` to continue spec generation.",
+    buildResumePrompt: (s) =>
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `Call \`agent_flywheel_plan\` to continue generating the spec.`,
+  },
+  refine_spec: {
+    label: "Refining spec",
+    emoji: "✏️",
+    nextAction: "Call `agent_flywheel_plan` to continue spec refinement.",
+    buildResumePrompt: (s) =>
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `Call \`agent_flywheel_plan\` to continue refining the spec.`,
+  },
+  awaiting_spec_approval: {
+    label: "Spec ready — awaiting approval",
+    emoji: "📋",
+    nextAction: "Call `agent_flywheel_approve_beads` to review and approve the spec.",
+    buildResumePrompt: (s) =>
+      `Resuming AgentFlywheel${s.goal ? ` for goal: "${s.goal}"` : ""}. ` +
+      `A spec is ready. Call \`agent_flywheel_approve_beads\` to review and approve it.`,
   },
   researching: {
     label: "Researching external project",
@@ -225,17 +254,45 @@ export function detectSessionStage(
     const rs = (state as any).researchState as { url: string; externalName: string; artifactName: string; phasesCompleted: string[] };
     const totalPhases = 7;
     if (rs.phasesCompleted.length < totalPhases) {
-      phase = "researching";
+      phase = "researching" as typeof phase;
       confidence = "medium";
       inferredFrom.push(`research in-progress for "${rs.externalName}" (${rs.phasesCompleted.length}/${totalPhases} phases done)`);
     }
   }
 
-  if (phase !== "idle" && phase !== "complete") {
+  // Handle workflow adapters first
+  let metaKey: keyof typeof PHASE_META = phase;
+  if (state.planningWorkflow) {
+    const wf = state.planningWorkflow;
+    confidence = "high";
+    if (wf.stage === "spec") {
+      phase = "planning" as typeof phase;
+      metaKey = "spec";
+      inferredFrom.push(`workflow stage "spec"`);
+    } else if (wf.stage === "awaiting_spec_approval") {
+      phase = "awaiting_plan_approval" as typeof phase;
+      metaKey = "awaiting_spec_approval";
+      inferredFrom.push(`workflow stage "awaiting_spec_approval"`);
+    } else if (wf.stage === "plan") {
+      phase = "planning" as typeof phase;
+      metaKey = "planning";
+      inferredFrom.push(`workflow stage "plan"`);
+    } else if (wf.stage === "awaiting_plan_approval") {
+      phase = "awaiting_plan_approval" as typeof phase;
+      metaKey = "awaiting_plan_approval";
+      inferredFrom.push(`workflow stage "awaiting_plan_approval"`);
+    } else if (wf.stage === "brainstorming") {
+      phase = "planning" as typeof phase;
+      metaKey = "planning";
+      inferredFrom.push(`workflow stage "brainstorming"`);
+    }
+  }
+
+  if (phase !== "idle" && phase !== "complete" && !state.planningWorkflow) {
     if (!inferredFrom.some(s => s.includes("research"))) {
       inferredFrom.push(`persisted phase "${phase}"`);
     }
-  } else {
+  } else if (!state.planningWorkflow) {
     // ── Step 2: infer from on-disk evidence ──
     confidence = "medium";
 
@@ -253,29 +310,32 @@ export function detectSessionStage(
       phase = "complete";
       inferredFrom.push(`${completedBeads.length} completed bead(s), none open`);
     } else if (state.repoProfile) {
-      phase = "discovering";
+      phase = "discovering" as typeof phase;
+      metaKey = phase;
       confidence = "low";
       inferredFrom.push("repo profile present, no beads created yet");
     } else if (state.planDocument) {
-      phase = "awaiting_plan_approval";
+      phase = "awaiting_plan_approval" as typeof phase;
+      metaKey = phase;
       confidence = "low";
       inferredFrom.push(`plan document "${state.planDocument}" exists but no beads`);
     } else {
       // Nothing to go on
-      phase = "idle";
+      phase = "idle" as typeof phase;
+      metaKey = phase;
       confidence = "low";
       inferredFrom.push("no persistent signals found");
     }
   }
 
-  const meta = PHASE_META[phase];
+  const meta = PHASE_META[metaKey];
   const currentBeadId = inProgressBeads[0]?.id ?? state.currentBeadId ?? undefined;
 
   const stageWithoutPrompt: Omit<SessionStage, "resumePrompt"> = {
     phase,
     label: meta.label,
     emoji: meta.emoji,
-    goal: state.selectedGoal,
+    goal: goalPreviewText(state.selectedGoal) || undefined,
     planDocument: state.planDocument,
     currentBeadId,
     openBeadCount,
@@ -320,7 +380,7 @@ export function formatSessionContext(stage: SessionStage, currentBeadTitle?: str
 
   // Goal
   if (stage.goal) {
-    const truncated = stage.goal.length > 72 ? stage.goal.slice(0, 69) + "..." : stage.goal;
+    const truncated = goalPreviewText(stage.goal, 72);
     lines.push(`🎯 Goal:     ${truncated}`);
   }
 
