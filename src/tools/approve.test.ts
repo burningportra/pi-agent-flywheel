@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { describe, it, expect } from "vitest";
 import {
   approvalValidationBlocksStart,
@@ -19,6 +20,18 @@ import type { PlanningWorkflowState } from "../workflows/types.js";
 // ─── Re-export tests from convergence.test.ts and diff-beads.test.ts ────
 // Those files contain the bulk of tests. This file adds approve-specific
 // integration tests and tests for internal helpers via public interfaces.
+
+// ─── Structured mutation handoff guard ───────────────────────
+describe("approval structured mutation handoff", () => {
+  it("does not tell agents to create initial beads with raw br shell commands", () => {
+    const source = readFileSync(new URL("./approve.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("staged bead mutation plan");
+    expect(source).toContain("validate/apply");
+    expect(source).not.toContain("using `br create` and `br dep add` in bash NOW");
+    expect(source).not.toContain("create beads with `br create` first");
+  });
+});
 
 // ─── descFingerprint consistency (tested indirectly via diffBeadSnapshots) ──────
 describe("descFingerprint consistency via diffBeadSnapshots", () => {
@@ -357,6 +370,13 @@ describe("plan-to-bead audit integration", () => {
     expect(approveSource).toContain("formatPlanToBeadAuditWarnings");
     expect(approveSource).toContain("oc.state.planDocument");
   });
+
+  it("launches implementation through NTM instead of inline/subagent work", () => {
+    expect(approveSource).toContain("Launch the NTM implementation swarm now");
+    expect(approveSource).toContain("Do not implement these beads inline");
+    expect(approveSource).not.toContain("Implement bead ${firstBead.id} NOW");
+    expect(approveSource).not.toContain("parallel_subagents` NOW to launch");
+  });
 });
 
 // ─── Superpowers spec approval gate ───────────────────────────
@@ -518,3 +538,4 @@ describe("Superpowers spec approval — early branch wiring in approve.ts source
     expect(specBranchSlice).toContain("oc.state.planDocument = undefined");
   });
 });
+

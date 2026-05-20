@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { enforceGoogleOpenRouterModel } from "./model-policy.js";
 
 /**
  * Model detection and selection for orchestrator planning.
@@ -59,11 +60,9 @@ const PROVIDER_BEST_MODELS: Record<string, string[]> = {
     "gpt-4.1",
     "gpt-4o",
   ],
-  "google-antigravity": [
-    "gemini-3.1-pro-high",
-    "gemini-3.1-pro",
-    "gemini-2.5-pro",
-  ],
+  // Direct Google/Antigravity models are intentionally not selected for
+  // planner/refinement roles. Gemini must route via OpenRouter (`openrouter/google/...`).
+  "google-antigravity": [],
   opencode: [
     "gpt-5.4",
     "gpt-5.3-codex",
@@ -100,8 +99,8 @@ export function detectAvailableModels(ctx: ExtensionContext): DetectedModels {
   // Detect providers
   const hasAnthropic = providerMap.has("anthropic");
   const hasOpenAI = providerMap.has("openai") || providerMap.has("openai-codex");
-  // Google can be via google-antigravity, google, or opencode (which has gemini models)
-  const hasGoogle = providerMap.has("google-antigravity") || providerMap.has("google");
+  // Direct Google providers may exist, but AgentFlywheel only routes Gemini via OpenRouter.
+  const hasGoogle = providerMap.has("google-antigravity") || providerMap.has("google") || hasOpenRouterGoogle(providerMap);
   const hasOpenCode = providerMap.has("opencode");
   const hasOpenRouter = providerMap.has("openrouter");
   const hasGroq = providerMap.has("groq");
@@ -125,12 +124,10 @@ export function detectAvailableModels(ctx: ExtensionContext): DetectedModels {
   const robustnessModel = selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS)
     ?? "anthropic/claude-opus-4-6";
 
-  const ergonomicsModel = selectBestModel(providerMap, ["google-antigravity", "google"], PROVIDER_BEST_MODELS)
-    // OpenCode has gemini models under opencode/ prefix
-    ?? selectBestModelForGemini(providerMap, "opencode")
-    ?? selectBestModel(providerMap, ["openrouter"], PROVIDER_BEST_MODELS)
+  const ergonomicsModel = selectBestModel(providerMap, ["openrouter"], PROVIDER_BEST_MODELS)
     ?? selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS)
-    ?? "anthropic/claude-opus-4-6";
+    ?? selectBestModel(providerMap, ["openai-codex", "opencode", "openai"], PROVIDER_BEST_MODELS)
+    ?? "openrouter/google/gemini-3.1-pro-preview";
 
   const synthesisModel = selectBestModel(providerMap, ["openai-codex", "opencode", "openai"], PROVIDER_BEST_MODELS)
     ?? selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS)
@@ -170,32 +167,16 @@ function selectBestModel(
     const bestForProvider = providerBestModels[provider] ?? [];
     for (const preferred of bestForProvider) {
       if (models.has(preferred)) {
-        return `${provider}/${preferred}`;
+        return enforceGoogleOpenRouterModel(`${provider}/${preferred}`);
       }
     }
   }
   return null;
 }
 
-/**
- * Select the best Gemini model from a provider that hosts Gemini models.
- * Used for OpenCode which has gemini models under its own prefix.
- */
-function selectBestModelForGemini(
-  providerMap: Map<string, Set<string>>,
-  provider: string
-): string | null {
-  const models = providerMap.get(provider);
-  if (!models) return null;
-
-  // Gemini models available on OpenCode
-  const geminiModels = ["gemini-3.1-pro", "gemini-3-flash", "gemini-2.5-pro"];
-  for (const preferred of geminiModels) {
-    if (models.has(preferred)) {
-      return `${provider}/${preferred}`;
-    }
-  }
-  return null;
+function hasOpenRouterGoogle(providerMap: Map<string, Set<string>>): boolean {
+  const models = providerMap.get("openrouter");
+  return Boolean(models && [...models].some((model) => model.startsWith("google/")));
 }
 
 /**
@@ -213,10 +194,9 @@ function buildRefinementRotation(providerMap: Map<string, Set<string>>): string[
   const openaiBest = selectBestModel(providerMap, ["openai-codex", "opencode", "openai"], PROVIDER_BEST_MODELS);
   if (openaiBest && openaiBest !== rotation[0]) rotation.push(openaiBest);
 
-  // Add Google for third perspective (including OpenCode's Gemini)
-  const googleBest = selectBestModel(providerMap, ["google-antigravity", "google"], PROVIDER_BEST_MODELS)
-    ?? selectBestModelForGemini(providerMap, "opencode")
-    ?? selectBestModel(providerMap, ["openrouter"], PROVIDER_BEST_MODELS);
+  // Add Gemini for third perspective. Prefer OpenRouter when available so
+  // Gemini rounds use the provider path that is easiest to route and monitor.
+  const googleBest = selectBestModel(providerMap, ["openrouter"], PROVIDER_BEST_MODELS);
   if (googleBest && !rotation.includes(googleBest)) rotation.push(googleBest);
 
   // Fallback if we don't have enough diversity
@@ -227,7 +207,7 @@ function buildRefinementRotation(providerMap: Map<string, Set<string>>): string[
     rotation.push("openai-codex/gpt-5.4");
   }
   if (rotation.length === 2) {
-    rotation.push("google-antigravity/gemini-3.1-pro-high");
+    rotation.push("openrouter/google/gemini-3.1-pro-preview");
   }
 
   return rotation;
@@ -256,7 +236,7 @@ export function getDeepPlanModels(ctx: ExtensionContext): {
     return {
       correctness: "openai-codex/gpt-5.4",
       robustness: "anthropic/claude-opus-4-6",
-      ergonomics: "google-antigravity/gemini-3.1-pro-high",
+      ergonomics: "openrouter/google/gemini-3.1-pro-preview",
       synthesis: "openai-codex/gpt-5.4",
     };
   }
@@ -275,7 +255,7 @@ export function getRefinementModel(ctx: ExtensionContext, round: number): string
     const fallbacks = [
       "anthropic/claude-opus-4-6",
       "openai-codex/gpt-5.4",
-      "google-antigravity/gemini-3.1-pro-high",
+      "openrouter/google/gemini-3.1-pro-preview",
     ];
     return fallbacks[round % fallbacks.length];
   }

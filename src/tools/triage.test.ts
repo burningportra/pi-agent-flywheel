@@ -51,7 +51,25 @@ describe("R-004: flywheel_triage mega-command", () => {
     expect(buildTriage(makeOC({ phase: "idle" })).quick_ref.next_canonical_tool).toBe("flywheel_profile");
     expect(buildTriage(makeOC({ phase: "profile" })).quick_ref.next_canonical_tool).toBe("flywheel_discover");
     expect(buildTriage(makeOC({ phase: "discover" })).quick_ref.next_canonical_tool).toBe("flywheel_select");
+    expect(buildTriage(makeOC({ phase: "researching" })).quick_ref.next_canonical_tool).toBe("flywheel_research");
     expect(buildTriage(makeOC({ phase: "review" })).quick_ref.next_canonical_tool).toBe(null);
+  });
+
+  it("researching state recommends flywheel_research rather than repo profiling", () => {
+    const t = buildTriage(makeOC({
+      phase: "researching",
+      researchState: {
+        url: "https://github.com/obra/superpowers",
+        externalName: "superpowers",
+        artifactName: "research/superpowers-proposal.md",
+        phasesCompleted: [],
+      },
+    }));
+
+    expect(t.quick_ref.next_canonical_tool).toBe("flywheel_research");
+    expect(t.quick_ref.blocking_error).toBe(null);
+    expect(t.recommendations[0].command).toBe("flywheel_research");
+    expect(t.recommendations[0].why).toContain("https://github.com/obra/superpowers");
   });
 
   it("blocking_error fires NO_PROFILE in idle state with no profile loaded", () => {

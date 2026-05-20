@@ -51,6 +51,23 @@ describe("dueling idea prompts", () => {
     expect(prompt).toContain("Do not create beads");
   });
 
+  it("focuses ideation on the external repo during research runs", () => {
+    const prompt = duelingIdeationPrompt(
+      agent,
+      makeProfile(),
+      undefined,
+      [],
+      30,
+      5,
+      { externalUrl: "https://github.com/obra/superpowers", externalName: "superpowers" },
+    );
+
+    expect(prompt).toContain("External Research Focus");
+    expect(prompt).toContain("https://github.com/obra/superpowers");
+    expect(prompt).toContain("clone/read that external repo");
+    expect(prompt).toContain("do not produce generic current-repo improvements");
+  });
+
   it("asks cross-scorers for candid 0-1000 scoring with a score marker", () => {
     const prompt = duelingScorePrompt(agent, other, "# Ideas");
     expect(prompt).toContain("0 (worst) to 1000 (best)");
@@ -58,7 +75,7 @@ describe("dueling idea prompts", () => {
     expect(prompt).toContain("SCORE_JSON");
   });
 
-  it("builds interactive wizard subagent configs that persist idea artifacts", () => {
+  it("builds autonomous wizard subagent configs that persist idea artifacts and exit", () => {
     const artifactCtx = {
       cwd: "/repo",
       sessionManager: {
@@ -79,15 +96,20 @@ describe("dueling idea prompts", () => {
 
     expect(configs).toHaveLength(2);
     expect(configs[0].name).toBe("dueling-cc-ideas");
-    expect(configs[0].agent).toBe("planner");
+    expect(configs[0].agent).toBe("cc");
+    expect(configs[0].launchMode).toBe("ntm_cc");
+    expect(configs[0].launchInstruction).toContain("NTM Claude Code");
     expect(configs[0].cwd).toBe("/repo");
     expect(configs[0].model).toBe(agent.model);
+    expect(configs[0].interactive).toBe(false);
+    expect(configs[0].task).toContain("must be launched in managed NTM Claude Code");
     expect(configs[0].task).toContain("Dueling Idea Wizards");
     expect(configs[0].task).toContain("write_artifact");
     expect(configs[0].task).toContain("If write_artifact is not available");
     expect(configs[0].task).toContain("/sessions-root/project/artifacts/parent-session/dueling-wizards/WIZARD_IDEAS_CC.md");
     expect(configs[0].task).toContain(duelingIdeaArtifactName(agent));
     expect(configs[0].task).toContain("Existing bead");
+    expect(configs[0].task).toContain("do not keep the pane open");
   });
 });
 
@@ -135,6 +157,8 @@ describe("selectDuelingIdeaAgents", () => {
     ]);
     const agents = selectDuelingIdeaAgents(ctx, 3);
     expect(agents.map((a) => a.type)).toEqual(["CC", "COD", "GMI"]);
+    expect(agents.map((a) => a.model)).toContain("openrouter/google/gemini-3.1-pro-preview");
+    expect(agents.map((a) => a.model)).not.toContain("google-antigravity/gemini-3.1-pro-high");
     expect(agents).toHaveLength(3);
   });
 

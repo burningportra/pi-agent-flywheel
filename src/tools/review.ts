@@ -2,12 +2,11 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
-import { implementerInstructions, realityCheckInstructions, randomExplorationInstructions, SWARM_STAGGER_DELAY_MS } from "../prompts.js";
-import { readMemory } from "../memory.js";
+import { realityCheckInstructions, randomExplorationInstructions } from "../prompts.js";
 import { getEpisodicContext, sanitiseSlug } from "../episodic-memory.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
-import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessVerificationEvidence } from "../bead-review.js";
 
@@ -101,6 +100,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
         oc.state.polishChanges = [];
         oc.state.polishConverged = false;
         oc.state.planReadinessScore = undefined;
+        oc.state.workspaceChangeBaseline = undefined;
         oc.setPhase("planning", ctx);
         oc.persistState();
         return {
@@ -119,6 +119,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
         // Keep plan, reset gate state, go back to bead creation/refinement
         oc.state.currentGateIndex = 0;
         oc.state.iterationRound = 0;
+        oc.state.workspaceChangeBaseline = undefined;
         oc.setPhase("creating_beads", ctx);
         oc.persistState();
         return {
@@ -266,15 +267,11 @@ export function registerReviewTool(oc: OrchestratorContext) {
         // Flywheel's #1 diagnostic: "If you find yourself doing heavy
         // cognitive work during implementation, planning was insufficient."
         try {
-          const { detectSpaceViolations, formatSpaceViolations } = await import("../space-detector.js");
-          let filesChanged: string[] = [];
-          const gitResult = await resilientExec(oc.pi, "git", ["diff", "--name-only", "HEAD~1"], {
-            cwd: ctx.cwd,
-            timeout: 5000,
-            maxRetries: 1,
-          });
-          if (gitResult.ok) {
-            filesChanged = gitResult.value.stdout.trim().split("\n").filter(Boolean);
+          const { detectSpaceViolations, formatSpaceViolations, getReviewChangedFiles } = await import("../space-detector.js");
+          const changeSet = await getReviewChangedFiles(oc.pi, ctx.cwd, params.beadId, oc.state.workspaceChangeBaseline);
+          const filesChanged = changeSet.filesChanged;
+          if (changeSet.skippedReason) {
+            ctx.ui.notify(`ℹ️ Wrong-space detector skipped: ${changeSet.skippedReason}`, "info");
           }
 
           if (filesChanged.length > 0) {
@@ -453,7 +450,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
               const currentHeadRef = headResult.value.stdout.trim();
               const currentBeadId = oc.state.currentBeadId ?? params.beadId;
               const reviewerName = `fresh-eyes-${currentBeadId}`;
-              const { appendFreshEyesReviewToBead } = await import("../fresh-eyes-review.js");
+              const { appendFreshEyesReviewToBead, summarizeFreshEyesReviewForAppend } = await import("../fresh-eyes-review.js");
               const { prepareThread, sendMessage } = await import("../agent-mail.js");
               const agentMail = oc.state.coordinationBackend?.agentMail ? {
                 prepareThread: async ({ threadId }: { threadId: string }) => {
@@ -468,7 +465,12 @@ export function registerReviewTool(oc: OrchestratorContext) {
               const reviewer = {
                 launch: async ({ threadId, prompt }: { threadId: string; prompt: string }) => {
                   const hitMe = await oc.runHitMeAgents([{ name: reviewerName, task: prompt }], ctx.cwd, ctx);
-                  await appendFreshEyesReviewToBead({
+                  const appendInput = summarizeFreshEyesReviewForAppend(hitMe.text);
+                  const hasAppendableOutput = (appendInput.findings?.length ?? 0) > 0 || (appendInput.suggestedActions?.length ?? 0) > 0;
+                  if (!hasAppendableOutput && appendInput.cleanPass) {
+                    return { agentName: reviewerName, warning: "fresh-eyes clean pass; no bead append needed" };
+                  }
+                  const appendResult = await appendFreshEyesReviewToBead({
                     state: {
                       ...oc.state.freshEyesReviewMonitor!,
                       currentBeadId,
@@ -477,14 +479,19 @@ export function registerReviewTool(oc: OrchestratorContext) {
                       launchedForHead: currentHeadRef,
                     },
                     timestampIso: nowIso,
-                    findings: hitMe.text.trim() ? [hitMe.text.trim()] : [],
-                    cleanPass: !hitMe.text.trim(),
+                    findings: appendInput.findings,
+                    suggestedActions: appendInput.suggestedActions,
+                    cleanPass: appendInput.cleanPass,
                     beads: {
                       getBeadById: (id) => getBeadById(oc.pi, ctx.cwd, id),
                       updateBeadDescription: (id, description) => updateBeadDescription(oc.pi, ctx.cwd, id, description),
                     },
                   });
-                  return { agentName: reviewerName };
+                  oc.persistState();
+                  if (appendResult.status === "degraded") {
+                    return { ok: false, agentName: reviewerName, warning: appendResult.warning ?? appendResult.reason };
+                  }
+                  return { agentName: reviewerName, warning: appendResult.reason };
                 },
               };
               const tick = await runFreshEyesMonitorTick({
@@ -543,38 +550,61 @@ export function registerReviewTool(oc: OrchestratorContext) {
           oc.setPhase("iterating", ctx);
           oc.state.iterationRound = 0;
           oc.state.currentGateIndex = 0;
+          oc.state.workspaceChangeBaseline = undefined;
           oc.persistState();
 
           return await runGuidedGates(oc, oc.state, ctx, beadsReviewInfo);
         } else if (ready.length === 1) {
-          // Single next bead
+          // Single next bead: launch a visible NTM pane instead of inline editing.
           const nextBead = ready[0];
           oc.state.currentBeadId = nextBead.id;
           await updateBeadStatus(oc.pi, ctx.cwd, nextBead.id, "in_progress");
           oc.state.retryCount = 0;
+          try {
+            const { captureWorkspaceChangeBaseline } = await import("../space-detector.js");
+            oc.state.workspaceChangeBaseline = await captureWorkspaceChangeBaseline(oc.pi, ctx.cwd);
+          } catch {
+            oc.state.workspaceChangeBaseline = undefined;
+          }
           oc.setPhase("implementing", ctx);
           oc.persistState();
 
-          const prevResults = Object.values(oc.state.beadResults ?? {});
-          const cassMemory = readMemory(ctx.cwd, nextBead.title);
-          const episodic = getEpisodicContext(nextBead.title, sanitiseSlug(ctx.cwd));
-          // Safe fallback: repoProfile may be undefined after session resume without orch_profile
-          const safeProfile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], keyFiles: {} as Record<string, string>, testFramework: undefined, ciSystem: undefined, packageManager: undefined, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false };
-          const implInstr = implementerInstructions(nextBead, safeProfile, prevResults, cassMemory || undefined, episodic || undefined);
+          const executionMode = resolveExecutionMode(
+            oc.state.coordinationMode,
+            !!oc.state.coordinationBackend?.agentMail
+          );
+          const modeLabel = executionMode === "single-branch"
+            ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
+            : "🌿 Worktree mode — use an isolated checkout if one is provided by the orchestrator.";
+          const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
+          const ntmInstructions = formatNtmLaunchInstructions({
+            cwd: ctx.cwd,
+            label: `implementation-${nextBead.id}`,
+            agentCount: 1,
+            openBeadCount: 1,
+            title: "🐝 NTM implementation pane",
+            prompt: implementationSwarmPrompt({
+              cwd: ctx.cwd,
+              readyBeadIds: [nextBead.id],
+              assignedBeadId: nextBead.id,
+              executionModeLabel: modeLabel,
+              completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+            }),
+          });
 
-          ctx.ui.notify(`✅ Bead ${params.beadId} passed! Moving to bead ${nextBead.id} (${nextBead.title}).`, "info");
+          ctx.ui.notify(`✅ Bead ${params.beadId} passed! Launching NTM pane for bead ${nextBead.id} (${nextBead.title}).`, "info");
 
           return {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}\n\n---\nMoving to Bead ${nextBead.id}:\n\n${implInstr}`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}\n\n**NEXT: Launch an NTM pane for bead ${nextBead.id}. Do not implement it inline.**\n\n${ntmInstructions}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id },
+            details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id, launchMode: "ntm" },
           };
         } else {
-          // Multiple ready beads — use bvNext to order by impact, then emit parallel_subagents
+          // Multiple ready beads — use bvNext to order by impact, then launch NTM panes.
           const bvPick = await bvNext(oc.pi, ctx.cwd);
           if (bvPick) {
             // Move bv's top pick to front of the ready list
@@ -588,37 +618,9 @@ export function registerReviewTool(oc: OrchestratorContext) {
             oc.state.coordinationMode,
             !!oc.state.coordinationBackend?.agentMail
           );
-          const singleBranchMode = executionMode === "single-branch";
-          const modelAssignments = await getParallelModelAssignments(ctx, ready.length);
-          const agentConfigs = ready.map((b, index) => {
-            const artifacts = extractBeadArtifacts(b);
-            const agentName = `bead-${b.id}`;
-            const threadId = b.id;
-            const preamble = oc.state.coordinationBackend?.agentMail
-              ? agentMailTaskPreamble(
-                  ctx.cwd,
-                  agentName,
-                  b.title,
-                  artifacts,
-                  threadId,
-                  executionMode
-                )
-              : "";
-            const prevResults = Object.values(oc.state.beadResults ?? {});
-            const cassMemory = readMemory(ctx.cwd, b.title);
-            const episodic = getEpisodicContext(b.title, sanitiseSlug(ctx.cwd));
-            const swarmProfile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], keyFiles: {} as Record<string, string>, testFramework: undefined, ciSystem: undefined, packageManager: undefined, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false };
-            const implInstr = implementerInstructions(b, swarmProfile, prevResults, cassMemory || undefined, episodic || undefined);
-            const branchModeInstructions = singleBranchMode
-              ? "\n\n🤝 Single-branch mode: work in the shared checkout at this cwd. Do not assume an isolated worktree."
-              : "\n\n🌿 Worktree mode: if the orchestrator provides an isolated checkout, do your work there.";
-            return {
-              name: agentName,
-              cwd: ctx.cwd,
-              task: `${preamble}${implInstr}${branchModeInstructions}`,
-              ...(modelAssignments[index] ? { model: modelAssignments[index] } : {}),
-            };
-          });
+          const modeLabel = executionMode === "single-branch"
+            ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
+            : "🌿 Worktree mode — use isolated checkouts if the orchestrator provides them.";
 
           let forecastAdvisory = "";
           try {
@@ -641,28 +643,40 @@ export function registerReviewTool(oc: OrchestratorContext) {
             forecastAdvisory = `\n\n## 🔮 Swarm Forecast (read-only)\n\n- Forecast unavailable: ${message}\n- Failing open: launch instructions are still shown.\n- No bead, reservation, Agent Mail, or Git state was mutated by the forecast path.`;
           }
 
-          // Mark all as in_progress
-          for (const b of ready) {
-            await updateBeadStatus(oc.pi, ctx.cwd, b.id, "in_progress");
+          // Leave beads open so NTM workers can claim exactly one with bv/br.
+          try {
+            const { captureWorkspaceChangeBaseline } = await import("../space-detector.js");
+            oc.state.workspaceChangeBaseline = await captureWorkspaceChangeBaseline(oc.pi, ctx.cwd);
+          } catch {
+            oc.state.workspaceChangeBaseline = undefined;
           }
           oc.setPhase("implementing", ctx);
+          oc.state.currentBeadId = ready[0]?.id;
           oc.persistState();
 
-          const parallelJson = JSON.stringify({ agents: agentConfigs }, null, 2);
-          const staggerSeconds = SWARM_STAGGER_DELAY_MS / 1000;
-          const launchInstruction = ready.length > 2
-            ? `⏱️ **STAGGER LAUNCH**: You have ${ready.length} agents to launch. Launch them ONE AT A TIME with ${staggerSeconds}-second gaps between each to prevent thundering herd. Call \`subagent\` for each agent config below sequentially, waiting ${staggerSeconds}s between calls.`
-            : `**NEXT: Call \`parallel_subagents\` NOW to implement ${ready.length} ready beads inside the orchestrate workflow.**`;
-          ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${ready.length} beads now ready for parallel implementation.`, "info");
+          const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
+          const ntmInstructions = formatNtmLaunchInstructions({
+            cwd: ctx.cwd,
+            label: "implementation",
+            agentCount: ready.length,
+            openBeadCount: ready.length,
+            prompt: implementationSwarmPrompt({
+              cwd: ctx.cwd,
+              readyBeadIds: ready.map((b) => b.id),
+              executionModeLabel: modeLabel,
+              completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+            }),
+          });
+          ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${ready.length} beads now ready for NTM implementation.`, "info");
 
           return {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n${launchInstruction}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead to stay inside the implementation/review workflow.`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n**NEXT: Launch the NTM implementation swarm now. Do not implement these beads inline.**\n\n${ntmInstructions}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true },
+            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true, launchMode: "ntm" },
           };
         }
       } else {
@@ -693,22 +707,48 @@ export function registerReviewTool(oc: OrchestratorContext) {
               const nextBead = ready[0];
               oc.state.currentBeadId = nextBead.id;
               oc.state.retryCount = 0;
+              try {
+                const { captureWorkspaceChangeBaseline } = await import("../space-detector.js");
+                oc.state.workspaceChangeBaseline = await captureWorkspaceChangeBaseline(oc.pi, ctx.cwd);
+              } catch {
+                oc.state.workspaceChangeBaseline = undefined;
+              }
               oc.setPhase("implementing", ctx);
               oc.persistState();
 
-              const prevResults = Object.values(oc.state.beadResults ?? {});
-              const resumeProfile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], keyFiles: {} as Record<string, string>, testFramework: undefined, ciSystem: undefined, packageManager: undefined, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false };
-              const episodic = getEpisodicContext(nextBead.title, sanitiseSlug(ctx.cwd));
-              const implInstr = implementerInstructions(nextBead, resumeProfile, prevResults, undefined, episodic || undefined);
+              await updateBeadStatus(oc.pi, ctx.cwd, nextBead.id, "in_progress");
+              await syncBeads(oc.pi, ctx.cwd);
+              const executionMode = resolveExecutionMode(
+                oc.state.coordinationMode,
+                !!oc.state.coordinationBackend?.agentMail
+              );
+              const modeLabel = executionMode === "single-branch"
+                ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
+                : "🌿 Worktree mode — use an isolated checkout if one is provided by the orchestrator.";
+              const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
+              const ntmInstructions = formatNtmLaunchInstructions({
+                cwd: ctx.cwd,
+                label: `implementation-${nextBead.id}`,
+                agentCount: 1,
+                openBeadCount: 1,
+                title: "🐝 NTM implementation pane",
+                prompt: implementationSwarmPrompt({
+                  cwd: ctx.cwd,
+                  readyBeadIds: [nextBead.id],
+                  assignedBeadId: nextBead.id,
+                  executionModeLabel: modeLabel,
+                  completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+                }),
+              });
 
               return {
                 content: [
                   {
                     type: "text",
-                    text: `⚠️ Skipping bead ${params.beadId} (max retries). Moving to bead ${nextBead.id} (${nextBead.title}) inside the implementation workflow:\n\n${implInstr}`,
+                    text: `⚠️ Skipping bead ${params.beadId} (max retries). **NEXT: launch an NTM pane for bead ${nextBead.id} (${nextBead.title}); do not implement it inline.**\n\n${ntmInstructions}`,
                   },
                 ],
-                details: { review, skipped: true, nextBead: nextBead.id },
+                details: { review, skipped: true, nextBead: nextBead.id, launchMode: "ntm" },
               };
             }
           }
@@ -733,7 +773,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
           content: [
             {
               type: "text",
-              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}\n\nPlease fix the issues using the code tools, then call \`orch_review\` again to stay inside the review workflow.`,
+              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}\n\nSend these revision instructions to the responsible NTM pane (or launch a new NTM pane for this bead) rather than fixing inline, then call \`orch_review\` again to stay inside the review workflow.`, 
             },
           ],
           details: { review, retryCount: oc.state.retryCount },

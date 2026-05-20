@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { goalPreviewText } from "../goal-preview.js";
 import type { BeadSnapshot, DashboardAlert, DashboardSnapshot } from "./types.js";
 
 // ─── Theme interface ────────────────────────────────────────────
@@ -170,10 +171,11 @@ export function renderGoalLine(
   maxWidth: number,
   theme: DashboardTheme,
 ): string {
-  if (!goal) return "";
+  const preview = goalPreviewText(goal);
+  if (!preview) return "";
   const prefix = "🎯 ";
   const available = Math.max(maxWidth - visibleWidth(prefix), 0);
-  return styled(theme, "muted", prefix) + truncate(goal, available);
+  return styled(theme, "muted", prefix) + truncate(preview, available);
 }
 
 // ─── Section: progress bar ───────────────────────────────────────

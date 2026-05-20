@@ -7,6 +7,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const reviewSource = readFileSync(join(__dir, "tools/review.ts"), "utf8");
 const approveSource = readFileSync(join(__dir, "tools/approve.ts"), "utf8");
 const profileSource = readFileSync(join(__dir, "tools/profile.ts"), "utf8");
+const spaceDetectorSource = readFileSync(join(__dir, "space-detector.ts"), "utf8");
 const indexSource = readFileSync(join(__dir, "index.ts"), "utf8");
 
 describe("review.ts resilient exec migration", () => {
@@ -16,10 +17,12 @@ describe("review.ts resilient exec migration", () => {
     expect(reviewSource).toContain("reopened.push(id)");
   });
 
-  it("uses resilientExec for changed-files lookup with a one-retry best-effort path", () => {
-    expect(reviewSource).toContain('const gitResult = await resilientExec(oc.pi, "git", ["diff", "--name-only", "HEAD~1"]');
-    expect(reviewSource).toContain("maxRetries: 1");
-    expect(reviewSource).toContain("if (gitResult.ok) {");
+  it("uses resilientExec-backed isolated changed-files lookup for best-effort space detection", () => {
+    expect(reviewSource).toContain("const changeSet = await getReviewChangedFiles");
+    expect(reviewSource).toContain("oc.state.workspaceChangeBaseline");
+    expect(spaceDetectorSource).toContain('resilientExec(pi, "git", args');
+    expect(spaceDetectorSource).toContain('gitLines(pi, cwd, ["diff", "--name-only", baseline.head, currentHead])');
+    expect(spaceDetectorSource).toContain("workspace baseline unavailable");
     expect(reviewSource).toContain("if (filesChanged.length > 0)");
   });
 });

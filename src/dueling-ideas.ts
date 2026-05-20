@@ -2,8 +2,9 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { dirname } from "path";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { CandidateIdea, RepoProfile, ScanResult } from "./types.js";
-import { formatRepoProfile, pickRefinementModel } from "./prompts.js";
+import { formatRepoProfile, pickRefinementModel, withSubagentAutoExitInstruction } from "./prompts.js";
 import { detectAvailableModels } from "./model-detection.js";
+import { enforceGoogleOpenRouterModel, launchModeForModel, providerPolicyNoteForModel } from "./model-policy.js";
 import { runDeepPlanAgents, type DeepPlanAgent, type DeepPlanResult } from "./deep-plan.js";
 import { findSessionArtifactPath, sessionArtifactPath } from "./session-artifacts.js";
 import { parseIdeasJSON } from "./ideation-funnel.js";
@@ -32,6 +33,11 @@ export interface DuelingIdeasResult {
   consensusIdeas: CandidateIdea[];
 }
 
+export interface DuelingResearchFocus {
+  externalUrl: string;
+  externalName: string;
+}
+
 const IDEAS_JSON_MARKER = "IDEAS_JSON";
 const SCORE_JSON_MARKER = "SCORE_JSON";
 const CONSENSUS_JSON_MARKER = "CONSENSUS_IDEAS_JSON";
@@ -39,9 +45,9 @@ export const DUELING_WIZARDS_ARTIFACT_PREFIX = "dueling-wizards";
 
 function familyForModel(model: string): string {
   const lower = model.toLowerCase();
-  if (/gemini|google|antigravity/.test(lower)) return "GMI";
-  if (/codex|openai|gpt|opencode/.test(lower)) return "COD";
   if (/claude|anthropic/.test(lower)) return "CC";
+  if (/openrouter\/google|gemini|google|antigravity/.test(lower)) return "GMI";
+  if (/codex|openai|gpt|opencode/.test(lower)) return "COD";
   if (/openrouter/.test(lower)) return "OR";
   return "AI";
 }
@@ -88,10 +94,13 @@ export function selectDuelingIdeaAgents(ctx: ExtensionContext, maxAgents = 3): D
   }
 
   const usedTypes = new Set<string>();
-  return selected.slice(0, maxAgents).map((model) => ({
-    model,
-    type: uniqueType(familyForModel(model), usedTypes),
-  }));
+  return selected.slice(0, maxAgents).map((model) => {
+    const normalizedModel = enforceGoogleOpenRouterModel(model);
+    return {
+      model: normalizedModel,
+      type: uniqueType(familyForModel(normalizedModel), usedTypes),
+    };
+  });
 }
 
 export function duelingIdeationPrompt(
@@ -101,27 +110,34 @@ export function duelingIdeationPrompt(
   existingBeadTitles: string[],
   ideaCount = 30,
   topCount = 5,
+  researchFocus?: DuelingResearchFocus,
 ): string {
   const repoContext = formatRepoProfile(profile, scanResult);
   const beadSection = existingBeadTitles.length > 0
     ? `\n### Existing Beads (do not duplicate)\n${existingBeadTitles.map((t) => `- ${t}`).join("\n")}\n`
     : "";
+  const focusSection = researchFocus
+    ? `\n## External Research Focus\nThis duel is part of an external-repo research run. The target is ${researchFocus.externalName}: ${researchFocus.externalUrl}.\n\nBefore proposing ideas, clone/read that external repo and cite concrete files, README sections, architecture patterns, commands, or workflows from it. Your ideas must reimagine or adapt what you learned from ${researchFocus.externalName} for this current project; do not produce generic current-repo improvements that ignore the external target.\n`
+    : "";
+  const taskFocus = researchFocus
+    ? `Come up with your very best research-reimagined ideas from ${researchFocus.externalName} for improving this project while making the adaptation robust, reliable, performant, intuitive, user-friendly, ergonomic, useful, compelling, and still obviously accretive and pragmatic.`
+    : "Come up with your very best ideas for improving this project to make it more robust, reliable, performant, intuitive, user-friendly, ergonomic, useful, compelling, and still obviously accretive and pragmatic.";
 
   return `# Dueling Idea Wizards — Independent Ideation (${agent.type})
 
 You are one contestant in an adversarial cross-model idea duel. Your job in this phase is independent ideation: study the project deeply, generate many options, then winnow to your strongest ideas. Another model will later score your ideas candidly.
 
 First read AGENTS.md and README.md carefully if present. Then inspect the codebase architecture, tests, recent commits, TODOs, and project purpose using read-only tools.
-
+${focusSection}
 ${repoContext}
 ${beadSection}
 ## Task
-Come up with your very best ideas for improving this project to make it more robust, reliable, performant, intuitive, user-friendly, ergonomic, useful, compelling, and still obviously accretive and pragmatic.
+${taskFocus}
 
 1. Generate ${ideaCount} candidate ideas internally.
 2. Think through each idea: how it would work, how users and AI coding agents would perceive it, implementation risk, utility, complexity, and likely maintenance cost.
 3. Winnow to your VERY best ${topCount} ideas, ordered best to worst.
-4. Be specific to this repository. Cite concrete files, tools, workflows, or observed gaps.
+4. Be specific to this repository${researchFocus ? ` and to ${researchFocus.externalName}` : ""}. Cite concrete files, tools, workflows, or observed gaps${researchFocus ? " from both the current repo and the external target" : ""}.
 
 For each top idea include:
 - title, category, effort, impact
@@ -165,23 +181,35 @@ export function buildDuelingIdeaSubagentConfigs(
   scanResult: ScanResult | undefined,
   existingBeadTitles: string[],
   artifactCtx?: Pick<ExtensionContext, "cwd" | "sessionManager">,
+  researchFocus?: DuelingResearchFocus,
 ) {
   return agents.map((agent) => {
-    const artifactName = duelingIdeaArtifactName(agent);
+    const normalizedAgent = { ...agent, model: enforceGoogleOpenRouterModel(agent.model) };
+    const artifactName = duelingIdeaArtifactName(normalizedAgent);
     const absoluteArtifactPath = artifactCtx ? sessionArtifactPath(artifactCtx, artifactName) : undefined;
+    const launchMode = launchModeForModel(normalizedAgent.model);
+    const policyNote = providerPolicyNoteForModel(normalizedAgent.model);
     const persistenceFallback = absoluteArtifactPath
       ? `If write_artifact is not available in your tool list, use the write tool to create exactly this file instead: \`${absoluteArtifactPath}\`.`
       : "If write_artifact is not available in your tool list, say so explicitly in your final response.";
     return {
-      name: `dueling-${agent.type.toLowerCase()}-ideas`,
-      agent: "planner",
+      name: `dueling-${normalizedAgent.type.toLowerCase()}-ideas`,
+      agent: launchMode === "ntm_cc" ? "cc" : launchMode === "ntm_agent" ? "agent" : "planner",
       cwd,
-      model: agent.model,
-      task:
-        `${duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles)}\n\n` +
+      model: normalizedAgent.model,
+      launchMode,
+      launchInstruction: launchMode === "ntm_cc"
+        ? "Launch this wizard in a managed NTM Claude Code (`cc`) pane; do not use the subagent tool for Anthropic/Claude models."
+        : launchMode === "ntm_agent"
+          ? "Launch this wizard in a managed NTM Cursor (`--agent`) pane; do not use the subagent tool or `--gmi` panes for Google/Gemini models."
+          : "Launch this wizard with the subagent tool.",
+      interactive: false,
+      task: withSubagentAutoExitInstruction(
+        `${policyNote ? `${policyNote}\n\n` : ""}${duelingIdeationPrompt(normalizedAgent, profile, scanResult, existingBeadTitles, 30, 5, researchFocus)}\n\n` +
         `After you finish, save your full wizard response with write_artifact using exactly this name: \`${artifactName}\`.\n` +
         `${persistenceFallback}\n` +
-        `Do not create beads. In your final response, mention that you wrote \`${artifactName}\`.`,
+        `Do not create beads. In your final response, mention that you wrote \`${artifactName}\`.`
+      ),
     };
   });
 }
@@ -518,6 +546,7 @@ export async function runDuelingIdeaWizards(
   existingBeadTitles: string[],
   signal?: AbortSignal,
   onPhase?: (message: string) => void,
+  researchFocus?: DuelingResearchFocus,
 ): Promise<DuelingIdeasResult> {
   const agents = selectDuelingIdeaAgents(ctx, 3);
   const artifactPrefix = DUELING_WIZARDS_ARTIFACT_PREFIX;
@@ -529,7 +558,7 @@ export async function runDuelingIdeaWizards(
     const ideaTasks: DeepPlanAgent[] = missingIdeaAgents.map((agent) => ({
       name: `ideas-${agent.type}`,
       model: agent.model,
-      task: duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles),
+      task: duelingIdeationPrompt(agent, profile, scanResult, existingBeadTitles, 30, 5, researchFocus),
     }));
     const ideaResults = await runNamedAgents(pi, ctx.cwd, ideaTasks, signal);
     for (const agent of missingIdeaAgents) {

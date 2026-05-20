@@ -120,13 +120,15 @@ export function buildMultiModelPlanSubagentConfigs(
     const policyNote = providerPolicyNoteForModel(model);
     return {
       name: `plan-${planner.name}`,
-      agent: launchMode === "ntm_cc" ? "cc" : "planner",
+      agent: launchMode === "ntm_cc" ? "cc" : launchMode === "ntm_agent" ? "agent" : "planner",
       cwd,
       model,
       launchMode,
       launchInstruction: launchMode === "ntm_cc"
         ? "Launch this planner in a managed NTM Claude Code (`cc`) pane; do not use the subagent tool for Anthropic/Claude models."
-        : "Launch this planner with the subagent tool.",
+        : launchMode === "ntm_agent"
+          ? "Launch this planner in a managed NTM Cursor (`--agent`) pane; do not use the subagent tool or `--gmi` panes for Google/Gemini models."
+          : "Launch this planner with the subagent tool.",
       interactive: false,
       task: withSubagentAutoExitInstruction(
         `${policyNote ? `${policyNote}\n\n` : ""}${planner.task}\n\n` +
@@ -487,7 +489,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
             text:
               `**NEXT: Launch the pending autonomous planners NOW.**\n\n` +
               `${statusLine}\n\n` +
-              `Launch planners according to each config's \`launchMode\`: use \`subagent\` only for \`subagent\` configs, and use managed NTM Claude Code \`cc\` panes for \`ntm_cc\` configs. ` +
+              `Launch planners according to each config's \`launchMode\`: use \`subagent\` only for \`subagent\` configs, managed NTM \`cc\` panes for \`ntm_cc\`, and managed NTM \`--agent\` panes for \`ntm_agent\` (preferred over \`gmi\`). ` +
               `Never launch Anthropic/Claude models with the subagent tool, and never use direct Google/Gemini provider IDs instead of \`openrouter/google/...\`. ` +
               `Each planner writes its draft to a session artifact, sends one final response, and exits. After all planners complete, call \`agent_flywheel_plan\` with mode \`multi_model\` again to synthesize the final plan.\n\n` +
               `\`\`\`json\n${JSON.stringify(pendingConfigs, null, 2)}\n\`\`\``,

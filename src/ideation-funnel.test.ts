@@ -179,6 +179,31 @@ describe("parseIdeasJSON", () => {
     expect(ideas).toHaveLength(1);
   });
 
+  it("handles object-wrapped idea arrays from models", () => {
+    const output = JSON.stringify({
+      ideas: [
+        { id: "wrapped-a", title: "Wrapped A", description: "d" },
+        { id: "wrapped-b", title: "Wrapped B", description: "d" },
+      ],
+    });
+    const ideas = parseIdeasJSON(output);
+    expect(ideas.map((idea) => idea.id)).toEqual(["wrapped-a", "wrapped-b"]);
+  });
+
+  it("does not let non-json bracketed prose before the payload hide the idea array", () => {
+    const output = "Categories [feature, docs, testing]\n```json\n" + JSON.stringify([
+      { id: "real", title: "Real Idea", sourceEvidence: ["src/index.ts"] },
+    ]) + "\n```";
+    const ideas = parseIdeasJSON(output);
+    expect(ideas).toHaveLength(1);
+    expect(ideas[0].id).toBe("real");
+  });
+
+  it("repairs trailing commas in idea arrays", () => {
+    const ideas = parseIdeasJSON('[{"id":"trailing","title":"Trailing",},]');
+    expect(ideas.map((idea) => idea.id)).toEqual(["trailing"]);
+  });
+
   it("validates required fields (id and title)", () => {
     const json = JSON.stringify([
       { id: "valid", title: "Valid" },

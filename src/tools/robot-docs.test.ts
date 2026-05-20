@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { buildRobotDocs } from "./robot-docs.js";
 import { TOOL_FAMILIES, canonicalName } from "./shared.js";
@@ -38,5 +39,36 @@ describe("R-003: flywheel_robot_docs handbook", () => {
 
   it("starts with the expected header", () => {
     expect(buildRobotDocs()).toMatch(/^# pi-agent-flywheel — Agent Handbook/);
+  });
+
+  it("documents NTM implementation pane mix", () => {
+    const docs = buildRobotDocs();
+    expect(docs).toContain("## 7. NTM implementation panes");
+    expect(docs).toContain("--agent");
+    expect(docs).toContain("preferred over `--gmi`");
+  });
+
+  it("documents the read-only release checklist workflow", () => {
+    const docs = buildRobotDocs();
+    expect(docs).toContain("/flywheel-release-checklist        # canonical");
+    expect(docs).toContain("/agent-flywheel-release-checklist  # legacy alias");
+    expect(docs).toContain("/orchestrate-release-checklist     # legacy alias");
+    expect(docs).toContain("package.json/package-lock consistency");
+    expect(docs).toContain("dirty scope unknown");
+    expect(docs).toContain("build/test/UBS");
+    expect(docs).toContain("docs/release-checklist.md");
+    expect(docs).toContain("never commits, tags, publishes, bumps versions, resets, cleans, or mutates files");
+  });
+
+  it("keeps the user-facing release checklist guide aligned with robot guidance", () => {
+    const guide = readFileSync("docs/release-checklist.md", "utf8");
+    expect(guide).toContain("/agent-flywheel-release-checklist");
+    expect(guide).toContain("package.json");
+    expect(guide).toContain("package-lock.json");
+    expect(guide).toContain("Dirty-file scope");
+    expect(guide).toContain("build, test, and UBS");
+    expect(guide).toContain("does **not**");
+    expect(guide).toContain("commit changes");
+    expect(guide).toContain("mutate files");
   });
 });

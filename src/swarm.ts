@@ -5,7 +5,15 @@
  * and SwarmTender monitoring integration.
  */
 
-import { swarmMarchingOrders, SWARM_STAGGER_DELAY_MS, SWARM_MODELS } from "./prompts.js";
+import { swarmMarchingOrders, SWARM_STAGGER_DELAY_MS, SWARM_MODELS, withSubagentAutoExitInstruction } from "./prompts.js";
+import {
+  describePaneSpecs,
+  formatNtmSpawnFlags,
+  paneSpecsForLaunch,
+  recommendSwarmPaneMix,
+  type NtmPaneKind,
+  type NtmPaneSpec,
+} from "./ntm-spawn.js";
 import type { Bead } from "./types.js";
 import type { AgentStatus } from "./tender.js";
 
@@ -22,51 +30,171 @@ export interface SwarmAgentConfig {
   cwd: string;
   /** Delay before spawning (ms) — for staggered starts. */
   delayMs: number;
+  /** Swarm agents are autonomous and should exit after their final response. */
+  interactive: false;
+}
+
+export interface NtmLaunchOptions {
+  /** Working directory for the NTM project. */
+  cwd: string;
+  /** NTM label appended to the project session name. */
+  label: string;
+  /** Total worker panes when paneSpecs is omitted. */
+  agentCount: number;
+  /** Explicit NTM pane mix (`--cc`, `--cod`, `--agent`; preferred over `--gmi`). */
+  paneSpecs?: NtmPaneSpec[];
+  /** Model hint for single-pane launches (routes cc/cod/agent). */
+  model?: string;
+  /** Open bead count used to pick default mix when scaling swarm size. */
+  openBeadCount?: number;
+  /** Prompt delivered to each pane. */
+  prompt: string;
+  /** Optional heading for the rendered instructions. */
+  title?: string;
+  /** Extra note when Cursor CLI (`agent`) is unavailable and mix fell back. */
+  spawnNote?: string;
+}
+
+export interface ImplementationSwarmPromptOptions {
+  cwd: string;
+  readyBeadIds: string[];
+  assignedBeadId?: string;
+  executionModeLabel?: string;
+  completedBeadIds?: string[];
+}
+
+function shellString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function sanitizeNtmLabel(label: string): string {
+  const cleaned = label.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || "implementation";
+}
+
+export function formatNtmRobotManagementLoopInstructions(options: { label: string; agentCount?: number }): string {
+  const label = sanitizeNtmLabel(options.label);
+  const paneHint = Math.max(1, Math.min(10, Math.floor(options.agentCount ?? 1))) === 1
+    ? "the pane"
+    : "each pane";
+
+  return [
+    "### Full NTM robot management loop",
+    "Do not stop at launch or a one-time snapshot. Tend the panes with NTM robot surfaces until the swarm reaches a real completion condition.",
+    "",
+    "```bash",
+    `session="$(basename \"$PWD\")--${label}"`,
+    "ntm --robot-snapshot",
+    "ntm --robot-attention --attention-session=\"$session\" || true",
+    "ntm --robot-tail=\"$session\" --lines=50 || true",
+    "ntm mail inbox \"$session\" --json || true",
+    "ntm --robot-is-working || true",
+    "ntm --robot-health-oauth || true",
+    "ntm --robot-diagnose=\"$session\" --diagnose-fix || true",
+    "ntm --robot-wait=\"$session\" --wait-until=idle --timeout=10m || true",
+    "```",
+    "",
+    "Operator loop:",
+    "1. Snapshot/resync with `ntm --robot-snapshot`; if the cursor expires, snapshot again before acting.",
+    "2. Block on attention with `ntm --robot-attention --attention-session=\"$session\"` and inspect flagged panes, not just final summaries.",
+    `3. Tail ${paneHint} with \`ntm --robot-tail=\"$session\" --lines=50\`; verify whether work is actually progressing with \`ntm --robot-is-working\` and recent commits/tests.`,
+    "4. Check coordination mail with `ntm mail inbox \"$session\" --json` and handle urgent reservation or review messages.",
+    "5. For stuck panes, use the NTM unstick ladder: send a wake-up nudge with `ntm send`, interrupt with `ntm --robot-interrupt=\"$session\" --panes=N`, then `ntm --robot-diagnose=\"$session\" --diagnose-fix`; only restart/kill after capturing the pane tail.",
+    "6. For rate-limited panes, confirm via `ntm --robot-health-oauth` / `ntm --robot-is-working`, then rotate/switch accounts with NTM instead of waiting silently.",
+    "7. Send marching orders with `ntm send \"$session\" --pane N \"...\"` when panes drift into prose, idle handoff, or duplicate work.",
+    "8. Stop only when completed beads have commits + verification evidence, no pane is actively working, and `br ready` / in-progress bead state shows no immediately actionable implementation work.",
+  ].join("\n");
+}
+
+export function implementationSwarmPrompt(options: ImplementationSwarmPromptOptions): string {
+  const readyList = options.readyBeadIds.length > 0 ? options.readyBeadIds.join(", ") : "use bv --robot-next";
+  const assigned = options.assignedBeadId
+    ? `\nYou are assigned bead ${options.assignedBeadId}. If it is not already in_progress, claim it with \`br update ${options.assignedBeadId} --status in_progress\` before editing.`
+    : "\nPick exactly one ready bead using `bv --robot-triage` (preferred) or `bv --robot-next`, then claim it with `br update <id> --status in_progress` before editing.";
+  const completed = options.completedBeadIds?.length
+    ? `\nAlready completed in this run: ${options.completedBeadIds.join(", ")}. Do not reopen or duplicate those beads.`
+    : "";
+
+  return withSubagentAutoExitInstruction(`You are an AgentFlywheel implementation worker running in a managed NTM worker pane (cc, cod, or agent — not the pi orchestrator chat).
+
+Repository: ${options.cwd}
+Ready bead candidates: ${readyList}${assigned}${completed}
+${options.executionModeLabel ? `\nExecution mode: ${options.executionModeLabel}` : ""}
+
+Workflow:
+1. Read AGENTS.md and follow all repo-local instructions.
+2. Check Agent Mail if available and reserve files listed in the bead before editing.
+3. Inspect the bead with \`br show <id>\` and keep changes within its ### Files scope.
+4. Implement the bead, run the bead's Verification commands, and do a fresh-eyes self-review.
+5. Commit only your bead changes with a message like \`bead <id>: <summary>\`.
+6. Mark the bead closed with \`br update <id> --status closed\` and \`br sync --flush-only\` after verification passes.
+7. Report the bead id, commit hash, changed files, verification output, and any blockers.
+
+If there is no safe ready bead, report that and exit. Do not wait idle in the pane.`);
 }
 
 export interface SwarmComposition {
   /** Total agent count. */
   total: number;
-  /** Recommended model distribution. */
+  /** NTM pane mix for spawn command. */
+  paneSpecs: NtmPaneSpec[];
+  /** Recommended model distribution (roster display). */
   models: Array<{ model: string; count: number }>;
   /** Reasoning for the recommendation. */
   rationale: string;
+}
+
+function modelLabelForPaneKind(kind: NtmPaneKind): string {
+  switch (kind) {
+    case "cc":
+      return SWARM_MODELS.opus;
+    case "cod":
+      return SWARM_MODELS.gpt;
+    case "agent":
+      return "cursor-agent";
+    case "gmi":
+      return "openrouter/google/gemini-3.1-pro-preview";
+    default:
+      return "unknown";
+  }
+}
+
+function modelsFromPaneSpecs(paneSpecs: NtmPaneSpec[]): Array<{ model: string; count: number }> {
+  return paneSpecs.map((spec) => ({
+    model: modelLabelForPaneKind(spec.kind),
+    count: spec.count,
+  }));
 }
 
 // ─── Agent Composition ──────────────────────────────────────
 
 /** Recommend agent composition based on open bead count. */
 export function recommendComposition(openBeadCount: number): SwarmComposition {
+  const paneSpecs = recommendSwarmPaneMix(openBeadCount);
+  const total = paneSpecs.reduce((sum, spec) => sum + spec.count, 0);
+  const mixSummary = describePaneSpecs(paneSpecs);
+
   if (openBeadCount >= 400) {
     return {
-      total: 10,
-      models: [
-        { model: SWARM_MODELS.opus, count: 4 },
-        { model: SWARM_MODELS.gpt, count: 4 },
-        { model: SWARM_MODELS.haiku, count: 2 },
-      ],
-      rationale: `${openBeadCount} open beads — large project, full swarm recommended`,
+      total,
+      paneSpecs,
+      models: modelsFromPaneSpecs(paneSpecs),
+      rationale: `${openBeadCount} open beads — large project, full swarm (${mixSummary})`,
     };
   }
   if (openBeadCount >= 100) {
     return {
-      total: 8,
-      models: [
-        { model: SWARM_MODELS.opus, count: 3 },
-        { model: SWARM_MODELS.gpt, count: 3 },
-        { model: SWARM_MODELS.haiku, count: 2 },
-      ],
-      rationale: `${openBeadCount} open beads — medium project, moderate swarm`,
+      total,
+      paneSpecs,
+      models: modelsFromPaneSpecs(paneSpecs),
+      rationale: `${openBeadCount} open beads — medium project (${mixSummary})`,
     };
   }
   return {
-    total: 3,
-    models: [
-      { model: SWARM_MODELS.opus, count: 1 },
-      { model: SWARM_MODELS.gpt, count: 1 },
-      { model: SWARM_MODELS.haiku, count: 1 },
-    ],
-    rationale: `${openBeadCount} open beads — small project, minimal swarm`,
+    total,
+    paneSpecs,
+    models: modelsFromPaneSpecs(paneSpecs),
+    rationale: `${openBeadCount} open beads — small project (${mixSummary})`,
   };
 }
 
@@ -97,10 +225,11 @@ export function generateAgentConfigs(
 
     configs.push({
       name: `swarm-${i + 1}-${modelShort}`,
-      task: swarmMarchingOrders(cwd),
+      task: withSubagentAutoExitInstruction(swarmMarchingOrders(cwd)),
       model,
       cwd,
       delayMs: i * SWARM_STAGGER_DELAY_MS,
+      interactive: false,
     });
   }
 
@@ -163,40 +292,75 @@ export function formatSwarmStatus(
 }
 
 /**
- * Format the swarm launch configuration for the LLM to execute.
- * Returns a structured JSON that the LLM can use with subagent/spawn tools.
+ * Format a managed NTM launch command. Launches visible cc/cod/agent panes
+ * instead of asking the current orchestrator agent to edit inline.
  */
-export function formatLaunchInstructions(configs: SwarmAgentConfig[]): string {
-  const lines = [
-    `## 🐝 Swarm Launch Configuration`,
-    "",
-    `**${configs.length} agents** with ${SWARM_STAGGER_DELAY_MS / 1000}s stagger between launches.`,
-    "",
-    "Spawn each agent using the `subagent` tool with these configurations:",
-    "",
-  ];
+export function formatNtmLaunchInstructions(options: NtmLaunchOptions): string {
+  const label = sanitizeNtmLabel(options.label);
+  const paneSpecs = paneSpecsForLaunch({
+    agentCount: options.agentCount,
+    openBeadCount: options.openBeadCount,
+    model: options.model,
+    paneSpecs: options.paneSpecs,
+  });
+  const agentCount = paneSpecs.reduce((sum, spec) => sum + spec.count, 0);
+  const spawnFlags = formatNtmSpawnFlags(paneSpecs);
+  const title = options.title ?? "🐝 NTM Implementation Swarm";
+  const mixLine = describePaneSpecs(paneSpecs);
+  const noteBlock = options.spawnNote ? `\n\n${options.spawnNote}` : "";
 
+  return [
+    `## ${title}`,
+    "",
+    `Launch **${agentCount} managed NTM worker pane${agentCount === 1 ? "" : "s"}** (${mixLine}). Cursor is preferred over Gemini (\`--gmi\`) for ergonomics-style work. Do **not** implement inline in the current chat; let the NTM panes claim/complete beads and report back.`,
+    noteBlock,
+    "",
+    "```bash",
+    `cd ${shellString(options.cwd)}`,
+    "ntm --robot-docs=quickstart >/dev/null 2>&1 || true",
+    `ntm spawn "$(basename "$PWD")" --label ${shellString(label)} --no-user ${spawnFlags} --stagger-mode=smart --prompt ${shellString(options.prompt)}`,
+    `ntm --robot-snapshot`,
+    "```",
+    "",
+    "Install the Cursor CLI (`agent`) if `--agent` panes fail to start. Run `ntm deps -v` to verify agent CLIs.",
+    "",
+    formatNtmRobotManagementLoopInstructions({ label, agentCount }),
+    "",
+    "After panes finish, collect their summaries/commits and call `agent_flywheel_review`/`orch_review` for completed beads so AgentFlywheel state stays in sync.",
+  ].join("\n");
+}
+
+/**
+ * Format the swarm launch configuration for the LLM to execute.
+ * Prefer NTM panes so implementation is visible, observable, and killable.
+ */
+export function formatLaunchInstructions(
+  configs: SwarmAgentConfig[],
+  composition?: SwarmComposition,
+): string {
+  const cwd = configs[0]?.cwd ?? process.cwd();
+  const prompt = configs[0]?.task ?? swarmMarchingOrders(cwd);
+  const instructions = formatNtmLaunchInstructions({
+    cwd,
+    label: "swarm",
+    agentCount: configs.length,
+    paneSpecs: composition?.paneSpecs,
+    prompt,
+    title: "🐝 Swarm Launch Configuration",
+  });
+
+  const lines = [instructions, "", "### Agent roster"];
   for (const config of configs) {
-    lines.push(`### ${config.name}`);
-    lines.push(`- **Model:** ${config.model}`);
-    lines.push(`- **Delay:** ${config.delayMs / 1000}s after launch`);
-    lines.push("```json");
-    lines.push(JSON.stringify({
-      name: config.name,
-      task: config.task,
-      model: config.model,
-      cwd: config.cwd,
-    }, null, 2));
-    lines.push("```");
-    lines.push("");
+    lines.push(`- **${config.name}** — Pane/model: ${config.model ?? "ntm worker"}; Delay: ${config.delayMs / 1000}s`);
   }
 
+  lines.push("");
   lines.push("**Important:**");
-  lines.push("- Wait the specified delay between each spawn to prevent thundering herd");
-  lines.push("- Each agent will independently use `bv --robot-next` to pick work");
+  lines.push("- NTM handles visible panes and smart staggering; avoid launching hidden `subagent` workers for implementation swarms");
+  lines.push("- Each agent should independently use `bv --robot-triage` / `bv --robot-next` to pick work");
   lines.push("- Agents coordinate via Agent Mail file reservations");
-  lines.push("- Monitor with `/orchestrate-swarm-status`");
-  lines.push("- Stop with `/orchestrate-swarm-stop`");
+  lines.push("- Manage the swarm with the full NTM robot loop above; `/orchestrate-swarm-status` is a dashboard shortcut, not a substitute for tending attention/tail/mail/health");
+  lines.push("- Stop with `/orchestrate-swarm-stop` only after robot-loop convergence checks pass");
 
   return lines.join("\n");
 }

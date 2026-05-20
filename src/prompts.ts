@@ -2,6 +2,11 @@ import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase } fro
 import type { PlanToBeadAudit } from "./beads.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
 
+export {
+  SUBAGENT_AUTO_EXIT_INSTRUCTION,
+  withSubagentAutoExitInstruction,
+} from "./model-policy-patch.js";
+
 // ─── Workflow Roadmap ───────────────────────────────────────
 const WORKFLOW_PHASES: { key: OrchestratorPhase; label: string }[] = [
   { key: "profiling", label: "Scan" },
@@ -1383,6 +1388,33 @@ Return a JSON array of question objects. Each question has:
 \`\`\`
 
 Return ONLY the JSON array, no surrounding text or markdown fences.`;
+}
+
+export function goalBrainstormApproachesPrompt(
+  goal: string,
+  profile: RepoProfile,
+  answers: Array<{ id: string; value: string; label: string }>,
+): string {
+  const answerLines = answers.length
+    ? answers.map((a) => `- **${a.label}** (${a.id}): ${a.value}`).join("\n")
+    : "- (none)";
+
+  return `## Goal brainstorming
+
+The user wants to work on:
+> ${goal}
+
+${formatRepoProfile(profile)}
+
+## Refinement answers
+${answerLines}
+
+## Your task
+Propose **2-3 concrete implementation approaches** grounded in the repository context and refinement answers above. Each approach should explain trade-offs, risks, and what would change in this codebase.
+
+**Mark exactly one approach as recommended** (set \`recommended: true\` on one entry only).
+
+Return ONLY the JSON array of approach objects (no markdown fences, no surrounding commentary). Each object should include at least: \`id\`, \`title\`, \`summary\`, \`tradeoffs\`, \`recommended\` (boolean).`;
 }
 
 // ─── Summary Instructions ────────────────────────────────────

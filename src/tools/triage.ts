@@ -57,6 +57,7 @@ const NEXT_TOOL_BY_PHASE: Record<string, string | null> = {
   plan: "flywheel_approve_beads",
   approve: "flywheel_review",
   review: null,
+  researching: "flywheel_research",
 };
 
 export function buildTriage(oc: OrchestratorContext): TriageOutput {
@@ -70,9 +71,12 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
   const failure = Object.values(beadResults).filter((r: any) => r.status === "failure").length;
   const pending = activeBeadIds.length - success - failure;
 
+  const researchState = state.researchState;
+
   // blocking_error captures the most-likely "why is the next tool blocked" hint
   let blocking: string | null = null;
-  if (!hasProfile) blocking = "NO_PROFILE: call flywheel_profile first";
+  if (researchState?.url && !hasGoal) blocking = null;
+  else if (!hasProfile) blocking = "NO_PROFILE: call flywheel_profile first";
   else if (!hasGoal && phase === "discover") blocking = "NO_GOAL: call flywheel_select after discover";
   else if (!state.candidateIdeas?.length && phase === "select") blocking = "NO_IDEAS: call flywheel_discover first";
 
@@ -93,10 +97,17 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
   };
 
   const recs: TriageRecommendation[] = [];
-  if (!hasProfile) {
+  if (researchState?.url && !hasGoal) {
+    recs.push({
+      action: "Continue external-repo research",
+      command: "flywheel_research",
+      why: `Research target is ${researchState.url}; do not profile/discover ideas for the current checkout.`,
+      priority: "high",
+    });
+  } else if (!hasProfile) {
     recs.push({ action: "Profile the repo", command: "flywheel_profile", why: "No repo profile yet — required before discovery.", priority: "high" });
   }
-  if (hasProfile && !state.candidateIdeas?.length) {
+  if (!researchState?.url && hasProfile && !state.candidateIdeas?.length) {
     recs.push({ action: "Discover ideas", command: "flywheel_discover", why: "Profile is loaded but no candidate ideas.", priority: "high" });
   }
   if (state.candidateIdeas?.length && !hasGoal) {
@@ -119,6 +130,7 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
     "flywheel_capabilities  # discover the tool surface",
     "flywheel_robot_docs    # paste-ready handbook",
     "flywheel_doctor        # health check",
+    "flywheel_research({ url: 'https://github.com/org/repo' })  # external-repo research path",
     "flywheel_profile && flywheel_discover && flywheel_select && flywheel_plan && flywheel_approve_beads",
   ];
 

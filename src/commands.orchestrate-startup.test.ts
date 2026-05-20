@@ -144,6 +144,30 @@ describe("/agent-flywheel startup ceremony integration", () => {
     expect(events.some((event) => event.startsWith("send:Start the AgentFlywheel workflow"))).toBe(true);
   });
 
+  it("lets users enter their own goal from the first startup menu", async () => {
+    const cwd = makeTempDir();
+    const events: string[] = [];
+    activeEvents = events;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { oc, commands } = buildOrchestrator(events);
+    const handler = commands.get("agent-flywheel")?.handler;
+    const ctx = buildContext(events, cwd);
+    ctx.ui.select = vi.fn(async (message: string, choices?: string[]) => {
+      events.push("select");
+      if (message.startsWith("🌟 Start AgentFlywheel:")) {
+        expect(choices).toContain("✏️  Enter your own goal — scan repo, then plan that goal");
+        return choices?.find((choice) => choice.startsWith("✏️"));
+      }
+      return undefined;
+    });
+    ctx.ui.input = vi.fn(async () => "Add a release checklist helper");
+
+    await handler("", ctx);
+
+    expect(oc.state.selectedGoal).toBe("Add a release checklist helper");
+    expect(events.some((event) => event.includes("I want to: Add a release checklist helper"))).toBe(true);
+  });
+
   it("runs the ceremony before showing the resume menu", async () => {
     const cwd = makeTempDir();
     mkdirSync(join(cwd, ".beads"), { recursive: true });

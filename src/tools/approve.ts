@@ -2,11 +2,10 @@ import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { readFileSync } from "fs";
 import type { OrchestratorContext, Bead, OrchestratorState, VerificationContractIssue } from "../types.js";
-import { implementerInstructions, freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, SWARM_STAGGER_DELAY_MS, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, superpowersSpecRefinementPrompt, type BeadQualityAuditResult } from "../prompts.js";
-import { agentMailTaskPreamble } from "../agent-mail.js";
+import { freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, superpowersSpecRefinementPrompt, type BeadQualityAuditResult } from "../prompts.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
 import { sessionArtifactPath, findSessionArtifactPath } from "../session-artifacts.js";
-import { getParallelModelAssignments, resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExecJson, resilientExec } from "../cli-exec.js";
 
 import { FlywheelError } from "../errors.js";
@@ -1699,103 +1698,92 @@ cd ${ctx.cwd}`;
       // Determine if we can run in parallel
       const hasParallel = ready.length > 1;
 
+      const executionMode = resolveExecutionMode(
+        oc.state.coordinationMode,
+        !!oc.state.coordinationBackend?.agentMail
+      );
+      const modeLabel = executionMode === "single-branch"
+        ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
+        : "🌿 Worktree mode — use isolated checkouts if the orchestrator provides them.";
+
+      const { bvInsights: fetchBvInsights } = await import("../beads.js");
+      const launchInsights = await fetchBvInsights(oc.pi, ctx.cwd);
+      let bvRecommendation = "";
+      if (launchInsights?.Bottlenecks?.length) {
+        const top = launchInsights.Bottlenecks[0];
+        const readyIds = new Set(ready.map((b) => b.id));
+        if (readyIds.has(top.ID)) {
+          bvRecommendation = `\n\n🎯 bv recommends implementing ${top.ID} first (critical bottleneck — unlocks most downstream work). NTM panes should claim that bead via \`bv --robot-triage\` when possible.`;
+        }
+      }
+
+      try {
+        const { captureWorkspaceChangeBaseline } = await import("../space-detector.js");
+        oc.state.workspaceChangeBaseline = await captureWorkspaceChangeBaseline(oc.pi, ctx.cwd);
+      } catch {
+        oc.state.workspaceChangeBaseline = undefined;
+      }
+
+      oc.state.currentBeadId = ready[0]?.id;
+      oc.persistState();
+
+      const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
+      const completedBeadIds = Object.entries(oc.state.beadResults ?? {})
+        .filter(([, result]) => result.status === "success")
+        .map(([id]) => id);
+
       if (hasParallel) {
-        const executionMode = resolveExecutionMode(
-          oc.state.coordinationMode,
-          !!oc.state.coordinationBackend?.agentMail
-        );
-        const singleBranchMode = executionMode === "single-branch";
-
-        // Check bv for bottleneck recommendations
-        const { bvInsights } = await import("../beads.js");
-        const insights = await bvInsights(oc.pi, ctx.cwd);
-        let bvRecommendation = "";
-        if (insights?.Bottlenecks?.length) {
-          const top = insights.Bottlenecks[0];
-          const readyIds = new Set(ready.map(b => b.id));
-          if (readyIds.has(top.ID)) {
-            bvRecommendation = `\n\n🎯 bv recommends implementing ${top.ID} first (critical bottleneck — unlocks most downstream work). Consider launching it before the others.`;
-          }
-        }
-
-        // Build parallel agent configs
-        const modelAssignments = await getParallelModelAssignments(ctx, ready.length);
-        const agentConfigs = ready.map((bead, index) => {
-          const artifacts = extractArtifacts(bead);
-          const agentName = `bead-${bead.id}`;
-          const preamble = oc.state.coordinationBackend?.agentMail
-            ? agentMailTaskPreamble(
-                ctx.cwd,
-                agentName,
-                bead.title,
-                artifacts,
-                bead.id,
-                executionMode
-              )
-            : "";
-          const branchModeInstructions = singleBranchMode
-            ? "🤝 **Single-branch mode**: Work in the shared checkout at the provided cwd. Respect file reservations and avoid worktree-specific assumptions.\n\n"
-            : "🌿 **Worktree mode**: Work in your assigned isolated checkout if one is provided by the orchestrator.\n\n";
-          return {
-            name: agentName,
+        const ntmInstructions = formatNtmLaunchInstructions({
+          cwd: ctx.cwd,
+          label: "implementation",
+          agentCount: ready.length,
+          openBeadCount: ready.length,
+          prompt: implementationSwarmPrompt({
             cwd: ctx.cwd,
-            task: `${preamble}You are implementing bead ${bead.id}.\n\n## ${bead.title}\n\n${bead.description}\n\n⚠️ SCOPE CONSTRAINT: Only modify files listed in the bead. If additional files need changes, note them in your summary but DO NOT modify them.\n\n${branchModeInstructions}Implement the bead. When done, do a fresh-eyes review of all changes. Then COMMIT:${singleBranchMode ? "" : " only your bead changes"}\n\`\`\`bash\ngit add ${artifacts.map(f => '"' + f + '"').join(' ')} && git commit -m "bead ${bead.id}: ${bead.title.slice(0, 60)}"${singleBranchMode ? "\ngit push" : ""}\n\`\`\`\n\nSummarize what you did and what the fresh-eyes review found.`,
-            ...(modelAssignments[index] ? { model: modelAssignments[index] } : {}),
-          };
+            readyBeadIds: ready.map((b) => b.id),
+            executionModeLabel: modeLabel,
+            completedBeadIds,
+          }),
         });
-
-        // Mark all as in_progress
-        for (const bead of ready) {
-          await updateBeadStatus(oc.pi, ctx.cwd, bead.id, "in_progress");
-        }
-        await syncBeads(oc.pi, ctx.cwd);
-
-        oc.state.currentBeadId = ready[0].id;
-        oc.persistState();
-
-        const parallelJson = JSON.stringify({ agents: agentConfigs }, null, 2);
-        const modeLabel = singleBranchMode
-          ? "🤝 Single-branch mode — agents share the main checkout via cwd and coordinate with agent-mail reservations when available."
-          : "🌿 Worktree mode — agents run in isolated checkouts when provided by the orchestrator.";
 
         return {
           content: [
             {
               type: "text",
-              text: ready.length > 2
-                ? `⏱️ **STAGGER LAUNCH**: You have ${ready.length} agents to launch. Launch them ONE AT A TIME with ${SWARM_STAGGER_DELAY_MS / 1000}-second gaps between each to prevent thundering herd. Call \`subagent\` for each agent config below sequentially, waiting ${SWARM_STAGGER_DELAY_MS / 1000}s between calls.${bvRecommendation}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead with the sub-agent's summary to stay inside the implementation/review workflow.\n\n---\n\nBeads approved! ${beads.length} total, ${ready.length} ready now.\n\n${modeLabel}`
-                : `**NEXT: Call \`parallel_subagents\` NOW to launch ${ready.length} parallel beads.**${bvRecommendation}\n\n\`\`\`json\n${parallelJson}\n\`\`\`\n\nAfter all agents complete, call \`orch_review\` for each bead with the sub-agent's summary to stay inside the implementation/review workflow.\n\n---\n\nBeads approved! ${beads.length} total, ${ready.length} ready now.\n\n${modeLabel}`,
+              text: `Beads approved! ${beads.length} total, ${ready.length} ready now.${bvRecommendation}\n\n**NEXT: Launch the NTM implementation swarm now. Do not implement these beads inline.**\n\n${ntmInstructions}`,
             },
           ],
-          details: { approved: true, beadCount: beads.length, readyCount: ready.length, parallel: true },
+          details: { approved: true, beadCount: beads.length, readyCount: ready.length, parallel: true, launchMode: "ntm" },
         };
       }
 
-      // Sequential: start with first ready bead
       const firstBead = ready[0];
       await updateBeadStatus(oc.pi, ctx.cwd, firstBead.id, "in_progress");
       await syncBeads(oc.pi, ctx.cwd);
-      oc.state.currentBeadId = firstBead.id;
-      oc.persistState();
 
-      const { getEpisodicContext, sanitiseSlug } = await import("../episodic-memory.js");
-      const firstBeadEpisodic = getEpisodicContext(firstBead.title, sanitiseSlug(ctx.cwd));
-      const implInstr = implementerInstructions(
-        firstBead,
-        oc.state.repoProfile!,
-        Object.values(oc.state.beadResults ?? {}),
-        undefined,
-        firstBeadEpisodic || undefined
-      );
+      const ntmInstructions = formatNtmLaunchInstructions({
+        cwd: ctx.cwd,
+        label: `implementation-${firstBead.id}`,
+        agentCount: 1,
+        openBeadCount: 1,
+        title: "🐝 NTM implementation pane",
+        prompt: implementationSwarmPrompt({
+          cwd: ctx.cwd,
+          readyBeadIds: [firstBead.id],
+          assignedBeadId: firstBead.id,
+          executionModeLabel: modeLabel,
+          completedBeadIds,
+        }),
+      });
 
       return {
         content: [
           {
             type: "text",
-            text: `**NEXT: Implement bead ${firstBead.id} NOW, then call \`orch_review\` when done to stay inside the implementation/review workflow.**\n\nBeads approved! ${beads.length} total, starting with ${firstBead.id}.\n\n---\n\n${implInstr}`,
+            text: `Beads approved! ${beads.length} total, starting with ${firstBead.id}.${bvRecommendation}\n\n**NEXT: Launch an NTM pane for bead ${firstBead.id}. Do not implement it inline.**\n\n${ntmInstructions}`,
           },
         ],
-        details: { approved: true, beadCount: beads.length, readyCount: ready.length, firstBead: firstBead.id },
+        details: { approved: true, beadCount: beads.length, readyCount: ready.length, firstBead: firstBead.id, launchMode: "ntm" },
       };
     },
 

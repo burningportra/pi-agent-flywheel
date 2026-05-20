@@ -1,3 +1,4 @@
+import { goalPreviewText } from "../goal-preview.js";
 import type { OrchestratorPhase, OrchestratorState, Bead } from "../types.js";
 import type { BeadSnapshot, DashboardSnapshot, DashboardAlert } from "./types.js";
 
@@ -71,7 +72,7 @@ export function buildDashboardSnapshot(
     // --- Repo / scan / goal ---
     const repoName = state?.repoProfile?.name ?? "Unknown repo";
     const scanSource = state?.scanResult?.source ?? "unknown";
-    const goal = state?.selectedGoal ?? "";
+    const goal = goalPreviewText(state?.selectedGoal);
 
     // --- Counts ---
     const activeIds = state?.activeBeadIds;

@@ -33,11 +33,13 @@ import { registerMemoryTool } from "./tools/memory-tool.js";
 import { registerDoctorTool } from "./tools/doctor.js";
 import { registerVerifyBeadsTool } from "./tools/verify-beads.js";
 import { registerComplianceAuditTool } from "./tools/compliance-audit.js";
+import { registerResearchTool } from "./tools/research.js";
 import { registerCapabilitiesTool } from "./tools/capabilities.js";
 import { registerRobotDocsTool } from "./tools/robot-docs.js";
 import { registerTriageTool } from "./tools/triage.js";
 import { registerSuggestTool } from "./tools/suggest.js";
 import { DashboardController, renderDashboardLines, PHASE_EMOJI } from "./dashboard/index.js";
+import { goalPreviewText } from "./goal-preview.js";
 import { readBeads } from "./beads.js";
 import { writeCheckpoint, clearCheckpoint, readCheckpoint } from "./checkpoint.js";
 import { brExecJson } from "./cli-exec.js";
@@ -156,10 +158,9 @@ export default function (pi: ExtensionAPI) {
       const scanBadge = state.scanResult?.source ? ` (${state.scanResult.source})` : "";
       lines.push(`📁 Repo: ${state.repoProfile.name}${scanBadge}`);
     }
-    if (state.selectedGoal)
-      lines.push(
-        `🎯 Goal: ${state.selectedGoal.length > 60 ? state.selectedGoal.slice(0, 57) + "..." : state.selectedGoal}`
-      );
+    const goalPreview = goalPreviewText(state.selectedGoal, 60);
+    if (goalPreview)
+      lines.push(`🎯 Goal: ${goalPreview}`);
     if (state.activeBeadIds && state.activeBeadIds.length > 0) {
       const done = Object.values(state.beadResults ?? {}).filter(r => r.status === "success").length;
       const total = state.activeBeadIds.length;
@@ -304,7 +305,8 @@ export default function (pi: ExtensionAPI) {
       const checkpoint = readCheckpoint(ctx.cwd);
       if (checkpoint && checkpoint.envelope.state.phase !== "idle" && checkpoint.envelope.state.phase !== "complete") {
         lastStateEntry = checkpoint.envelope.state;
-        console.log(`[pi-agent-flywheel] Restored from checkpoint: phase=${lastStateEntry.phase}${lastStateEntry.selectedGoal ? `, goal="${lastStateEntry.selectedGoal}"` : ""}`);
+        const checkpointGoal = goalPreviewText(lastStateEntry.selectedGoal, 100);
+        console.log(`[pi-agent-flywheel] Restored from checkpoint: phase=${lastStateEntry.phase}${checkpointGoal ? `, goal="${checkpointGoal}"` : ""}`);
         for (const w of checkpoint.warnings) {
           console.warn(`[pi-agent-flywheel] checkpoint: ${w}`);
         }
@@ -402,8 +404,10 @@ export default function (pi: ExtensionAPI) {
           );
         }
 
-        // Start dashboard controller for restored active sessions
-        if (state.phase !== "idle" && state.phase !== "complete") {
+        // Start dashboard controller only for live resumed sessions. Passive
+        // checkpoint detection shows a notification but should not leave a
+        // dashboard widget running before the user chooses to resume.
+        if (orchestratorActive && state.phase !== "idle" && state.phase !== "complete") {
           try {
             const controller = ensureDashboardController(ctx);
             controller.start();
@@ -504,6 +508,7 @@ export default function (pi: ExtensionAPI) {
   registerDoctorTool(oc);
   registerVerifyBeadsTool(oc);
   registerComplianceAuditTool(oc);
+  registerResearchTool(oc);
   registerCapabilitiesTool(oc, ORCHESTRATOR_VERSION);
   registerRobotDocsTool(oc);
   registerTriageTool(oc);

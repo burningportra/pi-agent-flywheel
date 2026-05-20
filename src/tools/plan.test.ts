@@ -112,6 +112,9 @@ describe("buildMultiModelPlanSubagentConfigs", () => {
     expect(configs[1].launchInstruction).toContain("NTM Claude Code");
     expect(configs[1].task).toContain("must be launched in managed NTM Claude Code");
     expect(configs[2].model).toBe("openrouter/google/gemini-3.1-pro-preview");
+    expect(configs[2].agent).toBe("agent");
+    expect(configs[2].launchMode).toBe("ntm_agent");
+    expect(configs[2].launchInstruction).toContain("NTM Cursor");
     expect(configs[0].task).toContain(
       "plans/topstepx-api-rate-limiter-guard-multi-model/correctness.md",
     );

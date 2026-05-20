@@ -206,49 +206,59 @@ Output ONLY the JSON array. No duplicates of the top 5 or existing beads.`;
  * Handles markdown fences, surrounding text, and partial outputs.
  */
 export function parseIdeasJSON(output: string): CandidateIdea[] {
-  // Try to extract a JSON array
-  const match = output.match(/\[[\s\S]*\]/);
-  if (!match) return [];
+  for (const candidate of extractJsonArrayCandidates(output)) {
+    const ideas = parseIdeasArrayCandidate(candidate);
+    if (ideas.length > 0) return ideas;
+  }
 
+  for (const candidate of extractJsonObjectCandidates(output)) {
+    const parsed = parseJsonObjectCandidate(candidate);
+    if (!parsed) continue;
+    const ideas = parseIdeasArray(getArrayField(parsed, ["ideas", "rawIdeas", "improvementIdeas", "candidates", "items"]));
+    if (ideas.length > 0) return ideas;
+  }
+
+  return [];
+}
+
+function coerceIdea(item: unknown): CandidateIdea | null {
+  if (typeof item !== "object" || item === null) return null;
+  const obj = item as Record<string, unknown>;
+  if (typeof obj.id !== "string" || typeof obj.title !== "string") return null;
+  return {
+    id: String(obj.id),
+    title: String(obj.title),
+    description: String(obj.description ?? ""),
+    category: validateCategory(String(obj.category ?? "feature")),
+    effort: validateEffort(String(obj.effort ?? "medium")),
+    impact: validateImpact(String(obj.impact ?? "medium")),
+    rationale: typeof obj.rationale === "string" ? obj.rationale : "",
+    tier: "honorable" as const,
+    sourceEvidence: Array.isArray(obj.sourceEvidence)
+      ? (obj.sourceEvidence as unknown[]).filter((s): s is string => typeof s === "string")
+      : undefined,
+    scores: parseScores(obj.scores),
+  };
+}
+
+function parseIdeasArray(value: unknown): CandidateIdea[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(coerceIdea).filter((idea): idea is CandidateIdea => idea !== null);
+}
+
+function parseIdeasArrayCandidate(candidate: string): CandidateIdea[] {
   try {
-    const parsed = JSON.parse(match[0]);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter((item: unknown) => {
-        if (typeof item !== "object" || item === null) return false;
-        const obj = item as Record<string, unknown>;
-        return typeof obj.id === "string" && typeof obj.title === "string";
-      })
-      .map((item: Record<string, unknown>) => ({
-        id: String(item.id),
-        title: String(item.title),
-        description: String(item.description ?? ""),
-        category: validateCategory(String(item.category ?? "feature")),
-        effort: validateEffort(String(item.effort ?? "medium")),
-        impact: validateImpact(String(item.impact ?? "medium")),
-        rationale: typeof item.rationale === "string" ? item.rationale : "",
-        tier: "honorable" as const,
-        sourceEvidence: Array.isArray(item.sourceEvidence)
-          ? (item.sourceEvidence as unknown[]).filter((s): s is string => typeof s === "string")
-          : undefined,
-        scores: parseScores(item.scores),
-      }));
+    return parseIdeasArray(JSON.parse(candidate));
   } catch {
-    return [];
+    try {
+      return parseIdeasArray(JSON.parse(candidate.replace(/,\s*([}\]])/g, "$1")));
+    } catch {
+      return [];
+    }
   }
 }
 
-/**
- * Extract balanced JSON object candidates from mixed LLM output.
- *
- * Regexes like /\{[\s\S]*"keeps"[\s\S]*\}/ are too greedy: if the model
- * writes any prose object-ish text before the fenced JSON, the parse fails and
- * the deep-discovery UI falls back with a noisy warning. This scanner tracks
- * strings/escapes and returns every balanced object so callers can try the
- * actual JSON payload first.
- */
-function extractJsonObjectCandidates(output: string): string[] {
+function extractBalancedJsonCandidates(output: string, open: "{" | "[", close: "}" | "]"): string[] {
   const candidates: string[] = [];
   let start = -1;
   let depth = 0;
@@ -273,12 +283,12 @@ function extractJsonObjectCandidates(output: string): string[] {
       inString = true;
       continue;
     }
-    if (ch === "{") {
+    if (ch === open) {
       if (depth === 0) start = i;
       depth++;
       continue;
     }
-    if (ch === "}" && depth > 0) {
+    if (ch === close && depth > 0) {
       depth--;
       if (depth === 0 && start !== -1) {
         candidates.push(output.slice(start, i + 1));
@@ -288,6 +298,23 @@ function extractJsonObjectCandidates(output: string): string[] {
   }
 
   return candidates;
+}
+
+function extractJsonArrayCandidates(output: string): string[] {
+  return extractBalancedJsonCandidates(output, "[", "]");
+}
+
+/**
+ * Extract balanced JSON object candidates from mixed LLM output.
+ *
+ * Regexes like /\{[\s\S]*"keeps"[\s\S]*\}/ are too greedy: if the model
+ * writes any prose object-ish text before the fenced JSON, the parse fails and
+ * the deep-discovery UI falls back with a noisy warning. This scanner tracks
+ * strings/escapes and returns every balanced object so callers can try the
+ * actual JSON payload first.
+ */
+function extractJsonObjectCandidates(output: string): string[] {
+  return extractBalancedJsonCandidates(output, "{", "}");
 }
 
 function parseJsonObjectCandidate(candidate: string): Record<string, unknown> | null {
@@ -436,11 +463,11 @@ function parseScores(raw: unknown): CandidateIdea["scores"] {
     ergonomic: clamp(Number(obj.ergonomic), 1, 5),
   };
   // Return undefined if all NaN
-  if (Object.values(scores).every(isNaN)) return undefined;
+  if (Object.values(scores).every(Number.isNaN)) return undefined;
   return scores;
 }
 
 function clamp(value: number, min: number, max: number): number {
-  if (isNaN(value)) return min;
+  if (Number.isNaN(value)) return min;
   return Math.max(min, Math.min(max, Math.round(value)));
 }

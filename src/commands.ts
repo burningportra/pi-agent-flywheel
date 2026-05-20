@@ -412,23 +412,25 @@ export function registerCommands(oc: OrchestratorContext) {
           oc.orchestratorActive = true;
           oc.setPhase("implementing", ctx);
           oc.persistState();
-          const { implementerInstructions } = await import("./prompts.js");
-          const { readMemory } = await import("./memory.js");
-          const memRules = readMemory(ctx.cwd);
-          const targetBead = openBeads.find(b => b.id === beadId);
-          if (targetBead) {
-            const profile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], structure: "", entrypoints: [], recentCommits: [], hasTests: false, hasDocs: false, hasCI: false, todos: [], keyFiles: {} };
-            const prevResults = Object.values(oc.state.beadResults ?? {});
-            pi.sendUserMessage(
-              implementerInstructions(targetBead, profile, prevResults, memRules),
-              { deliverAs: "followUp" }
-            );
-          } else {
-            pi.sendUserMessage(
-              `Implement bead **${beadId}**. Run \`br show ${beadId}\` to see its details, then implement it and call \`agent_flywheel_review\` when done to stay inside the AgentFlywheel workflow.`,
-              { deliverAs: "followUp" }
-            );
-          }
+          const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("./swarm.js");
+          const ntmInstructions = formatNtmLaunchInstructions({
+            cwd: ctx.cwd,
+            label: `implementation-${beadId}`,
+            agentCount: 1,
+            openBeadCount: 1,
+            title: "🐝 NTM implementation pane",
+            prompt: implementationSwarmPrompt({
+              cwd: ctx.cwd,
+              readyBeadIds: [beadId],
+              assignedBeadId: beadId,
+              executionModeLabel: "Manual status-menu launch — shared checkout; coordinate with reservations when available.",
+              completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+            }),
+          });
+          pi.sendUserMessage(
+            `**NEXT: Launch an NTM pane for bead ${beadId}. Do not implement it inline.**\n\n${ntmInstructions}`,
+            { deliverAs: "followUp" }
+          );
           return;
 
         // ── Handle: Reset stuck ───────────────────────────────────
@@ -604,18 +606,20 @@ export function registerCommands(oc: OrchestratorContext) {
 
       oc.state = createInitialState();
       const { goalArg, coordinationMode } = parseOrchestrateArgs(args);
+      let selectedGoalArg = goalArg;
       if (coordinationMode) {
         oc.state.coordinationMode = coordinationMode;
       }
       oc.orchestratorActive = true;
       oc.persistState();
 
-      // ── Fresh start: choose profile, research, or saved plan ──
-      if (!goalArg) {
+      // ── Fresh start: choose profile, custom goal, research, or saved plan ──
+      if (!selectedGoalArg) {
         const freshSessionDir = ctx.sessionManager.getSessionDir();
         const freshPlans = findSavedPlans(freshSessionDir, ctx.cwd);
         const freshChoices = [
           "🔍 Profile repo — scan, discover ideas, then plan (default)",
+          "✏️  Enter your own goal — scan repo, then plan that goal",
           "🔬 Research external repo — study a GitHub project and adapt ideas",
           ...(freshPlans.length > 0 ? [`📄 Load saved plan — pick from ${freshPlans.length} previously generated plan(s)`] : []),
         ];
@@ -624,19 +628,51 @@ export function registerCommands(oc: OrchestratorContext) {
           freshChoices
         );
 
+        if (freshChoice?.startsWith("✏️")) {
+          const customGoal = await ctx.ui.input(
+            "Enter your goal:",
+            "e.g., Add API rate limiting with Redis"
+          );
+          if (!customGoal?.trim()) {
+            ctx.ui.notify("AgentFlywheel cancelled — no goal provided.", "info");
+            oc.orchestratorActive = false;
+            oc.setPhase("idle", ctx);
+            oc.persistState();
+            return;
+          }
+          selectedGoalArg = customGoal.trim();
+          oc.state.selectedGoal = selectedGoalArg;
+          oc.persistState();
+        }
+
         if (freshChoice?.startsWith("🔬")) {
           const researchUrl = await ctx.ui.input(
             "GitHub repo URL to research:",
             "https://github.com/org/repo"
           );
-          if (!researchUrl?.trim()) {
+          const url = researchUrl?.trim();
+          if (!url) {
             ctx.ui.notify("Research cancelled — no repo URL provided.", "info");
             oc.orchestratorActive = false;
             oc.setPhase("idle", ctx);
             oc.persistState();
             return;
           }
-          pi.sendUserMessage(`/agent-flywheel-research ${researchUrl.trim()}`, { deliverAs: "followUp" });
+          const { extractProjectName } = await import("./research-pipeline.js");
+          const externalName = extractProjectName(url);
+          oc.orchestratorActive = true;
+          oc.setPhase("researching", ctx);
+          oc.state.researchState = {
+            url,
+            externalName,
+            artifactName: `research/${externalName}-proposal.md`,
+            phasesCompleted: [],
+          };
+          oc.persistState();
+          pi.sendUserMessage(
+            `Start AgentFlywheel external-repo research for ${url}. Call \`flywheel_research\` with this exact URL now. Do not call \`flywheel_profile\`, standard discovery, or Dueling Idea Wizards for the current checkout; every future gate in this run should stay focused on the external repo until the research proposal is handed off to bead approval.`,
+            { deliverAs: "followUp" }
+          );
           return;
         }
 
@@ -678,9 +714,11 @@ export function registerCommands(oc: OrchestratorContext) {
         // freshChoice === profile or cancelled saved-plan load — fall through
       }
 
-        if (goalArg) {
+        if (selectedGoalArg) {
+          oc.state.selectedGoal = selectedGoalArg;
+          oc.persistState();
           pi.sendUserMessage(
-            `Start the AgentFlywheel workflow for this repo. I want to: ${goalArg}\n\nBegin by calling \`agent_flywheel_profile\` to scan the repo, then stay inside the AgentFlywheel workflow/menus while routing my stated goal through the normal planning or bead-creation path.`,
+            `Start the AgentFlywheel workflow for this repo. I want to: ${selectedGoalArg}\n\nBegin by calling \`agent_flywheel_profile\` to scan the repo, then stay inside the AgentFlywheel workflow/menus while routing my stated goal through the normal planning or bead-creation path.`,
             { deliverAs: "followUp" }
           );
         } else {
@@ -821,6 +859,41 @@ export function registerCommands(oc: OrchestratorContext) {
       if (summary.errors.length > 0) parts.push(`⚠️ ${summary.errors.length} error${summary.errors.length !== 1 ? "s" : ""}: ${summary.errors.join(", ")}`);
       ctx.ui.notify(parts.join("\n"), summary.errors.length > 0 ? "warning" : "info");
     },
+  });
+
+  // ─── Command: /flywheel-release-checklist ───────────────────
+  const releaseChecklistHandler = async (_args: string, ctx: any) => {
+    const { buildReleaseChecklist, formatReleaseChecklist } = await import("./release-checklist.js");
+    const statusResult = await resilientExec(pi, "git", ["status", "--short"], {
+      cwd: ctx.cwd,
+      timeout: 5000,
+      maxRetries: 0,
+      logWarnings: false,
+    });
+    const statusLines = statusResult.ok
+      ? statusResult.value.stdout.split("\n").filter((line) => line.trim().length > 0)
+      : [];
+    const checklist = buildReleaseChecklist({ cwd: ctx.cwd, statusLines, dirtyScopeKnown: statusResult.ok });
+    const warning = statusResult.ok
+      ? ""
+      : `\n\n⚠️ Could not inspect git status: ${statusResult.error.stderr || statusResult.error.command}. The checklist did not assume the checkout is clean.`;
+    const hasWarnings = !statusResult.ok || !checklist.version.versionsMatch || checklist.dirtyFiles.some((group) => group.severity === "warning");
+    ctx.ui.notify(`${formatReleaseChecklist(checklist)}${warning}`, hasWarnings ? "warning" : "info");
+  };
+
+  pi.registerCommand("flywheel-release-checklist", {
+    description: "Read-only release/version checklist: package versions, dirty scope, and verification commands",
+    handler: releaseChecklistHandler,
+  });
+
+  pi.registerCommand("agent-flywheel-release-checklist", {
+    description: "Legacy alias of /flywheel-release-checklist",
+    handler: releaseChecklistHandler,
+  });
+
+  pi.registerCommand("orchestrate-release-checklist", {
+    description: "Legacy alias of /flywheel-release-checklist",
+    handler: releaseChecklistHandler,
   });
 
   // ─── Command: /orchestrate-status ────────────────────────────
@@ -1444,7 +1517,7 @@ export function registerCommands(oc: OrchestratorContext) {
       const count = Math.max(1, Math.min(20, parseInt(countInput || `${composition.total}`, 10)));
 
       const configs = generateAgentConfigs(count, ctx.cwd, composition);
-      const instructions = formatLaunchInstructions(configs);
+      const instructions = formatLaunchInstructions(configs, composition);
 
       // Start SwarmTender for monitoring
       const { SwarmTender } = await import("./tender.js");
@@ -1473,7 +1546,7 @@ export function registerCommands(oc: OrchestratorContext) {
 
       pi.sendUserMessage(
         `${instructions}\n\n` +
-        `**NEXT: Spawn these agents using the \`subagent\` tool with the configs above.**\n\n` +
+        `**NEXT: Run the NTM launch command above. Do not implement inline in the current chat.**\n\n` +
         `SwarmTender is monitoring. Use \`/orchestrate-swarm-status\` to check health.`,
         { deliverAs: "followUp" }
       );

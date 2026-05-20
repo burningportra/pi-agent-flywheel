@@ -112,7 +112,7 @@ describe("swarm forecast report artifacts", () => {
     expect(reviewSource).toContain("buildSwarmForecastInput");
     expect(reviewSource).toContain("writeSwarmForecastReport");
     expect(reviewSource).toContain("formatSwarmForecastLaunchAdvisory");
-    expect(reviewSource.indexOf("formatSwarmForecastLaunchAdvisory")).toBeLessThan(reviewSource.indexOf("const parallelJson"));
+    expect(reviewSource.indexOf("formatSwarmForecastLaunchAdvisory")).toBeLessThan(reviewSource.indexOf("Launch the NTM implementation swarm now"));
     expect(reviewSource).toContain("Failing open: launch instructions are still shown.");
     expect(reviewSource).not.toContain("forceReleaseFileReservation(");
     expect(reviewSource).not.toContain("sendMessage(exec");

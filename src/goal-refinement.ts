@@ -50,6 +50,8 @@ export interface GoalRefinementOutcome {
   enrichedGoal: string;
   answers: RefinementAnswer[];
   skipped: boolean;
+  decisionRecord?: string;
+  decisionRecordArtifact?: string;
 }
 
 // ─── refineGoal ─────────────────────────────────────────────

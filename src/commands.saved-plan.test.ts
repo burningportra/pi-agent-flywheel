@@ -24,4 +24,18 @@ describe("saved plan workflow continuity", () => {
 
     expect(source).toMatch(/Opening ceremony hook:[\s\S]*await runOrchestrateStartupFlow\(\);/);
   });
+
+  it("registers a read-only release checklist command", () => {
+    expect(source).toContain('pi.registerCommand("flywheel-release-checklist"');
+    expect(source).toContain('description: "Legacy alias of /flywheel-release-checklist"');
+    expect(source).toContain('dirtyScopeKnown: statusResult.ok');
+    expect(source).toContain('const hasWarnings = !statusResult.ok ||');
+    expect(source).toContain('resilientExec(pi, "git", ["status", "--short"]');
+    expect(source).toContain("formatReleaseChecklist(checklist)");
+    expect(source).not.toContain("npm version");
+    expect(source).not.toContain("npm publish");
+    expect(source).not.toContain("git tag");
+    expect(source).not.toContain("git reset --hard");
+    expect(source).not.toContain("git clean -fd");
+  });
 });

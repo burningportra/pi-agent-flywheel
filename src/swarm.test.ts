@@ -4,6 +4,7 @@ import {
   generateAgentConfigs,
   formatSwarmStatus,
   formatLaunchInstructions,
+  formatNtmRobotManagementLoopInstructions,
 } from "./swarm.js";
 import type { Bead } from "./types.js";
 import type { AgentStatus } from "./tender.js";
@@ -47,13 +48,14 @@ describe("recommendComposition", () => {
     expect(comp.total).toBe(3);
   });
 
-  it("includes diverse models from centralized constants", () => {
+  it("includes diverse pane kinds (agent over gmi)", () => {
     const comp = recommendComposition(100);
     const models = comp.models.map((m) => m.model);
-    // Should use the centralized SWARM_MODELS constants
     expect(models).toContain("anthropic/claude-opus-4-6");
     expect(models).toContain("openai-codex/gpt-5.4");
-    expect(models).toContain("anthropic/claude-haiku-4-5");
+    expect(models).toContain("cursor-agent");
+    expect(comp.paneSpecs.some((s) => s.kind === "agent")).toBe(true);
+    expect(comp.paneSpecs.some((s) => s.kind === "gmi")).toBe(false);
   });
 
   it("includes rationale with bead count", () => {
@@ -200,7 +202,7 @@ describe("formatLaunchInstructions", () => {
 
   it("includes model information", () => {
     const instructions = formatLaunchInstructions(configs);
-    expect(instructions).toContain("Model:");
+    expect(instructions).toContain("Pane/model:");
   });
 
   it("includes delay information", () => {
@@ -209,18 +211,29 @@ describe("formatLaunchInstructions", () => {
     expect(instructions).toContain("0s");
   });
 
-  it("includes JSON configs for subagent tool", () => {
-    const instructions = formatLaunchInstructions(configs);
-    expect(instructions).toContain('"name"');
-    expect(instructions).toContain('"task"');
-    expect(instructions).toContain('"cwd"');
+  it("includes NTM launch commands instead of subagent configs", () => {
+    const composition = recommendComposition(50);
+    const instructions = formatLaunchInstructions(configs, composition);
+    expect(instructions).toContain("ntm spawn");
+    expect(instructions).toContain("--cc=");
+    expect(instructions).toContain("--cod=");
+    expect(instructions).toContain("--agent=");
+    expect(instructions).not.toContain("--gmi=");
+    expect(instructions).toContain("--stagger-mode=smart");
+    expect(instructions).toContain("Do **not** implement inline");
+    expect(instructions).toContain("Full NTM robot management loop");
+    expect(instructions).toContain("ntm --robot-attention");
+    expect(instructions).toContain("ntm --robot-tail");
+    expect(instructions).toContain("ntm --robot-diagnose");
+    expect(instructions).not.toContain("Spawn each agent using the `subagent` tool");
   });
 
   it("includes important notes", () => {
     const instructions = formatLaunchInstructions(configs);
-    expect(instructions).toContain("thundering herd");
-    expect(instructions).toContain("bv --robot-next");
+    expect(instructions).toContain("visible panes");
+    expect(instructions).toContain("bv --robot-triage");
     expect(instructions).toContain("Agent Mail");
+    expect(instructions).toContain("avoid launching hidden `subagent` workers");
     expect(instructions).toContain("/orchestrate-swarm-status");
     expect(instructions).toContain("/orchestrate-swarm-stop");
   });
@@ -228,5 +241,19 @@ describe("formatLaunchInstructions", () => {
   it("includes stagger delay value", () => {
     const instructions = formatLaunchInstructions(configs);
     expect(instructions).toContain(`${SWARM_STAGGER_DELAY_MS / 1000}s`);
+  });
+
+  it("formats the full NTM robot management loop", () => {
+    const loop = formatNtmRobotManagementLoopInstructions({ label: "implementation swarm", agentCount: 3 });
+    expect(loop).toContain("Full NTM robot management loop");
+    expect(loop).toContain("session=\"$(basename \"$PWD\")--implementation-swarm\"");
+    expect(loop).toContain("ntm --robot-attention --attention-session=\"$session\"");
+    expect(loop).toContain("ntm --robot-tail=\"$session\" --lines=50");
+    expect(loop).toContain("ntm mail inbox \"$session\" --json");
+    expect(loop).toContain("ntm --robot-is-working");
+    expect(loop).toContain("ntm --robot-health-oauth");
+    expect(loop).toContain("ntm --robot-diagnose=\"$session\" --diagnose-fix");
+    expect(loop).toContain("ntm --robot-interrupt=\"$session\" --panes=N");
+    expect(loop).toContain("Stop only when completed beads have commits + verification evidence");
   });
 });

@@ -165,6 +165,14 @@ describe("renderGoalLine", () => {
     const result = renderGoalLine("", 80, mockTheme);
     expect(result).toBe("");
   });
+
+  it("extracts a single-line preview from refined markdown goals", () => {
+    const refinedGoal = "## Goal\nLaunch fresh-eyes review agents\n\n## Implementation Notes\n- after 5 commits";
+    const result = renderGoalLine(refinedGoal, 80, mockTheme);
+    expect(result).toContain("Launch fresh-eyes review agents");
+    expect(result).not.toContain("## Goal");
+    expect(result).not.toContain("\n");
+  });
 });
 
 describe("renderBeadTable", () => {
@@ -282,6 +290,15 @@ describe("unicode safety", () => {
   it("renders unicode in goals without throwing", () => {
     const result = renderGoalLine("日本語のゴール 🎯 émojis", 80, mockTheme);
     expect(result).toContain("日本語");
+  });
+
+  it("never emits embedded newlines in dashboard rows", () => {
+    const snap = makeSnapshot({
+      goal: "## Goal\nFix the dashboard\n\n## Constraints\nNo raw markdown in widgets",
+    });
+    const lines = renderDashboardLines(snap, mockTheme, 100);
+    expect(lines.every((line) => !line.includes("\n"))).toBe(true);
+    expect(lines.join("\n")).toContain("Fix the dashboard");
   });
 
   it("renders unicode bead titles without throwing", () => {

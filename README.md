@@ -48,6 +48,7 @@ Then open any repository in `pi` and type:
 | **Bead-based execution** | Converts plans into `br` tasks with dependencies and acceptance criteria | `add-users-endpoint` depends on `extract-user-service` |
 | **Multi-model planning** | Lets multiple models propose plans, then synthesizes the strongest path | Gemini + GPT + Claude-style planning lanes when available |
 | **Dueling Idea Wizards** | Launches interactive wizard sub-agents, then scores competing improvement ideas on a 0–1000 scale with rebuttals and blind-spot probes | Pick the most leveraged improvement before writing code |
+| **Custom-goal brainstorming** | For user-entered goals, asks clarifying questions, compares approaches, and saves a deterministic decision record under `brainstorming/` | Adapt a Superpowers-style brainstorming process without changing generated-idea discovery |
 | **Review gates** | Auto-decides review-agent passes, then runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance flows | Closed beads are treated as claims that require evidence |
 | **Crash recovery** | Checkpoints state after phase changes so interrupted runs can resume | Restart `/agent-flywheel` and resume from the latest checkpoint |
 | **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, MCP Agent Mail, beads, `ntm`) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
@@ -85,10 +86,13 @@ pi
 # 5. Check progress during a run
 /agent-flywheel-status
 
-# 6. If something gets stuck, inspect prerequisites and runtime state
+# 6. Before a release handoff, inspect versions, dirty scope, and recommended checks
+/flywheel-release-checklist
+
+# 7. If something gets stuck, inspect prerequisites and runtime state
 /agent-flywheel-doctor
 
-# 7. Stop active orchestration if you need to take over manually
+# 8. Stop active orchestration if you need to take over manually
 /agent-flywheel-stop
 ```
 
@@ -101,6 +105,7 @@ You: /agent-flywheel
 → Scan: ccc first when available, built-in profiler otherwise
 → Discover: 3–7 ranked improvement ideas, optionally via interactive Dueling Idea Wizard sub-agents
 → Select: pick an idea or type your own goal
+→ Brainstorm: custom goals are clarified, approach-selected, and saved as a decision record; generated ideas skip this step
 → Plan: create beads with dependencies and acceptance criteria
 → Approve: refine the bead plan before any implementation starts
 → Execute: implement ready beads in dependency order
@@ -170,6 +175,45 @@ This is not acceptable because it is too generic for a contract that named exact
 ```text
 All tests passed. Looks good.
 ```
+
+### Structured bead mutation approval
+
+AgentFlywheel planning now treats bead creation as a staged mutation plan instead of a planner-authored shell script. Planners return structured JSON with bead `localId`s, descriptions, verification contracts, file lists, and dependency edges. The approval flow validates that data before writing `.beads/`, then applies the transaction through one controlled mutation path.
+
+Validation catches the common failure modes before implementation starts:
+
+- dependency cycles or duplicate/self dependency edges
+- dependencies that point at missing bead references
+- unresolved template placeholders such as `{{featureName}}`
+- final bead text that still says `Use template:` or `see template`
+- missing `### Verification:` or `### Files:` sections
+
+If validation fails, fix the staged plan rather than manually patching `.beads/`: expand template text fully, add the missing verification/files sections, correct the local IDs in dependency edges, and split or reorder beads to remove cycles.
+
+### Implementation-time fresh-eyes review
+
+During implementation, AgentFlywheel can run a separate fresh-eyes reviewer instead of waiting until the end of the whole run. The monitor records the git baseline when implementation starts, checks progress on a 7-minute cadence, and launches a full review only after 5 new commits since the last baseline or previous fresh-eyes review. After a launch, the baseline advances to the reviewed head so the same commit range is not reviewed twice.
+
+The reviewer coordinates through MCP Agent Mail on the current bead thread when the bead id is safe to use as a thread id. Its prompt includes the bead context, baseline/head refs, commit count, full-review scope, severity guidance, and instructions to report actionable findings without duplicating the implementer's work. Actionable findings are appended to the current bead under `## Fresh-Eyes Review Findings` with an idempotency marker such as `<!-- fresh-eyes-review:<key> -->`; clean-pass notes or low-signal comments do not create noisy bead churn.
+
+Examples:
+
+```text
+Append: HIGH: src/tools/review.ts drops reviewer severity metadata.
+Evidence: appendFreshEyesReviewToBead receives the whole raw log, so later agents cannot tell what is actionable.
+Action: parse reviewer output before appending and include severity, evidence, files, and fix guidance.
+```
+
+```text
+Do not append as a finding: LGTM overall, no actionable findings.
+```
+
+Troubleshooting:
+
+- **Reviewer never launches:** confirm at least 5 new commits exist since the implementation baseline or previous fresh-eyes review, and that at least 7 minutes elapsed since the last monitor check.
+- **No findings appear:** a clean pass or low-signal response is summarized as no actionable findings rather than appending noise.
+- **Agent Mail or launch is unavailable:** the workflow records a degraded fresh-eyes status and keeps implementation moving.
+- **The bead is not updated:** inspect the append warning, current bead id, and `## Fresh-Eyes Review Findings` marker; duplicate markers intentionally suppress repeat appends for the same reviewer/head/thread key.
 
 ---
 
@@ -297,10 +341,11 @@ Then follow the prompts:
 1. Choose “profile this repo”.
 2. Review ranked improvement ideas.
 3. Pick one or type a custom goal.
-4. Choose standard or deep planning.
-5. Review and refine proposed beads.
-6. Approve implementation.
-7. Use status/doctor/stop commands as needed.
+4. If you type a custom goal, answer the brainstorming prompts and choose an approach.
+5. Choose standard or deep planning.
+6. Review and refine proposed beads.
+7. Approve implementation.
+8. Use status/doctor/stop commands as needed.
 
 ### Plan a specific goal directly
 
@@ -315,6 +360,14 @@ Then follow the prompts:
 ```
 
 This is useful when you want to adapt patterns from another codebase into the current project.
+
+### Custom-goal brainstorming
+
+When you type a custom goal, AgentFlywheel runs a bounded brainstorming pass before planning: it asks clarifying questions one at a time, proposes a few approaches, and formats a deterministic decision record under `brainstorming/<goal-slug>-decision.md`. This applies only to custom goals. Generated/scored ideas skip brainstorming so discovery remains fast, and the record is not stored under `plans/`, not written to CASS or MemPalace, and not treated as a replacement for plan generation.
+
+If the brainstorming model call, user interaction, or artifact write degrades, AgentFlywheel keeps moving: malformed output falls back where possible, skip/cancel uses the original goal, and artifact write failures return the enriched goal with a warning.
+
+See [Custom-goal brainstorming](docs/brainstorming.md) for the exact scope and degraded paths.
 
 ---
 
@@ -363,6 +416,16 @@ Run a read-only diagnostic for runtime prerequisites and common failure points.
 ```
 
 Checks include git, Node, `br`/`bv`, `ntm`, CASS `cm`, agent-mail, checkpoints, and orphaned worktrees.
+
+### `/agent-flywheel-release-checklist`
+
+Prepare a read-only release/version handoff checklist.
+
+```text
+/agent-flywheel-release-checklist
+```
+
+Use this before tagging, publishing, or handing a release to another agent. It checks `package.json`/`package-lock.json` version consistency, summarizes dirty-file scope, and recommends copy/paste-ready build, test, and UBS commands. It never commits, tags, publishes, bumps versions, resets, cleans, or mutates files.
 
 ### `/agent-flywheel-stop`
 
@@ -762,6 +825,8 @@ The core **Agentic Coding Flywheel** concept was invented by [Dicklesworthstone]
 - [Planning & Review](docs/planning-and-review.md) — planning, approval, and review behavior
 - [Coordination & Swarm](docs/coordination-and-swarm.md) — multi-agent coordination notes
 - [Bead System](docs/bead-system.md) — bead conventions and validation
+- [Release Checklist](docs/release-checklist.md) — read-only release/version handoff workflow
+- [Custom-goal Brainstorming](docs/brainstorming.md) — Superpowers-style custom-goal clarification and decision records
 
 ---
 

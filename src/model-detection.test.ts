@@ -53,7 +53,7 @@ describe("model-detection", () => {
       // Google detection requires google-antigravity or google provider
     });
 
-    it("selects OpenCode Gemini for ergonomics when Google not available", () => {
+    it("does not route OpenCode Gemini directly for ergonomics", () => {
       const ctx = mockContext([
         { provider: "anthropic", id: "claude-opus-4-6" },
         { provider: "opencode", id: "gemini-3.1-pro" },
@@ -61,8 +61,8 @@ describe("model-detection", () => {
 
       const detected = detectAvailableModels(ctx);
 
-      // Should use OpenCode's Gemini for ergonomics
-      expect(detected.ergonomicsModel).toBe("opencode/gemini-3.1-pro");
+      expect(detected.ergonomicsModel).not.toContain("gemini");
+      expect(detected.refinementModels).not.toContain("opencode/gemini-3.1-pro");
     });
 
     it("detects multiple providers", () => {
@@ -92,8 +92,22 @@ describe("model-detection", () => {
       expect(detected.correctnessModel).toBe("openai-codex/gpt-5.4");
       // Robustness prefers Anthropic
       expect(detected.robustnessModel).toBe("anthropic/claude-opus-4-6");
-      // Ergonomics prefers Google
-      expect(detected.ergonomicsModel).toBe("google-antigravity/gemini-3.1-pro-high");
+      // Ergonomics does not use direct Google/Antigravity providers.
+      expect(detected.ergonomicsModel).toBe("anthropic/claude-opus-4-6");
+    });
+
+    it("prioritizes OpenRouter for Gemini ergonomics when available", () => {
+      const ctx = mockContext([
+        { provider: "anthropic", id: "claude-opus-4-6" },
+        { provider: "openai-codex", id: "gpt-5.4" },
+        { provider: "google-antigravity", id: "gemini-3.1-pro-high" },
+        { provider: "openrouter", id: "google/gemini-3.1-pro-preview" },
+      ]);
+
+      const detected = detectAvailableModels(ctx);
+
+      expect(detected.ergonomicsModel).toBe("openrouter/google/gemini-3.1-pro-preview");
+      expect(detected.refinementModels).toContain("openrouter/google/gemini-3.1-pro-preview");
     });
 
     it("falls back when preferred provider is missing", () => {
@@ -121,7 +135,8 @@ describe("model-detection", () => {
       expect(detected.refinementModels.length).toBeGreaterThanOrEqual(3);
       expect(detected.refinementModels).toContain("anthropic/claude-opus-4-6");
       expect(detected.refinementModels).toContain("openai-codex/gpt-5.4");
-      expect(detected.refinementModels).toContain("google-antigravity/gemini-3.1-pro-high");
+      expect(detected.refinementModels).toContain("openrouter/google/gemini-3.1-pro-preview");
+      expect(detected.refinementModels).not.toContain("google-antigravity/gemini-3.1-pro-high");
     });
 
     it("handles empty model registry gracefully", () => {
@@ -159,7 +174,7 @@ describe("model-detection", () => {
 
       expect(models.correctness).toBe("openai-codex/gpt-5.4");
       expect(models.robustness).toBe("anthropic/claude-opus-4-6");
-      expect(models.ergonomics).toBe("google-antigravity/gemini-3.1-pro-high");
+      expect(models.ergonomics).toBe("anthropic/claude-opus-4-6");
     });
 
     it("returns fallback models on error", () => {
@@ -167,7 +182,7 @@ describe("model-detection", () => {
 
       const models = getDeepPlanModels(ctx);
 
-      // Should return hardcoded fallbacks (Anthropic is most reliable)
+      // Missing registries are handled by detectAvailableModels' safe defaults.
       expect(models.correctness).toBe("anthropic/claude-opus-4-6");
       expect(models.robustness).toBe("anthropic/claude-opus-4-6");
     });

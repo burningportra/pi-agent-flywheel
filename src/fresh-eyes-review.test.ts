@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  FRESH_EYES_REVIEW_HEADING,
   FRESH_EYES_REVIEW_LAUNCH_AFTER_COMMITS,
   FRESH_EYES_REVIEW_POLL_INTERVAL_MS,
   appendFreshEyesReviewToBead,
   buildFreshEyesAppendKey,
   buildFreshEyesReviewPrompt,
   findExistingFreshEyesEntry,
+  formatFreshEyesFindingForAppend,
+  parseFreshEyesReviewFindings,
   renderFreshEyesReviewBlock,
   createFreshEyesReviewState,
   decideFreshEyesReviewLaunch,
@@ -15,6 +18,7 @@ import {
   launchFreshEyesReview,
   runFreshEyesMonitorTick,
   shouldPollFreshEyesReview,
+  summarizeFreshEyesReviewForAppend,
 } from "./fresh-eyes-review.js";
 
 const baselineState = createFreshEyesReviewState({
@@ -119,7 +123,7 @@ describe("fresh-eyes monitor integration helpers", () => {
     expect(result.nextState.lastCheckedAt).toBe("2026-05-17T17:07:00.000Z");
   });
 
-  it("launches once when the first eligible poll observes more than five commits", async () => {
+  it("rolls the baseline forward after a launch so later polls require five new commits", async () => {
     const monitor = initializeFreshEyesMonitorState({ baselineRef: "abc1234", baselineCommitCount: 10, currentBeadId: "pi-1h3m" });
     const first = await runFreshEyesMonitorTick({
       monitor,
@@ -128,19 +132,11 @@ describe("fresh-eyes monitor integration helpers", () => {
       currentBeadId: "pi-1h3m",
       nowIso: "2026-05-17T17:07:00.000Z",
       launch: async (options) => ({
-        launched: true,
-        status: "launched",
-        reason: "fake launched",
-        commitsSinceBaseline: options.commitsSinceBaseline,
+        ...decideFreshEyesReviewLaunch(options),
         threadId: options.state.currentBeadId,
         reviewerAgentName: "VioletLantern",
-        launchedAt: options.nowIso,
-        launchedForHead: options.headRef,
         nextState: {
-          ...options.state,
-          launched: true,
-          launchedAt: options.nowIso,
-          launchedForHead: options.headRef,
+          ...decideFreshEyesReviewLaunch(options).nextState,
           threadId: options.state.currentBeadId,
           reviewerAgentName: "VioletLantern",
         },
@@ -149,19 +145,36 @@ describe("fresh-eyes monitor integration helpers", () => {
     const second = await runFreshEyesMonitorTick({
       monitor: first.nextState,
       currentHeadRef: "fedcba9",
-      currentCommitCount: 25,
+      currentCommitCount: 22,
       currentBeadId: "pi-1h3m",
       nowIso: "2026-05-17T17:14:00.000Z",
+      launch: async (options) => decideFreshEyesReviewLaunch(options),
+    });
+    const third = await runFreshEyesMonitorTick({
+      monitor: second.nextState,
+      currentHeadRef: "0123456",
+      currentCommitCount: 23,
+      currentBeadId: "pi-1h3m",
+      nowIso: "2026-05-17T17:21:00.000Z",
       launch: async (options) => decideFreshEyesReviewLaunch(options),
     });
 
     expect(first.status).toBe("launched");
     expect(first.commitsSinceBaseline).toBe(8);
-    expect(first.nextState.launched).toBe(true);
-    expect(first.nextState.reviewerAgentName).toBe("VioletLantern");
+    expect(first.nextState).toMatchObject({
+      baselineRef: "def5678",
+      baselineCommitCount: 18,
+      launched: true,
+      launchedForHead: "def5678",
+      reviewerAgentName: "VioletLantern",
+    });
     expect(second.status).toBe("waiting");
+    expect(second.commitsSinceBaseline).toBe(4);
     expect(second.launchResult?.launched).toBe(false);
-    expect(second.reason).toBe("fresh-eyes review already launched");
+    expect(second.reason).toContain("waiting for 5 commits");
+    expect(third.status).toBe("launched");
+    expect(third.commitsSinceBaseline).toBe(5);
+    expect(third.nextState).toMatchObject({ baselineRef: "0123456", baselineCommitCount: 23 });
   });
 
   it("stores degraded launch outcomes without marking launched", async () => {
@@ -226,6 +239,8 @@ describe("decideFreshEyesReviewLaunch", () => {
     expect(result.reason).toContain("threshold reached");
     expect(result.nextState).toEqual({
       ...baselineState,
+      baselineRef: "def5678",
+      baselineCommitCount: 15,
       launched: true,
       launchedAt: "2026-05-17T17:00:00.000Z",
       launchedForHead: "def5678",
@@ -243,9 +258,11 @@ describe("decideFreshEyesReviewLaunch", () => {
     expect(result.commitsSinceBaseline).toBe(8);
     expect(result.nextState.launched).toBe(true);
     expect(result.nextState.launchedForHead).toBe("fedcba9");
+    expect(result.nextState.baselineRef).toBe("fedcba9");
+    expect(result.nextState.baselineCommitCount).toBe(18);
   });
 
-  it("does not launch when already launched", () => {
+  it("does not launch the same head twice", () => {
     const launchedState = {
       ...baselineState,
       launched: true,
@@ -256,12 +273,38 @@ describe("decideFreshEyesReviewLaunch", () => {
     const result = decideFreshEyesReviewLaunch({
       state: launchedState,
       commitsSinceBaseline: 20,
-      headRef: "fedcba9",
+      headRef: "def5678",
     });
 
     expect(result.launched).toBe(false);
-    expect(result.reason).toBe("fresh-eyes review already launched");
+    expect(result.reason).toBe("fresh-eyes review already launched for this head");
     expect(result.nextState).toBe(launchedState);
+  });
+
+  it("launches again after a prior review when five newer commits are available", () => {
+    const launchedState = {
+      ...baselineState,
+      baselineRef: "def5678",
+      baselineCommitCount: 15,
+      launched: true,
+      launchedAt: "2026-05-17T17:00:00.000Z",
+      launchedForHead: "def5678",
+    };
+
+    const result = decideFreshEyesReviewLaunch({
+      state: launchedState,
+      commitsSinceBaseline: 5,
+      headRef: "fedcba9",
+      nowIso: "2026-05-17T17:07:00.000Z",
+    });
+
+    expect(result.launched).toBe(true);
+    expect(result.nextState).toMatchObject({
+      baselineRef: "fedcba9",
+      baselineCommitCount: 20,
+      launchedAt: "2026-05-17T17:07:00.000Z",
+      launchedForHead: "fedcba9",
+    });
   });
 
   it("does not launch when disabled", () => {
@@ -329,6 +372,8 @@ describe("launchFreshEyesReview", () => {
       launchedForHead: "def5678",
     });
     expect(result.nextState).toMatchObject({
+      baselineRef: "def5678",
+      baselineCommitCount: 15,
       launched: true,
       threadId: "pi-1h3m",
       reviewerAgentName: "VioletLantern",
@@ -451,6 +496,63 @@ describe("launchFreshEyesReview", () => {
   });
 });
 
+describe("fresh-eyes review finding parsing", () => {
+  it("extracts actionable severity, file, evidence, and action details", () => {
+    const parsed = parseFreshEyesReviewFindings(`HIGH: Missing degraded-path assertion in src/fresh-eyes-review.ts
+Evidence: the launch boundary warning is not checked, so regressions can crash silently.
+Action: add a degraded launch assertion in src/fresh-eyes-review.test.ts`);
+
+    expect(parsed.cleanPass).toBe(false);
+    expect(parsed.ignoredCount).toBe(0);
+    expect(parsed.findings).toHaveLength(1);
+    expect(parsed.findings[0]).toMatchObject({
+      severity: "high",
+      title: "Missing degraded-path assertion in src/fresh-eyes-review.ts",
+      files: ["src/fresh-eyes-review.ts", "src/fresh-eyes-review.test.ts"],
+      action: "add a degraded launch assertion in src/fresh-eyes-review.test.ts",
+    });
+    expect(parsed.findings[0].evidence).toContain("launch boundary warning");
+    expect(formatFreshEyesFindingForAppend(parsed.findings[0])).toContain("[HIGH]");
+  });
+
+  it("filters clean-pass and low-signal reviewer chatter", () => {
+    expect(parseFreshEyesReviewFindings("Clean pass: no actionable findings after reviewing src/fresh-eyes-review.ts")).toMatchObject({
+      cleanPass: true,
+      findings: [],
+    });
+    expect(parseFreshEyesReviewFindings("Clean pass: no missing tests, looks good")).toMatchObject({
+      cleanPass: true,
+      findings: [],
+    });
+    expect(parseFreshEyesReviewFindings("nice")).toMatchObject({ cleanPass: true, findings: [] });
+  });
+
+  it("summarizes actionable findings for bead append without appending raw low-signal text", () => {
+    const summary = summarizeFreshEyesReviewForAppend(`LGTM overall.
+
+MEDIUM: src/tools/review.ts should pass parsed findings, not raw review logs.
+Action: call summarizeFreshEyesReviewForAppend before appendFreshEyesReviewToBead.`);
+
+    expect(summary.cleanPass).toBe(false);
+    expect(summary.findings).toEqual([
+      expect.stringContaining("[MEDIUM] src/tools/review.ts should pass parsed findings"),
+    ]);
+    expect(summary.findings?.[0]).not.toContain("LGTM overall");
+    expect(summary.suggestedActions).toEqual([
+      "call summarizeFreshEyesReviewForAppend before appendFreshEyesReviewToBead.",
+    ]);
+  });
+
+  it("does not duplicate the title as an inferred action", () => {
+    const parsed = parseFreshEyesReviewFindings("MEDIUM: src/tools/review.ts should pass parsed findings");
+
+    expect(parsed.findings[0]).toMatchObject({
+      title: "src/tools/review.ts should pass parsed findings",
+    });
+    expect(parsed.findings[0].action).toBeUndefined();
+  });
+});
+
 describe("fresh-eyes bead append helpers", () => {
   const launchedState = {
     ...baselineState,
@@ -531,7 +633,7 @@ describe("fresh-eyes bead append helpers", () => {
 
     expect(first.status).toBe("appended");
     expect(first.appended).toBe(true);
-    expect(description).toContain("## Fresh-Eyes Review Findings");
+    expect(description).toContain(FRESH_EYES_REVIEW_HEADING);
     expect(description.match(/fresh-eyes-review:pi-1h3m\|def5678\|violetlantern/g)).toHaveLength(1);
     expect(duplicate.status).toBe("skipped");
     expect(duplicate.appended).toBe(false);
@@ -539,7 +641,7 @@ describe("fresh-eyes bead append helpers", () => {
   });
 
   it("keeps distinct entries for different heads under an existing heading", async () => {
-    let description = "Body\n\n## Fresh-Eyes Review Findings\n\nLegacy note with malformed marker <!-- fresh-eyes-review -->";
+    let description = `Body\n\n${FRESH_EYES_REVIEW_HEADING}\n\nLegacy note with malformed marker <!-- fresh-eyes-review -->`;
     const beads = {
       getBeadById: async (beadId: string) => ({ id: beadId, description }),
       updateBeadDescription: async (_beadId: string, nextDescription: string) => {
@@ -561,7 +663,7 @@ describe("fresh-eyes bead append helpers", () => {
       beads,
     });
 
-    expect(description.match(/## Fresh-Eyes Review Findings/g)).toHaveLength(1);
+    expect(description.match(new RegExp(FRESH_EYES_REVIEW_HEADING, "g"))).toHaveLength(1);
     expect(description).toContain("First head finding");
     expect(description).toContain("Second head finding");
     expect(description).toContain("fedcba9");

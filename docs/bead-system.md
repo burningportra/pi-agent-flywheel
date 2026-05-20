@@ -41,9 +41,9 @@ open → in_progress → closed
               in_progress (review fail → rework)
 ```
 
-1. **Creation** — beads are created during the planning phase via `br create`. Each bead must include a rationale ("Why this bead exists"), acceptance criteria (`- [ ]` checkboxes), and a `### Files:` section listing affected paths.
+1. **Creation** — planners draft a structured staged mutation plan: bead creations with local references, descriptions, file lists, verification contracts, and dependency edges. The approval flow validates the staged data first, then applies it through the controlled bead mutation executor. Each bead must include a rationale ("Why this bead exists"), acceptance criteria (`- [ ]` checkboxes), a `### Verification:` section, and a `### Files:` section listing affected paths.
 
-2. **Validation** — `validateBeads()` runs automated checks before implementation starts (see [Validation Rules](#validation-rules)).
+2. **Validation** — staged mutation validation runs before any `.beads/` write, then `validateBeads()` runs automated checks before implementation starts (see [Validation Rules](#validation-rules)).
 
 3. **In Progress** — an agent claims a bead with `br update <id> --status in_progress`. The agent should also reserve its files via Agent Mail to prevent conflicts.
 
@@ -152,6 +152,15 @@ if (result.success) {
 ```
 
 ### What Gets Checked
+
+**Staged mutation validation (before writes):**
+- Duplicate local bead IDs or local IDs that collide with existing beads
+- Dependency edges pointing at unknown local/existing bead references
+- Duplicate edges, self-dependencies, and cycles across staged plus existing edges
+- Missing `### Verification:` or `### Files:` sections
+- Template leakage: unresolved placeholders, `Use template:`, or `see template`
+
+When this validation fails, repair the staged JSON plan first. Do not bypass it with ad hoc shell edits; fix the local IDs, expand template text, add missing sections, or split/reorder beads until the staged plan validates.
 
 **Dependency health:**
 - Cycle detection via `br dep cycles` (or `bv --robot-insights` when available)

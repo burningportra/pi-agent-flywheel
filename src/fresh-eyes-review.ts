@@ -109,6 +109,23 @@ export interface LaunchFreshEyesReviewOptions {
   reviewer?: FreshEyesReviewerLaunchBoundary;
 }
 
+export type FreshEyesFindingSeverity = "critical" | "high" | "medium" | "low";
+
+export interface FreshEyesReviewFinding {
+  severity: FreshEyesFindingSeverity;
+  title: string;
+  evidence?: string;
+  files: string[];
+  action?: string;
+  raw: string;
+}
+
+export interface FreshEyesReviewFindingSummary {
+  findings: FreshEyesReviewFinding[];
+  ignoredCount: number;
+  cleanPass: boolean;
+}
+
 export interface FreshEyesAppendInput {
   currentBeadId?: string | null;
   reviewerAgentName?: string | null;
@@ -319,8 +336,8 @@ export function decideFreshEyesReviewLaunch(
     return unchangedDecision(options.state, commitsSinceBaseline, "fresh-eyes review is disabled");
   }
 
-  if (options.state.launched) {
-    return unchangedDecision(options.state, commitsSinceBaseline, "fresh-eyes review already launched");
+  if (options.state.launched && (!options.headRef || options.state.launchedForHead === options.headRef)) {
+    return unchangedDecision(options.state, commitsSinceBaseline, "fresh-eyes review already launched for this head");
   }
 
   if (commitsSinceBaseline < config.launchAfterCommits) {
@@ -333,6 +350,8 @@ export function decideFreshEyesReviewLaunch(
 
   const nextState: FreshEyesReviewState = {
     ...options.state,
+    baselineRef: options.headRef ?? options.state.baselineRef,
+    baselineCommitCount: (options.state.baselineCommitCount ?? 0) + commitsSinceBaseline,
     launched: true,
     ...(options.nowIso ? { launchedAt: options.nowIso } : {}),
     ...(options.headRef ? { launchedForHead: options.headRef } : {}),
@@ -412,7 +431,7 @@ export async function launchFreshEyesReview(
 
   const reviewerAgentName = launched.agentName ?? prepared.agentName ?? messaged.agentName;
   const nextState: FreshEyesReviewState = {
-    ...options.state,
+    ...decision.nextState,
     launched: true,
     launchedAt: options.nowIso,
     launchedForHead: options.headRef,
@@ -431,6 +450,45 @@ export async function launchFreshEyesReview(
     launchedAt: options.nowIso,
     launchedForHead: options.headRef,
     nextState,
+  };
+}
+
+export function parseFreshEyesReviewFindings(output: string | null | undefined): FreshEyesReviewFindingSummary {
+  const raw = output?.trim() ?? "";
+  if (!raw || (isCleanFreshEyesPass(raw) && !hasActionableFreshEyesSignal(raw))) {
+    return { findings: [], ignoredCount: raw ? 1 : 0, cleanPass: true };
+  }
+
+  const blocks = splitFreshEyesFindingBlocks(raw);
+  const findings: FreshEyesReviewFinding[] = [];
+  let ignoredCount = 0;
+
+  for (const block of blocks) {
+    const finding = parseFreshEyesFindingBlock(block);
+    if (finding) findings.push(finding);
+    else ignoredCount++;
+  }
+
+  return { findings, ignoredCount, cleanPass: findings.length === 0 };
+}
+
+export function formatFreshEyesFindingForAppend(finding: FreshEyesReviewFinding): string {
+  const parts = [`[${finding.severity.toUpperCase()}] ${finding.title}`];
+  if (finding.files.length > 0) parts.push(`Files: ${finding.files.join(", ")}`);
+  if (finding.evidence) parts.push(`Evidence: ${finding.evidence}`);
+  if (finding.action) parts.push(`Action: ${finding.action}`);
+  return parts.join(" — ");
+}
+
+export function summarizeFreshEyesReviewForAppend(output: string | null | undefined): Pick<FreshEyesAppendInput, "findings" | "suggestedActions" | "cleanPass"> {
+  const parsed = parseFreshEyesReviewFindings(output);
+  if (parsed.cleanPass) {
+    return { findings: [], suggestedActions: [], cleanPass: true };
+  }
+  return {
+    findings: parsed.findings.map(formatFreshEyesFindingForAppend),
+    suggestedActions: parsed.findings.flatMap((finding) => finding.action ? [finding.action] : []),
+    cleanPass: false,
   };
 }
 
@@ -552,6 +610,87 @@ export async function appendFreshEyesReviewToBead(
   };
 }
 
+function splitFreshEyesFindingBlocks(output: string): string[] {
+  const paragraphs = output
+    .split(/\n\s*\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  if (paragraphs.length > 1) return paragraphs;
+
+  return output
+    .split(/\n(?=\s*(?:[-*•]\s*)?(?:\[?(?:critical|high|medium|med|low)\]?\b|finding\b|issue\b|bug\b))/i)
+    .map((block) => block.trim())
+    .filter(Boolean);
+}
+
+function parseFreshEyesFindingBlock(block: string): FreshEyesReviewFinding | null {
+  if (isCleanFreshEyesPass(block) || isLowSignalFreshEyesComment(block)) return null;
+
+  const severity = extractFreshEyesSeverity(block);
+  const files = extractFreshEyesFileHints(block);
+  const lines = block.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const firstLine = lines[0] ?? block;
+  const action = extractFreshEyesAction(block, firstLine);
+  const actionable = severity !== null || files.length > 0 || !!action || hasActionableFreshEyesSignal(block);
+  if (!actionable) return null;
+
+  const title = cleanFreshEyesFindingTitle(firstLine) || "Actionable fresh-eyes finding";
+  const evidence = lines.slice(1).join(" ").replace(/\s+/g, " ").trim() || undefined;
+
+  return {
+    severity: severity ?? "medium",
+    title,
+    ...(evidence ? { evidence } : {}),
+    files,
+    ...(action ? { action } : {}),
+    raw: block,
+  };
+}
+
+function extractFreshEyesSeverity(text: string): FreshEyesFindingSeverity | null {
+  const match = text.match(/\b(critical|high|medium|med|low)\b/i);
+  if (!match) return null;
+  const value = match[1].toLowerCase();
+  return value === "med" ? "medium" : value as FreshEyesFindingSeverity;
+}
+
+function extractFreshEyesFileHints(text: string): string[] {
+  const matches = text.match(/\b(?:src|test|tests|docs|scripts|mcp-server|README|AGENTS)[A-Za-z0-9_./-]*\.(?:ts|tsx|js|jsx|mjs|cjs|md|json|jsonl|yml|yaml)\b|\b(?:README|AGENTS)\.md\b/g) ?? [];
+  return [...new Set(matches)];
+}
+
+function extractFreshEyesAction(text: string, titleLine?: string): string | undefined {
+  const explicit = text.match(/(?:^|\n)\s*(?:action|fix|recommendation|suggested action)\s*:\s*(.+)/i)?.[1]?.trim();
+  if (explicit) return explicit;
+  const title = titleLine ? cleanFreshEyesFindingTitle(titleLine) : undefined;
+  const line = text.split(/\n+/).find((candidate) => {
+    const trimmed = candidate.trim();
+    if (!/\b(?:should|must|needs? to|fix|add|update|remove|guard|test)\b/i.test(trimmed)) return false;
+    return !title || cleanFreshEyesFindingTitle(trimmed) !== title;
+  });
+  return line?.trim();
+}
+
+function cleanFreshEyesFindingTitle(line: string): string {
+  return line
+    .replace(/^\s*[-*•]\s*/, "")
+    .replace(/^\s*\[?(?:critical|high|medium|med|low)\]?\s*(?::|-)?\s*/i, "")
+    .replace(/^\s*(?:finding|issue|bug)\s*\d*\s*(?::|-)?\s*/i, "")
+    .trim();
+}
+
+function hasActionableFreshEyesSignal(text: string): boolean {
+  return /\b(?:critical|high|medium|med|low|bug|broken|fails?|regression|race|crash|incorrect|missing|unsafe|leak|duplicate|flaky|type error|should|must|needs?)\b/i.test(text);
+}
+
+function isCleanFreshEyesPass(text: string): boolean {
+  return /\b(?:clean pass|no actionable findings|no issues found|no findings|looks good|lgtm)\b/i.test(text);
+}
+
+function isLowSignalFreshEyesComment(text: string): boolean {
+  return !/[.!?]/.test(text) && text.length < 24 && /\b(?:ok|nice|thanks|done|great)\b/i.test(text);
+}
+
 export function buildFreshEyesReviewPrompt(options: FreshEyesReviewPromptOptions): string {
   const currentBeadId = normalizeOptionalString(options.currentBeadId);
   const currentBead = currentBeadId ?? "unknown current bead";
@@ -587,7 +726,7 @@ Coordination instructions:
 - Do not make code changes unless explicitly asked; this pass is for independent review feedback.`;
 }
 
-const FRESH_EYES_REVIEW_HEADING = "## Fresh-Eyes Review Findings";
+export const FRESH_EYES_REVIEW_HEADING = "## Fresh-Eyes Review Findings";
 
 function freshEyesMarker(idempotencyKey: string): string {
   return `<!-- fresh-eyes-review:${idempotencyKey.replace(/--/g, "-")} -->`;

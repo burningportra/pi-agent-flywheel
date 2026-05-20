@@ -18,6 +18,7 @@ const FAMILY_FILES: Record<keyof typeof TOOL_FAMILIES, string> = {
   doctor: "doctor.ts",
   verify_beads: "verify-beads.ts",
   audit_beads: "compliance-audit.ts",
+  research: "research.ts",
   capabilities: "capabilities.ts",
   robot_docs: "robot-docs.ts",
   triage: "triage.ts",
@@ -130,15 +131,19 @@ describe("R-009: tool contract — canonical names pinned", () => {
     try {
       emitSlashDeprecationWarning("agent-flywheel-doctor"); // legacy alias
       emitSlashDeprecationWarning("agent-flywheel-doctor"); // duplicate
+      emitSlashDeprecationWarning("agent-flywheel-release-checklist"); // release-checklist legacy alias
       emitSlashDeprecationWarning("flywheel-doctor"); // canonical, suppressed
+      emitSlashDeprecationWarning("flywheel-release-checklist"); // canonical, suppressed
       emitSlashDeprecationWarning("memory"); // not in map, suppressed
     } finally {
       console.warn = orig;
       if (prevSuppress !== undefined) process.env.FLYWHEEL_SUPPRESS_DEPRECATION = prevSuppress;
     }
-    expect(warns.length).toBe(1);
+    expect(warns.length).toBe(2);
     expect(warns[0]).toContain("agent-flywheel-doctor");
     expect(warns[0]).toContain("flywheel-doctor");
+    expect(warns[1]).toContain("agent-flywheel-release-checklist");
+    expect(warns[1]).toContain("flywheel-release-checklist");
   });
 
   it("R-011: codebaseAuditOptions is registered under all 3 audit aliases", () => {

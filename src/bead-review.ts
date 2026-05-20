@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Bead, VerificationContract } from "./types.js";
 import { join } from "path";
+import { enforceGoogleOpenRouterModel } from "./model-policy.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
 
@@ -37,8 +38,11 @@ function normalizeCommand(command: string): string {
 
 export function extractVerificationCommands(contract: VerificationContract): string[] {
   const commands: string[] = [];
-  for (const match of contract.body.matchAll(COMMAND_START)) {
-    const raw = match[0]
+  const matches = contract.body.match(COMMAND_START);
+  if (!matches) return commands;
+  
+  for (const match of matches) {
+    const raw = match
       .split(/\s+and\s+(?=(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b)/i)
       .flatMap((part) => part.split(/\s*,\s*(?=(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b)/i));
     for (const part of raw) {
@@ -188,8 +192,9 @@ Check for: parallel-ready beads that modify the same files, closure extraction f
  */
 function pickAlternativeModel(): string | undefined {
   // pi-r47 changes: Adjust model picking logic to ensure a fresh perspective based on verification needs
-  // Default to gemini — different provider perspective from Claude
-  return "gemini-2.5-pro";
+  // Default to Gemini through OpenRouter — different provider perspective from Claude
+  // while respecting AgentFlywheel's provider routing policy.
+  return enforceGoogleOpenRouterModel("gemini-2.5-pro");
 }
 
 /**

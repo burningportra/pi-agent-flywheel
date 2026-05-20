@@ -4,6 +4,8 @@ import {
   extractBeadFiles,
   countUncertaintySignals,
   formatSpaceViolations,
+  changedFilesSinceBaseline,
+  normalizeChangedFiles,
 } from "./space-detector.js";
 import type { Bead } from "./types.js";
 
@@ -19,6 +21,27 @@ function makeBead(overrides: Partial<Bead> = {}): Bead {
     ...overrides,
   };
 }
+
+// ─── Workspace Change Isolation ─────────────────────────────
+
+describe("workspace change isolation", () => {
+  it("filters files that were already dirty before implementation started", () => {
+    expect(changedFilesSinceBaseline(
+      ["README.md", "src/current.ts", "./docs/new.md"],
+      ["README.md", "AGENTS.md"]
+    )).toEqual(["src/current.ts", "docs/new.md"]);
+  });
+
+  it("ignores orchestrator metadata paths that review mutates itself", () => {
+    expect(normalizeChangedFiles([
+      ".beads/issues.jsonl",
+      ".pi-flywheel/state.json",
+      ".ntm/session.json",
+      "tmp/scratch.txt",
+      "src/real.ts",
+    ])).toEqual(["src/real.ts"]);
+  });
+});
 
 // ─── extractBeadFiles ───────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
-import { canonicalName, TOOL_FAMILIES, SLASH_CANONICAL } from "./shared.js";
+import { canonicalName } from "./shared.js";
 import { CANONICAL_PHASES, ERROR_CATEGORIES } from "./capabilities.js";
 
 /**
@@ -43,7 +43,7 @@ export function buildRobotDocs(): string {
     lines.push(`| \`${cat.code}\` | \`${cat.fix_command}\` |`);
   }
   lines.push("");
-  lines.push("## 4. Five canonical workflows");
+  lines.push("## 4. Six canonical workflows");
   lines.push("");
   lines.push("**4.1 Start a flywheel session.**");
   lines.push("```");
@@ -80,6 +80,14 @@ export function buildRobotDocs(): string {
   lines.push("flywheel_triage       # mega-command: quick_ref + recommendations + commands + health");
   lines.push("```");
   lines.push("");
+  lines.push("**4.6 Prepare a release/version handoff (read-only).**");
+  lines.push("```");
+  lines.push("/flywheel-release-checklist        # canonical: package versions, dirty scope, build/test/UBS next steps");
+  lines.push("/agent-flywheel-release-checklist  # legacy alias");
+  lines.push("/orchestrate-release-checklist     # legacy alias");
+  lines.push("```");
+  lines.push("Run this after implementation/review and before tagging, publishing, or handing a release to another agent. The checklist is advisory: it reads package.json, package-lock.json, and git status; reports package.json/package-lock consistency, dirty-file groups (or explicitly marks dirty scope unknown if git status cannot be read), and recommended build/test/UBS commands; and never commits, tags, publishes, bumps versions, resets, cleans, or mutates files. It also does not update versions or stash changes. See docs/release-checklist.md for the full workflow.");
+  lines.push("");
   lines.push("## 5. Self-discovery surfaces");
   lines.push("");
   lines.push("- `flywheel_capabilities` — machine-readable JSON contract (tools, schemas, error codes, phases).");
@@ -92,7 +100,15 @@ export function buildRobotDocs(): string {
   lines.push("- `FLYWHEEL_SUPPRESS_DEPRECATION=1` — suppress legacy-alias warnings (CI use).");
   lines.push("- `FLYWHEEL_CHECKPOINT_TTL_DAYS=N` — override stale-checkpoint threshold (default 7).");
   lines.push("");
-  lines.push("## 7. Deprecation policy");
+  lines.push("## 7. NTM implementation panes");
+  lines.push("");
+  lines.push("Implementation launches use visible NTM worker panes, not inline edits in the orchestrator chat.");
+  lines.push("- Anthropic → `--cc`");
+  lines.push("- OpenAI/Codex → `--cod`");
+  lines.push("- Google/Gemini ergonomics → `--agent` (Cursor CLI; preferred over `--gmi`)");
+  lines.push("- Default swarms: mixed `--cc`, `--cod`, and `--agent`");
+  lines.push("");
+  lines.push("## 8. Deprecation policy");
   lines.push("");
   lines.push("Legacy tool/command names emit a one-shot warning per legacy name per process. They will be removed in v2.0.0. Use `flywheel_capabilities.tools[].deprecated_aliases` to enumerate legacy names from the runtime contract.");
   return lines.join("\n");

@@ -8,7 +8,9 @@
  * 3. Uncertainty language — hedging in implementation summary
  */
 
-import type { Bead } from "./types.js";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Bead, WorkspaceChangeBaseline } from "./types.js";
+import { resilientExec } from "./cli-exec.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -24,6 +26,114 @@ export interface SpaceViolation {
   severity: SpaceViolationSeverity;
   evidence: string;
   suggestion: string;
+}
+
+export interface ReviewChangedFilesResult {
+  filesChanged: string[];
+  source: "baseline-delta" | "bead-commit" | "working-tree" | "skipped";
+  skippedReason?: string;
+}
+
+const SPACE_DETECTOR_IGNORED_PREFIXES = [
+  ".beads/",
+  ".pi-flywheel/",
+  ".pi-agent-flywheel/",
+  ".ntm/",
+  ".agents/",
+  "tmp/",
+] as const;
+
+function normalizeChangedPath(path: string): string {
+  return path.trim().replace(/^\.\//, "").replace(/^\/+/, "");
+}
+
+export function normalizeChangedFiles(files: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const file of files) {
+    const cleaned = normalizeChangedPath(file);
+    if (!cleaned) continue;
+    if (SPACE_DETECTOR_IGNORED_PREFIXES.some((prefix) => cleaned.startsWith(prefix))) continue;
+    if (seen.has(cleaned)) continue;
+    seen.add(cleaned);
+    normalized.push(cleaned);
+  }
+  return normalized;
+}
+
+export function changedFilesSinceBaseline(currentFiles: string[], baselineFiles: string[]): string[] {
+  const baseline = new Set(normalizeChangedFiles(baselineFiles));
+  return normalizeChangedFiles(currentFiles).filter((file) => !baseline.has(file));
+}
+
+async function gitLines(pi: ExtensionAPI, cwd: string, args: string[]): Promise<string[]> {
+  const result = await resilientExec(pi, "git", args, { cwd, timeout: 5000, maxRetries: 0 });
+  if (!result.ok) return [];
+  return result.value.stdout.trim().split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+async function gitText(pi: ExtensionAPI, cwd: string, args: string[]): Promise<string | undefined> {
+  const result = await resilientExec(pi, "git", args, { cwd, timeout: 5000, maxRetries: 0 });
+  return result.ok ? result.value.stdout.trim() : undefined;
+}
+
+async function workingTreeChangedFiles(pi: ExtensionAPI, cwd: string): Promise<string[]> {
+  const tracked = await gitLines(pi, cwd, ["diff", "--name-only", "HEAD"]);
+  const untracked = await gitLines(pi, cwd, ["ls-files", "--others", "--exclude-standard"]);
+  return normalizeChangedFiles([...tracked, ...untracked]);
+}
+
+export async function captureWorkspaceChangeBaseline(
+  pi: ExtensionAPI,
+  cwd: string
+): Promise<WorkspaceChangeBaseline> {
+  const head = await gitText(pi, cwd, ["rev-parse", "HEAD"]);
+  return {
+    head,
+    changedFiles: await workingTreeChangedFiles(pi, cwd),
+    capturedAt: new Date().toISOString(),
+  };
+}
+
+export async function getReviewChangedFiles(
+  pi: ExtensionAPI,
+  cwd: string,
+  beadId: string,
+  baseline?: WorkspaceChangeBaseline
+): Promise<ReviewChangedFilesResult> {
+  const currentHead = await gitText(pi, cwd, ["rev-parse", "HEAD"]);
+  const currentDirty = await workingTreeChangedFiles(pi, cwd);
+
+  if (baseline) {
+    const committed = baseline.head && currentHead && currentHead !== baseline.head
+      ? await gitLines(pi, cwd, ["diff", "--name-only", baseline.head, currentHead])
+      : [];
+    return {
+      filesChanged: normalizeChangedFiles([
+        ...committed,
+        ...changedFilesSinceBaseline(currentDirty, baseline.changedFiles),
+      ]),
+      source: "baseline-delta",
+    };
+  }
+
+  const lastMessage = await gitText(pi, cwd, ["log", "-1", "--pretty=%B"]);
+  if (lastMessage?.includes(beadId)) {
+    return {
+      filesChanged: normalizeChangedFiles(await gitLines(pi, cwd, ["diff", "--name-only", "HEAD~1", "HEAD"])),
+      source: "bead-commit",
+    };
+  }
+
+  if (currentDirty.length > 0) {
+    return {
+      filesChanged: [],
+      source: "skipped",
+      skippedReason: "workspace baseline unavailable and checkout has pre-existing uncommitted changes; skipping wrong-space detection to avoid false positives",
+    };
+  }
+
+  return { filesChanged: [], source: "working-tree" };
 }
 
 // ─── File Extraction ────────────────────────────────────────
