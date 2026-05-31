@@ -38,6 +38,14 @@ describe("fake seam detector", () => {
     }
   });
 
+  it("does not flag detector and orchestration instruction infrastructure", () => {
+    expect(detectFakeSeamsInText("src/fake-seam-detector.ts", "const term = 'fake';")).toEqual([]);
+    expect(detectFakeSeamsInText("src/tools/review.ts", "const fakeSeamFindings = scanFakeSeamsInFiles(cwd, files);")).toEqual([]);
+    expect(detectFakeSeamsInText("src/tools/review.ts", "Block completion and fix fake/test seams")).toEqual([]);
+    expect(detectFakeSeamsInText("src/prompts.ts", "- STUB: placeholder, fake, mock, scaffold, or non-production behavior.")).toEqual([]);
+    expect(detectFakeSeamsInText("src/gates.ts", "Do we have full unit test coverage without using mocks or fake stuff?")).toEqual([]);
+  });
+
   it("scans existing files and reports path, line, matched term, and reason", () => {
     const root = mkdtempSync(join(tmpdir(), "fake-seam-"));
     try {

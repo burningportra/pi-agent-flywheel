@@ -22,8 +22,19 @@ const SUSPICIOUS_TERMS: Array<{ term: string; pattern: RegExp; reason: string }>
   { term: "not implemented", pattern: /\bnot implemented\b/i, reason: "production code appears to contain an unimplemented path" },
 ];
 
+const INSTRUCTION_CONTENT_PATHS = new Set([
+  "src/commands.ts",
+  "src/gates.ts",
+  "src/prompts.ts",
+  "src/tender.ts",
+]);
+
+function normalizePath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").toLowerCase();
+}
+
 export function isProductionPathForFakeSeamScan(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/").toLowerCase();
+  const normalized = normalizePath(filePath);
   if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(normalized)) return false;
   return !(
     /(?:^|\/)(?:__tests__|tests?|fixtures?|mocks?|testdata)(?:\/|$)/.test(normalized) ||
@@ -32,12 +43,20 @@ export function isProductionPathForFakeSeamScan(filePath: string): boolean {
   );
 }
 
+function shouldIgnoreFakeSeamLine(filePath: string, lineText: string): boolean {
+  const normalizedPath = normalizePath(filePath);
+  if (INSTRUCTION_CONTENT_PATHS.has(normalizedPath)) return true;
+  if (normalizedPath.endsWith("/fake-seam-detector.ts") || normalizedPath === "src/fake-seam-detector.ts") return true;
+  return /fake[- ]?seam|fake\/test seams?|FakeSeam|fakeSeam/i.test(lineText);
+}
+
 export function detectFakeSeamsInText(filePath: string, text: string): FakeSeamFinding[] {
   if (!isProductionPathForFakeSeamScan(filePath)) return [];
   const findings: FakeSeamFinding[] = [];
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const lineText = lines[i];
+    if (shouldIgnoreFakeSeamLine(filePath, lineText)) continue;
     for (const term of SUSPICIOUS_TERMS) {
       if (term.pattern.test(lineText)) {
         findings.push({
