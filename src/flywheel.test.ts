@@ -8,6 +8,7 @@ import {
   landingChecklistInstructions,
   swarmMarchingOrders,
   beadQualityScoringPrompt,
+  beadRefinementPrompt,
   freshContextRefinementPrompt,
   researchInvestigatePrompt,
   researchDeepenPrompt,
@@ -194,6 +195,35 @@ describe("beadQualityScoringPrompt", () => {
   });
 });
 
+// ─── Bead Refinement ────────────────────────────────────────
+describe("beadRefinementPrompt", () => {
+  it("uses different primary mission headings for different rounds", () => {
+    const round0 = beadRefinementPrompt(0);
+    const round2 = beadRefinementPrompt(2);
+
+    expect(round0).toContain("### Primary Mission: Dependency Graph Integrity");
+    expect(round2).toContain("### Primary Mission: Test Bead Coverage");
+    expect(round0).not.toContain("### Primary Mission: Test Bead Coverage");
+    expect(round2).not.toContain("### Primary Mission: Dependency Graph Integrity");
+  });
+
+  it("rotates through at least five primary missions", () => {
+    const missionHeadings = new Set(
+      [0, 1, 2, 3, 4].map((round) => {
+        const match = beadRefinementPrompt(round).match(/^### Primary Mission: .+$/m);
+        return match?.[0];
+      })
+    );
+
+    expect(missionHeadings.size).toBe(5);
+    expect(beadRefinementPrompt(5)).toContain("### Primary Mission: Dependency Graph Integrity");
+  });
+
+  it("keeps the oversimplification guard", () => {
+    expect(beadRefinementPrompt(0)).toContain("DO NOT OVERSIMPLIFY. DO NOT LOSE FEATURES OR FUNCTIONALITY.");
+  });
+});
+
 // ─── Fresh Context Refinement ───────────────────────────────
 describe("freshContextRefinementPrompt", () => {
   it("includes round number and goal", () => {
@@ -205,6 +235,20 @@ describe("freshContextRefinementPrompt", () => {
   it("emphasizes no prior context", () => {
     const prompt = freshContextRefinementPrompt("/tmp", "goal", 0);
     expect(prompt).toContain("NO prior context");
+  });
+
+  it("includes the same round-specific primary mission as bead refinement", () => {
+    const round = 3;
+    const missionHeading = beadRefinementPrompt(round).match(/^### Primary Mission: .+$/m)?.[0];
+    const prompt = freshContextRefinementPrompt("/tmp", "goal", round);
+
+    expect(missionHeading).toBeDefined();
+    expect(prompt).toContain(missionHeading);
+  });
+
+  it("keeps the oversimplification guard", () => {
+    const prompt = freshContextRefinementPrompt("/tmp", "goal", 0);
+    expect(prompt).toContain("DO NOT OVERSIMPLIFY. DO NOT LOSE FEATURES OR FUNCTIONALITY.");
   });
 });
 

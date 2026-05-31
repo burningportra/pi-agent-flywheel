@@ -476,9 +476,41 @@ Use ultrathink.`;
 }
 
 // ─── Bead Refinement Prompt ──────────────────────────────────
+const BEAD_REFINEMENT_MISSIONS = [
+  {
+    heading: "Primary Mission: Dependency Graph Integrity",
+    details: "Audit dependency edges, cycles, orphaned beads, and whether `br dep cycles` / `br ready` would produce a workable execution graph.",
+  },
+  {
+    heading: "Primary Mission: Self-Containment",
+    details: "Ensure every bead can be implemented by a fresh agent without external context, hidden assumptions, or references back to the original conversation.",
+  },
+  {
+    heading: "Primary Mission: Test Bead Coverage",
+    details: "Verify every implementation bead has companion test coverage, either inside the bead's acceptance criteria or as a distinct test bead when that keeps scope cleaner.",
+  },
+  {
+    heading: "Primary Mission: Verification Contracts",
+    details: "Make every `### Verification:` section complete with concrete commands/checks, exact success expectations, and a manual proof fallback.",
+  },
+  {
+    heading: "Primary Mission: File Scope Accuracy and Size Check",
+    details: "Check that every `### Files:` list is complete and accurate, and split beads that are too large for one focused implementation pass.",
+  },
+] as const;
+
+function beadRefinementMission(roundNumber?: number): string {
+  const missionIndex = roundNumber !== undefined && roundNumber !== null
+    ? Math.max(0, Math.floor(roundNumber)) % BEAD_REFINEMENT_MISSIONS.length
+    : 0;
+  const mission = BEAD_REFINEMENT_MISSIONS[missionIndex];
+  return `### ${mission.heading}\n${mission.details}`;
+}
+
 export function beadRefinementPrompt(roundNumber?: number, priorChanges?: number[], blockingProgress?: string): string {
   const hasRoundNumber = roundNumber !== undefined && roundNumber !== null;
   const roundInfo = hasRoundNumber ? `This is polish round ${roundNumber + 1}.\n\n` : "";
+  const missionInfo = `${beadRefinementMission(roundNumber)}\n\nTreat this as the primary mission for this pass. The general checklist below is secondary.\n\n`;
   const changesInfo = priorChanges && priorChanges.length > 0
     ? `Prior rounds: ${priorChanges.map((n, i) => `Round ${i + 1}: ${n} change${n !== 1 ? "s" : ""}`).join(", ")}.\n\n`
     : "";
@@ -488,7 +520,7 @@ export function beadRefinementPrompt(roundNumber?: number, priorChanges?: number
 
   return `## Bead Refinement Pass
 
-${roundInfo}${changesInfo}${blockingInfo}Review each bead via \`br list\` and \`br show <id>\`.
+${missionInfo}${roundInfo}${changesInfo}${blockingInfo}Review each bead via \`br list\` and \`br show <id>\`.
 
 ### For each bead, check:
 1. Does this make sense? Is there a better approach?
@@ -508,7 +540,7 @@ ${roundInfo}${changesInfo}${blockingInfo}Review each bead via \`br list\` and \`
 - Validate: \`br dep cycles\` (must show no cycles)
 
 ### Rules
-- DO NOT OVERSIMPLIFY. DO NOT LOSE FEATURES.
+- DO NOT OVERSIMPLIFY. DO NOT LOSE FEATURES OR FUNCTIONALITY.
 - Include test beads that cover the new functionality.
 - Every bead must be self-contained and self-documenting.
 - If you find missing beads, create them with \`br create\`.
@@ -519,6 +551,7 @@ Use ultrathink.`;
 
 /** Fresh-context refinement prompt for sub-agent bead review. */
 export function freshContextRefinementPrompt(cwd: string, goal: string, roundNumber: number, simulationReport?: string, blockingProgress?: string): string {
+  const missionInfo = `${beadRefinementMission(roundNumber)}\n\nTreat this as the primary mission for this pass. The general checklist below is secondary.`;
   const simSection = simulationReport
     ? `\n\n### Simulation Issues\nThe plan simulation found structural problems that must be fixed:\n\n${simulationReport}\n`
     : "";
@@ -527,6 +560,8 @@ export function freshContextRefinementPrompt(cwd: string, goal: string, roundNum
     : "";
 
   return `## Fresh-Context Bead Refinement (Round ${roundNumber + 1})
+
+${missionInfo}
 
 You are reviewing beads for a project with NO prior context. This is deliberate - fresh eyes catch what anchored reviewers miss.
 
