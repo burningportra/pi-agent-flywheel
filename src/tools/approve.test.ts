@@ -488,11 +488,15 @@ describe("plan-to-bead audit integration", () => {
     expect(approveSource).toContain("oc.state.planDocument");
   });
 
-  it("launches implementation through NTM instead of inline/subagent work", () => {
-    expect(approveSource).toContain("Launch the NTM implementation swarm now");
+  it("launches implementation through clear-context pi-subagents instead of inline work", () => {
+    expect(approveSource).toContain("Launch clear-context pi-subagents for implementation");
+    expect(approveSource).toContain("Launch a clear-context pi-subagent for bead ${firstBead.id}");
     expect(approveSource).toContain("Do not implement these beads inline");
+    expect(approveSource).toContain('launchMode: "pi-subagents"');
     expect(approveSource).not.toContain("Implement bead ${firstBead.id} NOW");
     expect(approveSource).not.toContain("parallel_subagents` NOW to launch");
+    expect(approveSource).not.toContain("Launch the NTM implementation swarm now");
+    expect(approveSource).not.toContain('launchMode: "ntm"');
   });
 
   it("shows bv robot-plan summary after simulation and before the approval menu", () => {

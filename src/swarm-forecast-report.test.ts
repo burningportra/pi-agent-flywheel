@@ -107,14 +107,15 @@ describe("swarm forecast report artifacts", () => {
     expect(advisory).toContain("do not auto-assign agents");
   });
 
-  it("review parallel-launch branch invokes forecast as fail-open advisory before launch text", () => {
+  it("review parallel-launch branch invokes forecast as fail-open advisory before pi-subagent launch text", () => {
     const reviewSource = readFileSync(join(__dirname, "tools", "review.ts"), "utf8");
     expect(reviewSource).toContain("buildSwarmForecastInput");
     expect(reviewSource).toContain("writeSwarmForecastReport");
     expect(reviewSource).toContain("formatSwarmForecastLaunchAdvisory");
-    expect(reviewSource.indexOf("formatSwarmForecastLaunchAdvisory")).toBeLessThan(reviewSource.indexOf("Launch the NTM implementation swarm now"));
+    expect(reviewSource.indexOf("formatSwarmForecastLaunchAdvisory")).toBeLessThan(reviewSource.indexOf("Launch clear-context pi-subagents for implementation"));
     expect(reviewSource).toContain("Failing open: launch instructions are still shown.");
     expect(reviewSource).not.toContain("forceReleaseFileReservation(");
     expect(reviewSource).not.toContain("sendMessage(exec");
+    expect(reviewSource).not.toContain("Launch the NTM implementation swarm now");
   });
 });
