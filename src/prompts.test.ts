@@ -3,6 +3,7 @@ import {
   beadCreationPrompt,
   goalBrainstormApproachesPrompt,
   implementationPlanFromSpecPrompt,
+  implementationWorkerCoordinationContract,
   orchestratorSystemPrompt,
   planRefinementPrompt,
   planToBeadsPrompt,
@@ -71,6 +72,36 @@ describe("goal brainstorming prompts", () => {
     expect(prompt).toContain("Mark exactly one approach as recommended");
     expect(prompt).toContain("Do not change memory systems");
     expect(prompt).toContain("Return ONLY the JSON array");
+  });
+});
+
+describe("implementation worker coordination contract", () => {
+  it("centralizes non-pane pi-subagent coordination obligations", () => {
+    const prompt = implementationWorkerCoordinationContract({
+      cwd: "/repo",
+      assignedBeadId: "pi-zbma",
+      readyBeadIds: ["pi-zbma"],
+      completedBeadIds: ["pi-done"],
+    });
+
+    expect(prompt).toContain("pi-subagents Implementation Coordination Contract");
+    expect(prompt).toContain("Read ALL of AGENTS.md and README.md carefully");
+    expect(prompt).toContain("Investigate the code architecture");
+    expect(prompt).toContain("Review recent commits");
+    expect(prompt).toContain("Register with MCP Agent Mail");
+    expect(prompt).toContain("fresh callsign");
+    expect(prompt).toContain("Check urgent and normal inbox messages");
+    expect(prompt).toContain("acknowledge messages");
+    expect(prompt).toContain("active-agent awareness");
+    expect(prompt).toContain("bv --robot-next");
+    expect(prompt).toContain("bv --robot-triage");
+    expect(prompt).toContain("Anti-communication-purgatory");
+    expect(prompt).toContain("Evidence-based stale in-progress policy");
+    expect(prompt).toContain("unexpired file reservations");
+    expect(prompt).toContain("br sync --flush-only");
+    expect(prompt).not.toContain("NTM Tick Loop");
+    expect(prompt).not.toContain("ntm --");
+    expect(prompt).not.toContain("tmux panes");
   });
 });
 

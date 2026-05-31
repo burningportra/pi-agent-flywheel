@@ -1,4 +1,4 @@
-import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase } from "./types.js";
+import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase, ImplementationWorkerCoordinationContractOptions } from "./types.js";
 import type { PlanToBeadAudit } from "./beads.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
 import { sourceResearchCardPrompt } from "./plan-quality.js";
@@ -1254,6 +1254,64 @@ Work is NOT complete until every item below passes. A session is only "landable"
 Report: ✅ PASS or ❌ FAIL with reason
 
 cd ${cwd}`;
+}
+
+// ─── pi-subagents Implementation Coordination Contract ─────
+export function implementationWorkerCoordinationContract(
+  options: ImplementationWorkerCoordinationContractOptions
+): string {
+  const readyBeads = options.readyBeadIds?.length
+    ? options.readyBeadIds.join(", ")
+    : "not preselected; use bv --robot-next for solo work or bv --robot-triage for parallel-safe work";
+  const assigned = options.assignedBeadId
+    ? `Assigned bead: ${options.assignedBeadId}. Inspect it with \`br show ${options.assignedBeadId}\` and claim it with \`br update ${options.assignedBeadId} --status in_progress\` if needed before editing.`
+    : "No bead is preassigned. Choose exactly one safe bead with bv before falling back to br ready.";
+  const completed = options.completedBeadIds?.length
+    ? `Already completed in this run: ${options.completedBeadIds.join(", ")}. Do not reopen or duplicate those beads.`
+    : "Already completed in this run: none provided.";
+
+  return `## pi-subagents Implementation Coordination Contract
+
+You are an AgentFlywheel implementation worker using normal repository tools directly in this checkout. This is a clear-context pi-subagent contract: coordinate through beads and MCP Agent Mail, not through pane management, tmux tending, or robot tick loops.
+
+Repository: ${options.cwd}
+Ready bead candidates: ${readyBeads}
+${assigned}
+${completed}
+
+### 1. Context-first onboarding
+- Read ALL of AGENTS.md and README.md carefully before editing, then follow the repo-local instructions they contain.
+- Investigate the code architecture before changing files: inspect relevant modules, tests, package scripts, and the launch/review path touched by your bead.
+- Review recent commits with git history and check current workspace state so you understand active changes and avoid overwriting other agents.
+
+### 2. MCP Agent Mail coordination
+- Register with MCP Agent Mail at the start of the session using a fresh callsign, reserve the bead's file scope when possible, and introduce yourself on the bead thread or general coordination thread.
+- Check urgent and normal inbox messages before implementation, acknowledge messages that request acknowledgement, and reply promptly when another active agent needs coordination.
+- Build active-agent awareness from Agent Mail: inspect file-reservation conflicts, current thread messages, and relevant agent profiles before editing shared files.
+- Send concise progress and completion messages on the bead thread, and release reservations when finished.
+- If Agent Mail is unavailable after a bounded attempt, record the degraded status in your report and continue with extra care rather than waiting indefinitely.
+
+### 3. Bead selection and progress tracking
+- If a bead is assigned, inspect \`br show <id>\`, keep changes within its \`### Files:\` scope, and claim it with \`br update <id> --status in_progress\` if needed.
+- If no bead is assigned, prefer \`bv --robot-next\` for solo work or \`bv --robot-triage\` for swarm-safe routing before using \`br ready --json\` as a fallback.
+- Use \`bv --robot-insights\` when the graph appears stuck or when ready-work selection is ambiguous.
+- Track progress in beads and Agent Mail. Close only after the bead verification contract passes, then run \`br sync --flush-only\`.
+
+### 4. Anti-communication-purgatory rule
+- Coordinate promptly, then do the work. Do not spend the session waiting for perfect consensus when the bead contract and file reservations give enough information to proceed safely.
+- Bound coordination retries: check inbox, send a targeted message when needed, wait briefly for active conflicts, then either proceed on non-conflicting work or report the blocker with evidence.
+- Check inbox again before finishing so late blockers or review notes are not missed.
+
+### 5. Evidence-based stale in-progress policy
+- Look for clearly stalled \`in_progress\` beads only when choosing work or when the graph has no safe ready bead; do not disrupt active work.
+- Treat a bead as active if there is recent Agent Mail activity, unexpired file reservations, recent commits, current workspace edits, or a responsive owner.
+- Reopen or take over an \`in_progress\` bead only with concrete stale evidence: old \`updated_at\`, expired or absent reservations, no recent owner messages or commits, no relevant dirty files, and preferably one unanswered targeted check-in.
+- Record the evidence in Agent Mail or the bead before changing status. If evidence is incomplete, leave the bead alone and choose different ready work.
+
+### 6. Implementation, verification, and handoff
+- Make focused edits only for the selected bead. Add or adjust focused tests when needed to prove the acceptance criteria, and explain any necessary test-file scope expansion.
+- Run the bead's verification command(s) exactly and report truthful output. Do not claim success if a command failed or was not run.
+- Commit only your bead changes with a bead-scoped message, close the bead, sync beads, and report bead id, commit hash, changed files, verification output, Agent Mail status, and blockers.`;
 }
 
 // ─── Shared NTM Operator Guidance ───────────────────────────

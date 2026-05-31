@@ -448,6 +448,22 @@ export type OrchestratorPhase =
 
 export type CoordinationMode = "worktree" | "single-branch";
 
+/**
+ * Inputs for the shared pi-subagents implementation-worker coordination contract.
+ * This contract is intentionally independent of any pane supervisor so it can be
+ * reused by clear-context subagents and future launch surfaces.
+ */
+export interface ImplementationWorkerCoordinationContractOptions {
+  /** Absolute repository path shown to the worker. */
+  cwd: string;
+  /** Specific bead assigned by the orchestrator, if any. */
+  assignedBeadId?: string;
+  /** Candidate ready beads supplied by the orchestrator, if known. */
+  readyBeadIds?: string[];
+  /** Beads already completed in the current orchestration. */
+  completedBeadIds?: string[];
+}
+
 export interface OrchestratorState {
   phase: OrchestratorPhase;
   repoProfile?: RepoProfile;
