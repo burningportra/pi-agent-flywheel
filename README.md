@@ -600,6 +600,16 @@ Key files:
 | `src/deep-plan.ts` | Multi-model planning agents |
 | `src/cli-exec.ts` | Structured CLI execution wrapper with retry/fallback behavior |
 
+### Implementation-worker launch path (for coordination contract changes)
+
+- `src/tools/approve.ts` launches implementation mode by building NTM launch instructions and passing `implementationSwarmPrompt(...)` as the worker prompt payload.
+- `src/tools/review.ts` uses the same `implementationSwarmPrompt(...)` handoff path when routing to the next bead or parallel ready-bead set after a pass.
+- `src/prompts.ts` provides shared worker-facing instruction blocks via `swarmMarchingOrders(...)` and `ntmOperatorTickLoopInstructions()`.
+- `src/deep-plan.ts` handles planning-model execution (including Anthropic NTM `cc` lanes), not implementation-mode bead worker handoff.
+- `src/types.ts` carries implementation coordination state (`coordinationBackend`, `coordinationMode`, `agentMailSessionActive`, `currentBeadId`, `workspaceChangeBaseline`) that launch logic relies on.
+
+Safest insertion point for a new implementation-worker coordination contract: centralize the contract text in `src/prompts.ts` and feed it through the shared swarm prompt path used by both approve/review launch flows, so behavior stays consistent across single-bead and parallel launches.
+
 ---
 
 ## Bead Template Library
