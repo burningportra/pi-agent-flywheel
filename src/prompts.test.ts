@@ -4,6 +4,8 @@ import {
   goalBrainstormApproachesPrompt,
   implementationPlanFromSpecPrompt,
   implementationWorkerCoordinationContract,
+  implementationWorkerPrompt,
+  formatImplementationWorkerHandoff,
   orchestratorSystemPrompt,
   planRefinementPrompt,
   planToBeadsPrompt,
@@ -102,6 +104,46 @@ describe("implementation worker coordination contract", () => {
     expect(prompt).not.toContain("NTM Tick Loop");
     expect(prompt).not.toContain("ntm --");
     expect(prompt).not.toContain("tmux panes");
+  });
+
+  it("places the coordination contract before bead-specific implementation text", () => {
+    const prompt = implementationWorkerPrompt({
+      cwd: "/repo",
+      assignedBeadId: "pi-9rqv",
+      readyBeadIds: ["pi-9rqv"],
+      completedBeadIds: ["pi-zbma"],
+      executionModeLabel: "shared checkout",
+    });
+
+    expect(prompt.indexOf("## pi-subagents Implementation Coordination Contract")).toBeGreaterThanOrEqual(0);
+    expect(prompt.indexOf("## pi-subagents Implementation Coordination Contract")).toBeLessThan(
+      prompt.indexOf("## Implementation Worker Task")
+    );
+    expect(prompt).toContain("Register with MCP Agent Mail");
+    expect(prompt).toContain("Implement assigned bead pi-9rqv");
+    expect(prompt).not.toContain("NTM Tick Loop");
+    expect(prompt).not.toContain("ntm --");
+    expect(prompt).not.toContain("managed NTM worker pane");
+  });
+
+  it("formats implementation handoff for pi-subagents without pane-management commands", () => {
+    const handoff = formatImplementationWorkerHandoff({
+      cwd: "/repo",
+      workerCount: 1,
+      assignedBeadId: "pi-9rqv",
+      readyBeadIds: ["pi-9rqv"],
+    });
+
+    expect(handoff).toContain("Launch 1 clear-context pi-subagent implementation worker");
+    expect(handoff).toContain("Give each worker this prompt before any bead-specific task text");
+    expect(handoff.indexOf("## pi-subagents Implementation Coordination Contract")).toBeLessThan(
+      handoff.indexOf("## Implementation Worker Task")
+    );
+    expect(handoff).toContain("Agent Mail");
+    expect(handoff).toContain("bv --robot-next");
+    expect(handoff).not.toContain("NTM Tick Loop");
+    expect(handoff).not.toContain("ntm --");
+    expect(handoff).not.toContain("tmux panes");
   });
 });
 

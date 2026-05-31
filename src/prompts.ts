@@ -2,6 +2,7 @@ import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase, Impl
 import type { PlanToBeadAudit } from "./beads.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
 import { sourceResearchCardPrompt } from "./plan-quality.js";
+import { withSubagentAutoExitInstruction } from "./model-policy-patch.js";
 
 export {
   SUBAGENT_AUTO_EXIT_INSTRUCTION,
@@ -1312,6 +1313,58 @@ ${completed}
 - Make focused edits only for the selected bead. Add or adjust focused tests when needed to prove the acceptance criteria, and explain any necessary test-file scope expansion.
 - Run the bead's verification command(s) exactly and report truthful output. Do not claim success if a command failed or was not run.
 - Commit only your bead changes with a bead-scoped message, close the bead, sync beads, and report bead id, commit hash, changed files, verification output, Agent Mail status, and blockers.`;
+}
+
+export interface ImplementationWorkerPromptOptions extends ImplementationWorkerCoordinationContractOptions {
+  executionModeLabel?: string;
+}
+
+export function implementationWorkerPrompt(options: ImplementationWorkerPromptOptions): string {
+  const coordinationContract = implementationWorkerCoordinationContract(options);
+  const beadTask = options.assignedBeadId
+    ? `Implement assigned bead ${options.assignedBeadId}. Start by reading \`br show ${options.assignedBeadId}\`; the bead description is the source of truth for acceptance criteria, verification, and file scope.`
+    : "Pick exactly one safe ready bead from the candidates, using bv before br fallback, then treat that bead description as the source of truth for acceptance criteria, verification, and file scope.";
+
+  return withSubagentAutoExitInstruction(`${coordinationContract}
+
+## Implementation Worker Task
+${options.executionModeLabel ? `\nExecution mode: ${options.executionModeLabel}\n` : ""}
+${beadTask}
+
+### Bead-specific workflow
+1. Inspect the selected bead with \`br show <id>\` and keep changes within its \`### Files:\` scope unless a focused test file is necessary to prove the acceptance criteria.
+2. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing: sources read, API contracts found, alternatives considered, selected approach, open unknowns, and evidence links/paths. Include that card in your review feedback.
+3. Implement with focused changes only, run the bead's Verification commands, and do a fresh-eyes self-review of the modified files.
+4. Commit only your bead changes with a message like \`bead <id>: <summary>\`.
+5. Mark the bead closed with \`br update <id> --status closed\` and \`br sync --flush-only\` after verification passes.
+6. Report the bead id, commit hash, changed files, exact verification output, Source Research Card if required, Agent Mail status, and any blockers.
+
+If there is no safe ready bead, report that with evidence and exit. Do not wait idle.`);
+}
+
+export interface ImplementationWorkerHandoffOptions extends ImplementationWorkerPromptOptions {
+  workerCount: number;
+  title?: string;
+}
+
+export function formatImplementationWorkerHandoff(options: ImplementationWorkerHandoffOptions): string {
+  const workerNoun = options.workerCount === 1 ? "pi-subagent implementation worker" : "pi-subagent implementation workers";
+  const assignment = options.assignedBeadId
+    ? `Assign the worker to bead \`${options.assignedBeadId}\`.`
+    : `Launch up to ${options.workerCount} workers only if they can choose distinct ready beads safely; each worker must claim exactly one bead.`;
+  const prompt = implementationWorkerPrompt(options);
+
+  return `## ${options.title ?? "pi-subagents implementation handoff"}
+
+Launch ${options.workerCount} clear-context ${workerNoun} with normal repository tools. ${assignment}
+
+Give each worker this prompt before any bead-specific task text:
+
+\`\`\`markdown
+${prompt}
+\`\`\`
+
+After workers finish, collect their commits and exact verification evidence, then call \`agent_flywheel_review\` / \`orch_review\` for completed beads so AgentFlywheel state stays in sync.`;
 }
 
 // ─── Shared NTM Operator Guidance ───────────────────────────

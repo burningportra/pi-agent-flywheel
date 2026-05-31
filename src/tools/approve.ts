@@ -1894,7 +1894,7 @@ cd ${ctx.cwd}`;
         const top = launchInsights.Bottlenecks[0];
         const readyIds = new Set(ready.map((b) => b.id));
         if (readyIds.has(top.ID)) {
-          bvRecommendation = `\n\n🎯 bv recommends implementing ${top.ID} first (critical bottleneck — unlocks most downstream work). NTM panes should claim that bead via \`bv --robot-triage\` when possible.`;
+          bvRecommendation = `\n\n🎯 bv recommends implementing ${top.ID} first (critical bottleneck — unlocks most downstream work). Implementation workers should start with \`bv --robot-triage\` when possible.`;
         }
       }
 
@@ -1908,33 +1908,28 @@ cd ${ctx.cwd}`;
       oc.state.currentBeadId = ready[0]?.id;
       oc.persistState();
 
-      const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
+      const { formatImplementationWorkerHandoff } = await import("../prompts.js");
       const completedBeadIds = Object.entries(oc.state.beadResults ?? {})
         .filter(([, result]) => result.status === "success")
         .map(([id]) => id);
 
       if (hasParallel) {
-        const ntmInstructions = formatNtmLaunchInstructions({
+        const implementationHandoff = formatImplementationWorkerHandoff({
           cwd: ctx.cwd,
-          label: "implementation",
-          agentCount: ready.length,
-          openBeadCount: ready.length,
-          prompt: implementationSwarmPrompt({
-            cwd: ctx.cwd,
-            readyBeadIds: ready.map((b) => b.id),
-            executionModeLabel: modeLabel,
-            completedBeadIds,
-          }),
+          workerCount: ready.length,
+          readyBeadIds: ready.map((b) => b.id),
+          executionModeLabel: modeLabel,
+          completedBeadIds,
         });
 
         return {
           content: [
             {
               type: "text",
-              text: `Beads approved! ${beads.length} total, ${ready.length} ready now.${bvRecommendation}\n\n**NEXT: Launch the NTM implementation swarm now. Do not implement these beads inline.**\n\n${ntmInstructions}`,
+              text: `Beads approved! ${beads.length} total, ${ready.length} ready now.${bvRecommendation}\n\n**NEXT: Launch clear-context pi-subagents for implementation. Do not implement these beads inline.**\n\n${implementationHandoff}`,
             },
           ],
-          details: { approved: true, beadCount: beads.length, readyCount: ready.length, parallel: true, launchMode: "ntm" },
+          details: { approved: true, beadCount: beads.length, readyCount: ready.length, parallel: true, launchMode: "pi-subagents" },
         };
       }
 
@@ -1942,29 +1937,24 @@ cd ${ctx.cwd}`;
       await updateBeadStatus(oc.pi, ctx.cwd, firstBead.id, "in_progress");
       await syncBeads(oc.pi, ctx.cwd);
 
-      const ntmInstructions = formatNtmLaunchInstructions({
+      const implementationHandoff = formatImplementationWorkerHandoff({
         cwd: ctx.cwd,
-        label: `implementation-${firstBead.id}`,
-        agentCount: 1,
-        openBeadCount: 1,
-        title: "🐝 NTM implementation pane",
-        prompt: implementationSwarmPrompt({
-          cwd: ctx.cwd,
-          readyBeadIds: [firstBead.id],
-          assignedBeadId: firstBead.id,
-          executionModeLabel: modeLabel,
-          completedBeadIds,
-        }),
+        workerCount: 1,
+        title: `pi-subagents implementation handoff — ${firstBead.id}`,
+        readyBeadIds: [firstBead.id],
+        assignedBeadId: firstBead.id,
+        executionModeLabel: modeLabel,
+        completedBeadIds,
       });
 
       return {
         content: [
           {
             type: "text",
-            text: `Beads approved! ${beads.length} total, starting with ${firstBead.id}.${bvRecommendation}\n\n**NEXT: Launch an NTM pane for bead ${firstBead.id}. Do not implement it inline.**\n\n${ntmInstructions}`,
+            text: `Beads approved! ${beads.length} total, starting with ${firstBead.id}.${bvRecommendation}\n\n**NEXT: Launch a clear-context pi-subagent for bead ${firstBead.id}. Do not implement it inline.**\n\n${implementationHandoff}`,
           },
         ],
-        details: { approved: true, beadCount: beads.length, readyCount: ready.length, firstBead: firstBead.id, launchMode: "ntm" },
+        details: { approved: true, beadCount: beads.length, readyCount: ready.length, firstBead: firstBead.id, launchMode: "pi-subagents" },
       };
     },
 

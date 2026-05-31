@@ -606,7 +606,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
 
           return await runGuidedGates(oc, oc.state, ctx, beadsReviewInfo);
         } else if (ready.length === 1) {
-          // Single next bead: launch a visible NTM pane instead of inline editing.
+          // Single next bead: hand off to a clear-context pi-subagent instead of inline editing.
           const nextBead = ready[0];
           oc.state.currentBeadId = nextBead.id;
           await updateBeadStatus(oc.pi, ctx.cwd, nextBead.id, "in_progress");
@@ -627,35 +627,30 @@ export function registerReviewTool(oc: OrchestratorContext) {
           const modeLabel = executionMode === "single-branch"
             ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
             : "🌿 Worktree mode — use an isolated checkout if one is provided by the orchestrator.";
-          const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
-          const ntmInstructions = formatNtmLaunchInstructions({
+          const { formatImplementationWorkerHandoff } = await import("../prompts.js");
+          const implementationHandoff = formatImplementationWorkerHandoff({
             cwd: ctx.cwd,
-            label: `implementation-${nextBead.id}`,
-            agentCount: 1,
-            openBeadCount: 1,
-            title: "🐝 NTM implementation pane",
-            prompt: implementationSwarmPrompt({
-              cwd: ctx.cwd,
-              readyBeadIds: [nextBead.id],
-              assignedBeadId: nextBead.id,
-              executionModeLabel: modeLabel,
-              completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
-            }),
+            workerCount: 1,
+            title: `pi-subagents implementation handoff — ${nextBead.id}`,
+            readyBeadIds: [nextBead.id],
+            assignedBeadId: nextBead.id,
+            executionModeLabel: modeLabel,
+            completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
           });
 
-          ctx.ui.notify(`✅ Bead ${params.beadId} passed! Launching NTM pane for bead ${nextBead.id} (${nextBead.title}).`, "info");
+          ctx.ui.notify(`✅ Bead ${params.beadId} passed! Handing off bead ${nextBead.id} (${nextBead.title}) to a pi-subagent.`, "info");
 
           return {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}\n\n**NEXT: Launch an NTM pane for bead ${nextBead.id}. Do not implement it inline.**\n\n${ntmInstructions}`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}\n\n**NEXT: Launch a clear-context pi-subagent for bead ${nextBead.id}. Do not implement it inline.**\n\n${implementationHandoff}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id, launchMode: "ntm" },
+            details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id, launchMode: "pi-subagents" },
           };
         } else {
-          // Multiple ready beads — use bvNext to order by impact, then launch NTM panes.
+          // Multiple ready beads — use bvNext to order by impact, then hand off to pi-subagents.
           const bvPick = await bvNext(oc.pi, ctx.cwd);
           if (bvPick) {
             // Move bv's top pick to front of the ready list
@@ -694,7 +689,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             forecastAdvisory = `\n\n## 🔮 Swarm Forecast (read-only)\n\n- Forecast unavailable: ${message}\n- Failing open: launch instructions are still shown.\n- No bead, reservation, Agent Mail, or Git state was mutated by the forecast path.`;
           }
 
-          // Leave beads open so NTM workers can claim exactly one with bv/br.
+          // Leave beads open so workers can claim exactly one with bv/br.
           try {
             const { captureWorkspaceChangeBaseline } = await import("../space-detector.js");
             oc.state.workspaceChangeBaseline = await captureWorkspaceChangeBaseline(oc.pi, ctx.cwd);
@@ -705,29 +700,24 @@ export function registerReviewTool(oc: OrchestratorContext) {
           oc.state.currentBeadId = ready[0]?.id;
           oc.persistState();
 
-          const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
-          const ntmInstructions = formatNtmLaunchInstructions({
+          const { formatImplementationWorkerHandoff } = await import("../prompts.js");
+          const implementationHandoff = formatImplementationWorkerHandoff({
             cwd: ctx.cwd,
-            label: "implementation",
-            agentCount: ready.length,
-            openBeadCount: ready.length,
-            prompt: implementationSwarmPrompt({
-              cwd: ctx.cwd,
-              readyBeadIds: ready.map((b) => b.id),
-              executionModeLabel: modeLabel,
-              completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
-            }),
+            workerCount: ready.length,
+            readyBeadIds: ready.map((b) => b.id),
+            executionModeLabel: modeLabel,
+            completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
           });
-          ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${ready.length} beads now ready for NTM implementation.`, "info");
+          ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${ready.length} beads now ready for pi-subagent implementation.`, "info");
 
           return {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n**NEXT: Launch the NTM implementation swarm now. Do not implement these beads inline.**\n\n${ntmInstructions}`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n**NEXT: Launch clear-context pi-subagents for implementation. Do not implement these beads inline.**\n\n${implementationHandoff}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true, launchMode: "ntm" },
+            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true, launchMode: "pi-subagents" },
           };
         }
       } else {
@@ -792,30 +782,25 @@ export function registerReviewTool(oc: OrchestratorContext) {
               const modeLabel = executionMode === "single-branch"
                 ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
                 : "🌿 Worktree mode — use an isolated checkout if one is provided by the orchestrator.";
-              const { formatNtmLaunchInstructions, implementationSwarmPrompt } = await import("../swarm.js");
-              const ntmInstructions = formatNtmLaunchInstructions({
+              const { formatImplementationWorkerHandoff } = await import("../prompts.js");
+              const implementationHandoff = formatImplementationWorkerHandoff({
                 cwd: ctx.cwd,
-                label: `implementation-${nextBead.id}`,
-                agentCount: 1,
-                openBeadCount: 1,
-                title: "🐝 NTM implementation pane",
-                prompt: implementationSwarmPrompt({
-                  cwd: ctx.cwd,
-                  readyBeadIds: [nextBead.id],
-                  assignedBeadId: nextBead.id,
-                  executionModeLabel: modeLabel,
-                  completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
-                }),
+                workerCount: 1,
+                title: `pi-subagents implementation handoff — ${nextBead.id}`,
+                readyBeadIds: [nextBead.id],
+                assignedBeadId: nextBead.id,
+                executionModeLabel: modeLabel,
+                completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
               });
 
               return {
                 content: [
                   {
                     type: "text",
-                    text: `⚠️ Skipping bead ${params.beadId} (max retries). **NEXT: launch an NTM pane for bead ${nextBead.id} (${nextBead.title}); do not implement it inline.**\n\n${ntmInstructions}`,
+                    text: `⚠️ Skipping bead ${params.beadId} (max retries). **NEXT: launch a clear-context pi-subagent for bead ${nextBead.id} (${nextBead.title}); do not implement it inline.**\n\n${implementationHandoff}`,
                   },
                 ],
-                details: { review, skipped: true, nextBead: nextBead.id, launchMode: "ntm" },
+                details: { review, skipped: true, nextBead: nextBead.id, launchMode: "pi-subagents" },
               };
             }
           }
@@ -852,7 +837,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
           content: [
             {
               type: "text",
-              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}${remediationPlanText}${handoffPath ? `\n\nHandoff artifact: ${handoffPath}` : ""}\n\nSend these revision instructions to the responsible NTM pane (or launch a new NTM pane for this bead) rather than fixing inline, then call \`orch_review\` again to stay inside the review workflow.`, 
+              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}${remediationPlanText}${handoffPath ? `\n\nHandoff artifact: ${handoffPath}` : ""}\n\nSend these revision instructions to the responsible implementation worker (or launch a fresh clear-context pi-subagent for this bead) rather than fixing inline, then call \`orch_review\` again to stay inside the review workflow.`, 
             },
           ],
           details: { review, retryCount: oc.state.retryCount, handoffPath },
