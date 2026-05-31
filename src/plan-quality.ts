@@ -1,3 +1,5 @@
+import type { Bead } from "./types.js";
+
 /**
  * Plan Quality Oracle
  *
@@ -24,6 +26,55 @@ export interface PlanQualityScore {
   weakSections: string[];
   /** Gate recommendation. */
   recommendation: "block" | "warn" | "proceed";
+}
+
+// ─── Source Research Gate ───────────────────────────────────
+
+const INTEGRATION_HEAVY_KEYWORDS = [
+  "migration",
+  "migrations",
+  "adapter",
+  "durable object",
+  "effect sql",
+  "alchemy",
+  "rpc",
+  "database",
+  "auth middleware",
+  "sdk",
+] as const;
+
+const PACKAGE_NAME_PATTERN = /(?:^|[\s`"'(])(?:@[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+(?:-sdk|\.js|js-sdk|_sdk))(?:$|[\s`"',).])/i;
+
+export function isIntegrationHeavyBead(bead: Pick<Bead, "title" | "description"> & { files?: string[] }): boolean {
+  const text = [
+    bead.title,
+    bead.description,
+    ...(bead.files ?? []),
+  ].join("\n").toLowerCase();
+
+  if (INTEGRATION_HEAVY_KEYWORDS.some((keyword) => text.includes(keyword))) return true;
+  return PACKAGE_NAME_PATTERN.test(text);
+}
+
+export function sourceResearchCardPrompt(bead: Pick<Bead, "title" | "description"> & { files?: string[] }): string {
+  if (!isIntegrationHeavyBead(bead)) return "";
+  return `## Source Research Card Required
+
+This bead looks integration-heavy. Before implementation, read the local source/docs for the relevant library or service and include a Source Research Card in your review feedback.
+
+### Source Research Card
+- Sources read: local files, docs, vendored source, or package references consulted
+- API contracts found: concrete functions, types, protocols, lifecycle hooks, or configuration shapes
+- Alternatives considered: viable approaches and why they were not selected
+- Selected approach: the canonical API/path you will implement
+- Open unknowns: remaining uncertainty, risks, or assumptions
+- Evidence links/paths: exact repo paths, package files, docs paths, or URLs that support the choice`;
+}
+
+export function extractSourceResearchCard(text: string): string | undefined {
+  const match = text.match(/(?:^|\n)#{2,3}\s*Source Research Card\s*\n([\s\S]*?)(?=\n#{2,3}\s|\s*$)/i);
+  const body = match?.[1]?.trim();
+  return body ? `### Source Research Card\n${body}` : undefined;
 }
 
 // ─── Scoring Prompt ─────────────────────────────────────────

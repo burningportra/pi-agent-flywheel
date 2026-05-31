@@ -15,3 +15,11 @@ dist/
 # bv (beads viewer) local config and caches
 .bv/
 /.pi/orchestrator-feedback
+.env
+.claude/settings.local.json
+.claude/*.bak
+.codex/
+.ntm/
+.vscode/mcp.json
+*.mcp.json
+opencode.json

@@ -1,6 +1,7 @@
 import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase } from "./types.js";
 import type { PlanToBeadAudit } from "./beads.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
+import { sourceResearchCardPrompt } from "./plan-quality.js";
 
 export {
   SUBAGENT_AUTO_EXIT_INSTRUCTION,
@@ -108,8 +109,7 @@ export function orchestratorSystemPrompt(
 The orchestrator uses **beads** for task lifecycle and **agent-mail** for inter-agent messaging and file reservations.
 
 ### Beads (task tracking)
-- Create beads via \`br create "Title" -t task -p <priority> -d "..."\` in bash
-- Set dependencies via \`br dep add <child-id> <parent-id>\`
+- Draft staged bead mutation plans as structured JSON data; \`agent_flywheel_approve_beads\` will validate/apply it and enter the bead approval menu
 - Bead status tracks implementation: open → in_progress → closed
 - \`br sync --flush-only\` persists state to .beads/ (git-visible JSONL)
 - Use \`br ready\` to see actionable (unblocked) tasks
@@ -153,7 +153,7 @@ If worktree creation fails, the orchestrator falls back to sequential execution 
 2. Call \`agent_flywheel_discover\` to generate project ideas from the profile
 3. Call \`agent_flywheel_select\` to present ideas to the user and get their choice
 4. If the workflow produces a plan, return to \`agent_flywheel_approve_beads\` to review/approve the plan in-menu before creating beads
-5. Create beads for the selected goal via \`br create\` in bash, setting dependencies with \`br dep add\`, then call \`agent_flywheel_approve_beads\` to enter the bead approval menu
+5. Draft staged bead mutation plans as structured JSON data, then call \`agent_flywheel_approve_beads\` with that data so it can validate/apply it and enter the bead approval menu
 6. For each bead, implement using code tools (read, write, edit, bash), then call \`agent_flywheel_review\`
 7. After all beads pass review, the orchestrator runs post-completion checks and offers follow-up actions
 ${coordinationSection}
@@ -250,7 +250,7 @@ export function beadCreationPrompt(
 ): string {
   return `## Create Beads for Goal
 
-Take the selected goal and create beads (tasks) using the br CLI. Cover all required work.
+Take the selected goal and draft a structured staged bead mutation plan. Cover all required work without mutating the bead store yourself.
 
 ### Goal
 ${goal}
@@ -262,39 +262,41 @@ ${repoContext}
 ${constraints.length > 0 ? constraints.map((c) => `- ${c}`).join("\n") : "None specified."}
 
 ### Instructions
-For each bead, run in bash:
-\`\`\`
-br create "Title" -t task -p <priority 1-5> -d "Detailed description including:
-- What to implement
-- Why it matters
-- Acceptance criteria (as checklist):
-  - [ ] Criterion 1
-  - [ ] Criterion 2
-- ### Verification:
-  - Commands/checks: run concrete commands such as npm test -- src/foo.test.ts and npm run build
-  - Success looks like: describe the exact passing output or observable behavior expected
-  - Manual proof fallback: explain what to inspect and what blocker to capture if commands cannot run
-- ### Files: src/foo.ts, src/bar.ts"
+Return ONLY a JSON object representing the structured staged bead mutation plan. The approval tool will validate/apply it through the controlled mutation path.
+
+JSON shape:
+\`\`\`json
+{
+  "beads": [
+    {
+      "localId": "short-kebab-reference",
+      "title": "Title",
+      "type": "task",
+      "priority": 2,
+      "description": "Full self-contained bead text with rationale, acceptance criteria, ### Verification:, and ### Files:",
+      "files": ["src/foo.ts", "src/foo.test.ts"],
+      "verification": {
+        "commandsChecks": "run npm test -- src/foo.test.ts and npm run build",
+        "successLooksLike": "focused tests pass and TypeScript compiles",
+        "manualProofFallback": "capture the exact command blocker and manually inspect the changed files"
+      }
+    }
+  ],
+  "dependencies": [
+    { "from": "dependent-localId", "to": "dependency-localId", "type": "blocks" }
+  ]
+}
 \`\`\`
 
-Set dependencies between beads:
-\`\`\`
-br dep add <child-id> <parent-id>
-\`\`\`
-
-For complex beads that would take more than a few hours, break them into subtasks:
-\`\`\`
-br create "Subtask title" -t task -p <priority> -d "..."
-br dep add <subtask-id> <parent-id> --type parent-child
-\`\`\`
+For complex work that would take more than a few hours, split it into multiple staged bead entries and connect them with dependency objects.
 
 Each subtask should be a single coherent unit of work that one agent can complete independently.
 
-**\`br create\` flag reference**: \`-d\` = description (long: \`--description\`), \`-t\` = type, \`-p\` = priority. Do NOT abbreviate to \`--desc\` - it does not exist and will error.
-
 ### Requirements
 - Make beads self-documenting - include background, reasoning, and anything a future agent needs
+- It is critical that EVERYTHING from the markdown plan be embedded into the beads so that we never need to refer back to the markdown plan and we do not lose any important context or ideas or insights.
 - The beads should be so detailed that a fresh agent never needs to consult back to the original goal. Include relevant background, reasoning/justification, considerations - anything a future agent needs about goals, intentions, and thought process.
+- DO NOT write beads that say things like "see the plan", "refer to plan", or "per approved plan" without restating the needed context. This follows the rule above: the final beads must embed enough context that we never need to refer back to the markdown plan.
 - Each bead MUST include a \`### Verification:\` section before \`### Files:\` with three fully expanded parts:
   - \`Commands/checks:\` concrete commands or checks the implementer should run
   - \`Success looks like:\` expected pass criteria or observable proof that the work is correct
@@ -304,11 +306,12 @@ Each subtask should be a single coherent unit of work that one agent can complet
 - Set dependency edges so \`br ready\` returns the correct parallel groups
 - Acceptance criteria should be specific and testable
 - Include test beads where appropriate
+- Do not run bead mutation commands directly; staged mutation validation catches required fields, duplicate/self dependencies, missing references, template artifacts, missing Verification, and missing Files before anything is written
 
 ## Template Library
 ${formatTemplatesForPrompt()}
 
-Templates are optional shortcuts for common bead shapes, not requirements. If a template fits, use its ID as a drafting aid, substitute concrete placeholder values, and expand it into a fully self-contained bead description before running \`br create\`.
+Templates are optional shortcuts for common bead shapes, not requirements. If a template fits, use its ID as a drafting aid, substitute concrete placeholder values, and expand it into a fully self-contained bead description inside the staged plan.
 
 Example - starting from template \`add-api-endpoint\` with all placeholders substituted (\`{{endpointPath}} → /api/users\`, \`{{moduleName}} → user-management\`, \`{{endpointPurpose}} → return a filtered user list\`, \`{{httpMethod}} → GET\`, \`{{implementationFile}} → src/api/users.ts\`, \`{{testFile}} → src/api/users.test.ts\`):
 
@@ -338,7 +341,7 @@ Notice: every placeholder is resolved and the final text is fully expanded with 
 
 If no template fits, write a custom bead normally. Final beads must not say \`[Use template: ...]\`, \`see template\`, or leave unresolved \`{{placeholderName}}\` markers behind.
 
-Verify with \`br list\` and \`br dep cycles\` (must show no cycles).
+After returning this JSON, call \`agent_flywheel_approve_beads\` with it as \`stagedPlan\` so structured validation can apply the plan and show the approval menu.
 
 Use ultrathink.`;
 }
@@ -380,7 +383,7 @@ export function planToBeadsPrompt(
 ): string {
   return `## Convert Approved Plan into Beads
 
-Take the approved implementation plan and translate it into beads (tasks) using the br CLI.
+Take the approved implementation plan and translate it into a structured staged bead mutation plan.
 
 ### Goal
 ${goal}
@@ -394,40 +397,46 @@ The approved plan lives at: \`${planPath}\`
 ### Instructions
 1. Read the plan artifact at \`${planPath}\` before creating any beads.
 2. Treat that artifact as the source of truth for scope, sequencing, architecture, edge cases, and testing.
-3. Convert the plan into executable beads with \`br create\` and dependency edges with \`br dep add\`.
+3. Convert the plan into staged bead creation objects and dependency edge objects; do not mutate the bead store directly.
 4. Embed the relevant context from the plan directly into each bead description:
    - summarize the implementation intent
    - capture the rationale and important constraints
    - include acceptance criteria and verification expectations
    - list the files to create or modify
-5. DO NOT write beads that say things like "see the plan", "refer to plan", or "per approved plan" without restating the needed context. Each bead must stand on its own for a fresh agent.
-6. If the plan describes a large effort, split it into multiple beads so each bead is a coherent, independently executable unit.
+5. It is critical that EVERYTHING from the markdown plan be embedded into the beads so that we never need to refer back to the markdown plan and we do not lose any important context or ideas or insights.
+6. DO NOT write beads that say things like "see the plan", "refer to plan", or "per approved plan" without restating the needed context. This follows the rule above: Each bead must stand on its own for a fresh agent, with no need to refer back to the markdown plan.
+7. If the plan describes a large effort, split it into multiple beads so each bead is a coherent, independently executable unit.
 
-### Bead Format
-For each bead, run in bash:
-\`\`\`
-br create "Title" -t task -p <priority 1-5> -d "Detailed description including:
-- What to implement
-- Why it matters
-- Key context pulled forward from the approved plan
-- Acceptance criteria (as checklist):
-  - [ ] Criterion 1
-  - [ ] Criterion 2
-- ### Verification:
-  - Commands/checks: run concrete commands such as npm test -- src/foo.test.ts and npm run build
-  - Success looks like: describe the exact passing output or observable behavior expected
-  - Manual proof fallback: explain what to inspect and what blocker to capture if commands cannot run
-- ### Files: src/foo.ts, src/bar.ts"
-\`\`\`
-
-Set dependencies between beads:
-\`\`\`
-br dep add <child-id> <parent-id>
+### JSON shape
+Return ONLY a JSON object:
+\`\`\`json
+{
+  "beads": [
+    {
+      "localId": "short-kebab-reference",
+      "title": "Title",
+      "type": "task",
+      "priority": 2,
+      "description": "Full self-contained bead text with plan context, acceptance criteria, ### Verification:, and ### Files:",
+      "files": ["src/foo.ts", "src/foo.test.ts"],
+      "verification": {
+        "commandsChecks": "run npm test -- src/foo.test.ts and npm run build",
+        "successLooksLike": "focused tests pass and TypeScript compiles",
+        "manualProofFallback": "capture the exact blocker and manually inspect the relevant files"
+      }
+    }
+  ],
+  "dependencies": [
+    { "from": "dependent-localId", "to": "dependency-localId", "type": "blocks" }
+  ]
+}
 \`\`\`
 
 ### Requirements
 - Every bead must be self-contained and self-documenting
+- The beads should be so detailed that we never need to consult back to the original markdown plan document
 - Preserve the plan's intended sequencing and parallelism
+- Preserve dependency edges so the staged graph reflects the approved plan's execution order
 - Carry forward edge cases, migration notes, and testing expectations from the plan into the relevant beads
 - Each bead MUST include a \`### Verification:\` section before \`### Files:\` with three fully expanded parts:
   - \`Commands/checks:\` concrete commands or checks the implementer should run
@@ -436,6 +445,7 @@ br dep add <child-id> <parent-id>
 - Each bead MUST include a \`### Files:\` section listing files to create/modify
 - Acceptance criteria should be specific and testable
 - Include test beads where appropriate
+- The approval flow will validate required fields, dependency endpoints, cycles, template hygiene, Verification sections, and Files sections before applying the staged mutation plan
 
 ## Template Library
 ${formatTemplatesForPrompt()}
@@ -468,9 +478,9 @@ Example - plan says "add a users endpoint with validation and tests", template \
 > - src/api/users.ts
 > - src/api/users.test.ts
 
-Notice: every placeholder is resolved and the final text is fully expanded with plan context, concrete verification guidance, and file guidance - no template IDs, no placeholders, no "see template" references.
+Notice: every placeholder is resolved and the final text is fully expanded with plan context, concrete verification guidance, and file guidance - no template IDs, no placeholders, no "see template" references. That fully expanded text belongs in the staged bead description.
 
-Verify with \`br list\` and \`br dep cycles\` (must show no cycles).
+After returning this JSON, call \`agent_flywheel_approve_beads\` with it as \`stagedPlan\` so the approval flow can validate/apply it and show the bead approval menu.
 
 Use ultrathink.`;
 }
@@ -499,6 +509,8 @@ const BEAD_REFINEMENT_MISSIONS = [
   },
 ] as const;
 
+const REREAD_AGENTS_PREAMBLE = "Reread AGENTS.md so it is still fresh in your mind.";
+
 function beadRefinementMission(roundNumber?: number): string {
   const missionIndex = roundNumber !== undefined && roundNumber !== null
     ? Math.max(0, Math.floor(roundNumber)) % BEAD_REFINEMENT_MISSIONS.length
@@ -518,7 +530,9 @@ export function beadRefinementPrompt(roundNumber?: number, priorChanges?: number
     ? `${blockingProgress.trim()}\n\nTreat this as the refinement backlog. Start at the top of the fix order list and update only the beads that move those exact dimensions.\n\n`
     : "";
 
-  return `## Bead Refinement Pass
+  return `${REREAD_AGENTS_PREAMBLE}
+
+## Bead Refinement Pass
 
 ${missionInfo}${roundInfo}${changesInfo}${blockingInfo}Review each bead via \`br list\` and \`br show <id>\`.
 
@@ -559,7 +573,9 @@ export function freshContextRefinementPrompt(cwd: string, goal: string, roundNum
     ? `\n\n${blockingProgress.trim()}\n\nTreat this as the concrete refinement plan. Start at item 1 in the fix order list and make substantive bead updates that improve those dimensions.`
     : "";
 
-  return `## Fresh-Context Bead Refinement (Round ${roundNumber + 1})
+  return `${REREAD_AGENTS_PREAMBLE}
+
+## Fresh-Context Bead Refinement (Round ${roundNumber + 1})
 
 ${missionInfo}
 
@@ -722,6 +738,36 @@ ${beads.map((b) => {
   return `- Bead ${b.id}: ${r?.status ?? "not started"} - ${b.title}: ${b.description}${r?.summary ? `\n  Summary: ${r.summary}` : ""}`;
 }).join("\n")}
 
+### Vision Checklist
+Populate this table from the goal, plan/spec, bead list, and observed implementation evidence:
+
+| # | Goal | Source | Status | Evidence |
+|---|------|--------|--------|----------|
+| 1 | <vision goal or requirement> | <goal/spec/plan/bead/user request> | <status> | <file, command, behavior, or missing proof> |
+
+### Gap Categories
+Classify every gap using one of these categories:
+- Vision: the delivered work does not satisfy the intended product/user outcome.
+- Implementation: code or behavior is missing, incomplete, or incorrect.
+- Proof: the work may exist but lacks tests, command output, screenshots, logs, or other evidence.
+- Performance: latency, throughput, scale, or resource behavior is unproven or below the target.
+- Integration: cross-module, API, deployment, migration, or external-system behavior is missing or broken.
+- Design: UX, interface, naming, information architecture, or maintainability does not meet the intended shape.
+
+### Status Values
+Use exactly these status values in the Vision Checklist:
+- WORKING: implemented and supported by direct evidence.
+- PARTIAL: some of the goal works, but scope or edge cases remain.
+- STUB: placeholder, fake, mock, scaffold, or non-production behavior.
+- UNPROVEN: implementation may exist, but evidence is too weak or missing.
+- NOT_STARTED: no meaningful implementation found.
+- REGRESSED: previously working behavior appears broken or worse.
+- NO_BEAD: the vision goal has no bead coverage at all.
+- WRONG_APPROACH: the implementation exists but solves the wrong problem or conflicts with the intended design.
+
+### NO_BEAD priority rule
+Identify any vision goal with no bead coverage and mark it NO_BEAD. Treat NO_BEAD gaps as the highest-priority findings because the current bead graph cannot close those gaps even if every remaining bead is implemented correctly.
+
 ### Answer honestly
 1. If all remaining open beads are implemented correctly, does that close the gap? If not, what is missing?
 2. What is blocking progress right now?
@@ -729,6 +775,74 @@ ${beads.map((b) => {
 4. Is any completed work broken or incomplete despite being marked done?
 
 If remaining beads don't close the gap, the fix is to revise beads or add missing work, not to push harder on implementation.`;
+}
+
+export interface ConformanceReviewArtifact {
+  kind: "spec" | "plan";
+  path: string;
+  content: string;
+}
+
+export function conformanceReviewInstructions(
+  goal: string,
+  artifacts: ConformanceReviewArtifact[],
+  beads: Bead[],
+  results: BeadResult[],
+  changedFiles: string[]
+): string {
+  const artifactSections = artifacts.map((artifact) => `### ${artifact.kind.toUpperCase()}: ${artifact.path}
+\`\`\`markdown
+${artifact.content}
+\`\`\``).join("\n\n");
+  const completed = results.filter((result) => result.status === "success").map((result) => result.beadId);
+
+  return `## Spec/Plan Conformance Review
+
+Compare the completed implementation against the approved spec and/or implementation plan. This is a pre-completion gate: do not treat passing tests as sufficient if the code diverges from approved artifacts.
+
+### Goal
+${goal}
+
+### Approved artifacts
+${artifactSections}
+
+### Beads and completion evidence
+${beads.map((bead) => {
+  const result = results.find((entry) => entry.beadId === bead.id);
+  return `- ${bead.id}: ${bead.title} [${result?.status ?? bead.status}]${result?.summary ? ` - ${result.summary}` : ""}`;
+}).join("\n")}
+
+### Changed implementation surface
+${changedFiles.length > 0 ? changedFiles.map((file) => `- ${file}`).join("\n") : "- No changed files were identified; inspect git diff/status manually before passing this gate."}
+
+### Required report
+Produce a conformance report with these exact sections:
+
+#### Matched Requirements
+- Map artifact requirements to code, tests, commands, or bead evidence. Include file paths and concrete proof.
+
+#### Deviations
+- For every divergence, classify it as exactly one of:
+  - intentional: supported by the artifact or a clearly documented tradeoff.
+  - unknown/needs-human: plausible but not justified by the artifact.
+  - unacceptable: contradicts the approved spec/plan or weakens a required behavior.
+
+#### Missing Requirements
+- List artifact requirements that are not implemented, not tested, or not represented by any completed bead.
+
+#### Unsupported Implementation Choices
+- List implementation choices made without artifact support, especially new fallbacks, production shortcuts, or changed architecture.
+
+#### Completion Decision
+- PASS only if all approved requirements are matched or intentionally justified.
+- BLOCK if any unacceptable deviation exists.
+- BLOCK if production code uses a fallback, stub, fake, test adapter, or placeholder that the approved spec/plan disallows.
+- BLOCK if missing requirements remain or if a major choice is unknown/needs-human.
+
+### Gate action
+If blocked, call \`agent_flywheel_review\` with beadId "__regress_to_implement__" or "__regress_to_beads__" and include the conformance findings. If clean, call \`agent_flywheel_review\` with beadId "__gates__" and verdict "pass".
+
+Completed beads: ${completed.join(", ") || "none"}`;
 }
 
 function normalizePromptSection(content: string | undefined, heading: string): string {
@@ -766,6 +880,7 @@ export function implementerInstructions(
 
   const memorySection = normalizePromptSection(cassMemory, "## Memory from Prior Orchestrations");
   const episodicSection = normalizePromptSection(episodicContext, "## Past Session Examples");
+  const sourceResearchSection = sourceResearchCardPrompt(bead);
 
   return `## Implement Bead ${bead.id}: ${bead.title}${memorySection}${episodicSection}
 
@@ -782,6 +897,7 @@ ${files}
 - **Languages:** ${profile.languages.join(", ")}
 - **Frameworks:** ${profile.frameworks.join(", ")}
 ${prevContext}
+${sourceResearchSection ? `\n${sourceResearchSection}\n` : ""}
 
 ### Marching Orders
 - Read the relevant files first.
@@ -1140,6 +1256,32 @@ Report: ✅ PASS or ❌ FAIL with reason
 cd ${cwd}`;
 }
 
+// ─── Shared NTM Operator Guidance ───────────────────────────
+export function ntmOperatorTickLoopInstructions(): string {
+  return `### NTM Tick Loop
+Start every tending pass with \`ntm --robot-snapshot\`. Before acting, read the snapshot's \`sources\` / \`degraded_sources\` fields so you know which robot surfaces are trustworthy and which are stale, missing, or degraded.
+
+Use this 8-step loop for every swarm management pass:
+1. **BASELINE** — Run \`ntm --robot-snapshot\`, establish session/pane state, and note any degraded telemetry before touching panes.
+2. **ATTEND** — Run \`ntm --robot-attention\` for the session and inspect panes/messages that need human or operator action.
+3. **CLASSIFY** — Label each issue before acting: progressing, idle, blocked, rate-limited, conflicted, duplicate work, verification failure, or ready-to-close.
+4. **SCORE** — Apply the Intervention Score Matrix before sending nudges, interrupts, restarts, or reassignment.
+5. **ACT** — Make the smallest reversible intervention that addresses the classified issue; prefer targeted \`ntm send\` marching orders before interrupts or restarts.
+6. **VERIFY** — Re-read attention/tail/mail/working-state evidence and confirm the pane responded or the blocker changed.
+7. **STOP CHECK** — Stop only when no pane is actively working, completed beads have commits and verification evidence, and bead state shows no immediately actionable work.
+8. **LOG** — Record what changed, why you acted, the evidence used, and any follow-up for the next operator.
+
+### Intervention Score Matrix
+Score = Evidence × Impact × Reversibility / BlastRadius
+
+- **Evidence**: 0.5 weak hint, 1.0 plausible signal, 2.0 direct pane/mail/test evidence.
+- **Impact**: 0.5 cosmetic or low-value, 1.0 useful unblock, 2.0 critical path or prevents duplicated/broken work.
+- **Reversibility**: 0.5 hard to undo, 1.0 recoverable, 2.0 trivially reversible.
+- **BlastRadius**: 0.5 one pane/message, 1.0 one bead, 2.0 multiple panes/shared files, 4.0 repo-wide or destructive.
+
+Interventions need **Score >= 2.0**. If the score is lower, gather more evidence with \`ntm --robot-snapshot\`, \`ntm --robot-attention\`, tail output, mail, or tests instead of acting.`;
+}
+
 // ─── Swarm Marching Orders ──────────────────────────────────
 export function swarmMarchingOrders(cwd: string, beadId?: string): string {
   return `## Swarm Marching Orders
@@ -1149,6 +1291,8 @@ Read AGENTS.md and README.md thoroughly. Then investigate the codebase to unders
 Be sure to check your agent mail and promptly respond to any messages. Then proceed meticulously with your assigned bead, working systematically and tracking progress via beads and agent mail messages.
 
 Don't stall on coordination. Start work promptly, but inform fellow agents via messages and mark beads appropriately.
+
+${ntmOperatorTickLoopInstructions()}
 
 When idle, use \`bv --robot-triage\` to find the highest-impact bead, claim it, and start coding. Acknowledge all communication from other agents. Use ultrathink.
 
@@ -1613,6 +1757,8 @@ ${goal}
 ## Repository Context
 ${repoContext}
 
+${PLAN_GROUNDING_SECTION}
+
 ## Instructions
 Produce a detailed markdown plan document covering ALL of the following sections:
 
@@ -1653,6 +1799,18 @@ Save the plan as a session artifact using write_artifact with a descriptive name
 Ground every recommendation in the repository context above - do not hallucinate capabilities or files that don't exist.`;
 }
 
+const PLAN_GROUNDING_SECTION = `## Grounding
+- Verify library and framework choices against actual docs, local package source, or existing in-repo usage before naming APIs or integration patterns.
+- Verify existing-codebase claims with grep, file reads, or git history evidence; cite concrete paths, symbols, or commits when they affect the plan.
+- Flag bare performance numbers, latency claims, scale claims, and resource estimates as unproven unless they are backed by measured evidence or an explicit source.`;
+
+const PLAN_REFINEMENT_VALIDATION_LOOP = `## Required 4-Check Validation Loop
+Before accepting this refinement round, run these checks and report the result:
+1. Self-containment check: can a fresh agent execute the plan without hidden context, missing definitions, or "see above" references?
+2. Dependency-graph check: can you draw the DAG? Are there dependency cycles, orphan tasks, missing edges, or serial bottlenecks that should be parallel?
+3. Justification check: pick 5 random implementation decisions and confirm each has a clear "why" grounded in code, docs, constraints, or tradeoffs.
+4. Steady-state check: diff against the prior round; large structural changes mean the plan is not done yet.`;
+
 export function planRefinementPrompt(planPath: string, roundNumber: number): string {
   return `You are a fresh reviewer with NO prior context on this plan. Use ultrathink to critically evaluate it.
 
@@ -1672,6 +1830,8 @@ This is refinement round ${roundNumber}. Each round uses a fresh conversation to
 3. If the plan needs improvement, rewrite the FULL refined plan and save it back to the SAME artifact with \`write_artifact\` using the exact same artifact name: ${planPath}
 4. Preserve the strongest parts of the current plan while fixing weaknesses - do not regress coverage or specificity
 5. If the plan is already solid, make no artifact changes and say \`NO_CHANGES\` with a brief explanation
+
+${PLAN_REFINEMENT_VALIDATION_LOOP}
 
 Focus on substance over style. Each round should find fewer issues as the plan converges.`;
 }
@@ -1715,6 +1875,8 @@ ${planText}
 2. If improvements are needed, output the FULL refined plan (not just diffs)
 3. Preserve the strongest parts while fixing weaknesses - do not regress coverage or specificity
 4. If the plan is already solid with only marginal improvements possible, output \`NO_CHANGES\` and briefly explain why
+
+${PLAN_REFINEMENT_VALIDATION_LOOP}
 
 Focus on substance over style. Be specific about what is weak and why.
 

@@ -5,6 +5,7 @@ import {
   formatSwarmStatus,
   formatLaunchInstructions,
   formatNtmRobotManagementLoopInstructions,
+  implementationSwarmPrompt,
 } from "./swarm.js";
 import type { Bead } from "./types.js";
 import type { AgentStatus } from "./tender.js";
@@ -254,6 +255,34 @@ describe("formatLaunchInstructions", () => {
     expect(loop).toContain("ntm --robot-health-oauth");
     expect(loop).toContain("ntm --robot-diagnose=\"$session\" --diagnose-fix");
     expect(loop).toContain("ntm --robot-interrupt=\"$session\" --panes=N");
+    expect(loop).toContain("NTM Tick Loop");
+    for (const step of ["BASELINE", "ATTEND", "CLASSIFY", "SCORE", "ACT", "VERIFY", "STOP CHECK", "LOG"]) {
+      expect(loop).toContain(step);
+    }
+    expect(loop).toContain("sources");
+    expect(loop).toContain("degraded_sources");
+    expect(loop).toContain("Evidence × Impact × Reversibility / BlastRadius");
+    expect(loop).toContain("Score >= 2.0");
     expect(loop).toContain("Stop only when completed beads have commits + verification evidence");
+  });
+
+  it("includes the shared NTM tick loop in implementation worker prompts", () => {
+    const prompt = implementationSwarmPrompt({
+      cwd: "/tmp/repo",
+      readyBeadIds: ["pi-1"],
+      assignedBeadId: "pi-1",
+    });
+
+    expect(prompt).toContain("managed NTM worker pane");
+    expect(prompt).toContain("NTM Tick Loop");
+    expect(prompt).toContain("BASELINE");
+    expect(prompt).toContain("ATTEND");
+    expect(prompt).toContain("ntm --robot-snapshot");
+    expect(prompt).toContain("sources");
+    expect(prompt).toContain("degraded_sources");
+    expect(prompt).toContain("Evidence × Impact × Reversibility / BlastRadius");
+    expect(prompt).toContain("Score >= 2.0");
+    expect(prompt).toContain("Source Research Card");
+    expect(prompt).toContain("API contracts found");
   });
 });

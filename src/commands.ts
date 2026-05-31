@@ -798,6 +798,23 @@ export function registerCommands(oc: OrchestratorContext) {
           oc.worktreePool = undefined;
         }
         if (oc.swarmTender) { oc.swarmTender.stop(); oc.swarmTender = undefined; }
+        try {
+          const { shouldGenerateHandoff, writeHandoffArtifact } = await import("./handoff.js");
+          if (shouldGenerateHandoff({ event: "stop", state: oc.state })) {
+            const statusResult = await resilientExec(pi, "git", ["status", "--short"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+            const changedFiles = statusResult.ok
+              ? statusResult.value.stdout.split("\n").map((line) => line.trim().split(/\s+/).at(-1)).filter((file): file is string => Boolean(file))
+              : [];
+            const handoffPath = writeHandoffArtifact({
+              cwd: ctx.cwd,
+              state: oc.state,
+              reason: "orchestrator stopped with active work",
+              changedFiles,
+              blockers: ["Orchestration was stopped before all active work completed."],
+            });
+            ctx.ui.notify(`🧾 Handoff artifact written: ${handoffPath}`, "info");
+          }
+        } catch { /* best-effort */ }
         oc.orchestratorActive = false;
         oc.setPhase("idle", ctx);
         oc.persistState();
@@ -914,6 +931,18 @@ export function registerCommands(oc: OrchestratorContext) {
         ctx.ui.notify("No orchestration session active.", "info");
         return;
       }
+      try {
+        const { shouldGenerateHandoff, writeHandoffArtifact } = await import("./handoff.js");
+        if (shouldGenerateHandoff({ event: "status_request", state: oc.state })) {
+          const handoffPath = writeHandoffArtifact({
+            cwd: ctx.cwd,
+            state: oc.state,
+            reason: "status requested while active work exists",
+            nextSteps: ["Review the current widget/status, inspect the active bead, and continue or stop with the handoff path above."],
+          });
+          ctx.ui.notify(`🧾 Current handoff artifact: ${handoffPath}`, "info");
+        }
+      } catch { /* best-effort */ }
       oc.updateWidget(ctx);
     },
   });
@@ -1623,11 +1652,12 @@ Use ultrathink. Be specific — vague suggestions are useless.`;
         ctx.ui.notify("Usage: /orchestrate-refine-skill <skill-name-or-path>", "info");
         return;
       }
-      // Try common skill locations
+      // Try common skill locations — only use ~/.claude/skills (home directory)
+      const { homedir } = await import("os");
       const candidates = [
         skillName,
-        join(ctx.cwd, ".claude", "skills", skillName, "SKILL.md"),
-        join(ctx.cwd, ".claude", "skills", skillName),
+        join(homedir(), ".claude", "skills", skillName, "SKILL.md"),
+        join(homedir(), ".claude", "skills", skillName),
       ];
       let skillContent: string | null = null;
       for (const p of candidates) {

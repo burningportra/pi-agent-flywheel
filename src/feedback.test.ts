@@ -14,6 +14,8 @@ import {
   getPromptEffectiveness,
   formatPromptEffectiveness,
   resetPromptTracking,
+  mineRepeatedReviewFeedback,
+  formatFeedbackRuleCandidates,
   type OrchestrationFeedback,
 } from "./feedback.js";
 import { createInitialState } from "./types.js";
@@ -268,5 +270,47 @@ describe("formatPromptEffectiveness", () => {
     const goodPos = formatted.indexOf("good");
     const badPos = formatted.indexOf("bad");
     expect(goodPos).toBeLessThan(badPos); // good should come first
+  });
+});
+
+describe("mineRepeatedReviewFeedback", () => {
+  it("clusters repeated Effect idiom feedback into one candidate without duplicate evidence", () => {
+    const candidates = mineRepeatedReviewFeedback([
+      { text: "Do not use async/await here; this module uses Effect.fn and .andThen.", filePath: "src/db.ts", source: "review" },
+      { text: "Do not use async/await here; this module uses Effect.fn and .andThen.", filePath: "src/db.ts", source: "review" },
+      { text: "Use Option instead of null/undefined in Effect SQL code.", filePath: "src/db.ts", source: "review" },
+      { text: "Name the production layer `layer`, not `Live`, and yield services via tags instead of parameter injection.", filePath: "src/layers.ts", source: "review" },
+      { text: "This button label should be shorter.", filePath: "src/ui.ts", source: "review" },
+    ]);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].id).toBe("effect-idioms");
+    expect(candidates[0].count).toBe(3);
+    expect(candidates[0].affectedFiles).toEqual(["src/db.ts", "src/layers.ts"]);
+    expect(candidates[0].agentsMdSuggestion).toContain("Effect.fn");
+    expect(candidates[0].cassMemoryBullet).toContain("Option");
+    expect(candidates[0].lintRuleSuggestion).toContain("async/await");
+  });
+
+  it("does not propose durable rules for unrelated one-off feedback", () => {
+    const candidates = mineRepeatedReviewFeedback([
+      { text: "This one label should be shorter.", filePath: "src/ui.ts" },
+      { text: "Move this import next to other imports.", filePath: "src/index.ts" },
+    ]);
+
+    expect(candidates).toEqual([]);
+    expect(formatFeedbackRuleCandidates(candidates)).toContain("No repeated review-feedback themes found");
+  });
+
+  it("formats candidates as approval-required AGENTS.md and CASS suggestions", () => {
+    const candidates = mineRepeatedReviewFeedback([
+      { text: "The verification report says all tests pass, but only a focused test ran.", filePath: "src/review.ts" },
+      { text: "Do not claim all tests pass without exact verification output.", filePath: "src/review.ts" },
+    ]);
+
+    const formatted = formatFeedbackRuleCandidates(candidates);
+    expect(formatted).toContain("Review and approve these before editing AGENTS.md or writing CASS memory");
+    expect(formatted).toContain("AGENTS.md suggestion");
+    expect(formatted).toContain("CASS memory bullet");
   });
 });

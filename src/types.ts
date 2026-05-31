@@ -257,6 +257,10 @@ export interface BeadResult {
   beadId: string;
   status: "success" | "partial" | "blocked";
   summary: string;
+  /** True when integration-heavy bead detection required a Source Research Card. */
+  sourceResearchRequired?: boolean;
+  /** Captured Source Research Card from review evidence, if provided. */
+  sourceResearchCard?: string;
 }
 
 export type OpeningCeremonyMode = "animated" | "static" | "skip";
@@ -508,6 +512,8 @@ export interface OrchestratorState {
   polishOutputSizes?: number[];
   /** Convergence score (0-1) computed after 3+ rounds. */
   polishConvergenceScore?: number;
+  /** True once at least one alternative model has reviewed the bead graph in this session. */
+  crossModelReviewDone?: boolean;
   /** Number of completed beads since last drift check. */
   beadsSinceLastDriftCheck?: number;
   /** How often to auto-trigger drift checks (every N completed beads, default 3). */

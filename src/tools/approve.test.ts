@@ -4,9 +4,16 @@ import {
   approvalValidationBlocksStart,
   diffBeadSnapshots,
   formatApprovalValidationWarning,
+  formatBeadsWorkflowQualityChecklist,
   formatDiffSummary,
+  formatExecutionPlanSummary,
+  formatGraphHealthSummary,
+  graphHealthCycleCount,
+  formatMinimumRoundProgress,
+  hasMetMinimumRefinementRounds,
   formatSpecPreview,
   isSuperpowersSpecApprovalStage,
+  MIN_REFINEMENT_ROUNDS,
   superpowersSpecApprovalOptions,
   verificationContractFailureLines,
   type DiffSummary,
@@ -16,6 +23,7 @@ import { createInitialState } from "../types.js";
 import type { OrchestratorState } from "../types.js";
 import { SUPERPOWERS_ADAPTER_ID } from "../workflows/superpowers.js";
 import type { PlanningWorkflowState } from "../workflows/types.js";
+import type { BvInsights } from "../types.js";
 
 // ─── Re-export tests from convergence.test.ts and diff-beads.test.ts ────
 // Those files contain the bulk of tests. This file adds approve-specific
@@ -30,6 +38,88 @@ describe("approval structured mutation handoff", () => {
     expect(source).toContain("validate/apply");
     expect(source).not.toContain("using `br create` and `br dep add` in bash NOW");
     expect(source).not.toContain("create beads with `br create` first");
+  });
+});
+
+describe("bv execution plan approval summary", () => {
+  it("summarizes robot-plan JSON without dumping the raw plan", () => {
+    const summary = formatExecutionPlanSummary(JSON.stringify({
+      plan: {
+        tracks: [
+          { track_id: "track-A", items: [{ id: "pi-a" }, { id: "pi-b" }] },
+          { track_id: "track-B", items: [{ id: "pi-c" }] },
+        ],
+        total_actionable: 3,
+        summary: { highest_impact: "pi-a" },
+      },
+    }));
+
+    expect(summary).toContain("📊 Execution plan: 2 parallel tracks, 3 actionable beads");
+    expect(summary).toContain("highest impact: pi-a");
+    expect(summary).not.toContain("track-A");
+    expect(summary).not.toContain("items");
+  });
+
+  it("silently skips unavailable or empty robot-plan output", () => {
+    expect(formatExecutionPlanSummary(null)).toBe("");
+    expect(formatExecutionPlanSummary("")).toBe("");
+  });
+});
+
+describe("beads-workflow quality checklist approval reminder", () => {
+  it("renders the exact eight checklist dimensions with a passing cycle status", () => {
+    const text = formatBeadsWorkflowQualityChecklist({ cycles: false });
+
+    for (const item of [
+      "Self-contained",
+      "Clear scope",
+      "Dependencies explicit",
+      "Testable",
+      "Includes tests",
+      "Preserves features",
+      "Not oversimplified",
+      "No cycles ✅",
+    ]) {
+      expect(text).toContain(item);
+    }
+    expect(text).toContain("Reference only");
+  });
+
+  it("links No cycles to the live cycle validation result", () => {
+    expect(formatBeadsWorkflowQualityChecklist({ cycles: true })).toContain("No cycles ⚠️");
+  });
+});
+
+describe("bv graph health approval summary", () => {
+  const insights: BvInsights = {
+    Bottlenecks: [{ ID: "pi-critical", Value: 9 }, { ID: "pi-other", Value: 2 }],
+    Cycles: [["pi-cycle-a", "pi-cycle-b"]],
+    Orphans: ["pi-orphan", "pi-closed"],
+    Articulation: [],
+    Slack: [],
+  };
+
+  it("formats total, ready, bottleneck, cycle, orphan, and critical-path details", () => {
+    const summary = formatGraphHealthSummary(insights, [
+      { id: "pi-critical" },
+      { id: "pi-other" },
+      { id: "pi-cycle-a" },
+      { id: "pi-orphan" },
+    ], 2);
+
+    expect(summary).toContain("### Graph Health");
+    expect(summary).toContain("Total beads: 4");
+    expect(summary).toContain("Ready now: 2");
+    expect(summary).toContain("Bottlenecks: 2");
+    expect(summary).toContain("Cycles: ⚠️ 1 cycle");
+    expect(summary).toContain("Orphans: 1");
+    expect(summary).toContain("1 beads have no dependency edges — verify they are intentionally standalone or add edges");
+    expect(summary).toContain("Critical path bead: pi-critical");
+  });
+
+  it("reports no cycles when bv has no cycle data for open beads", () => {
+    expect(graphHealthCycleCount({ ...insights, Cycles: null }, new Set(["pi-a"]))).toBe(0);
+    expect(formatGraphHealthSummary({ ...insights, Cycles: [] }, [{ id: "pi-critical" }], 1)).toContain("Cycles: ✅ none");
   });
 });
 
@@ -111,9 +201,10 @@ describe("auto-approve meetsAutoApprove", () => {
   function meetsAutoApprove(state: OrchestratorState): boolean {
     const autoApproveEnabled = state.autoApproveOnConvergence !== false;
     const round = state.polishRound;
+    const minimumRoundsMet = hasMetMinimumRefinementRounds(round);
     const converged = state.polishConverged;
     const convergenceScore = state.polishConvergenceScore;
-    return autoApproveEnabled && round > 0 && (
+    return autoApproveEnabled && minimumRoundsMet && round > 0 && (
       converged || (convergenceScore !== undefined && convergenceScore >= 0.90)
     );
   }
@@ -131,9 +222,17 @@ describe("auto-approve meetsAutoApprove", () => {
     expect(meetsAutoApprove(state)).toBe(true);
   });
 
-  it("convergenceScore alone is sufficient without polishConverged", () => {
+  it("does not trigger on high convergence score before minimum refinement rounds", () => {
     const state = createInitialState();
     state.polishRound = 2;
+    state.polishConvergenceScore = 0.91;
+    state.polishConverged = false;
+    expect(meetsAutoApprove(state)).toBe(false);
+  });
+
+  it("convergenceScore alone is sufficient after minimum refinement rounds", () => {
+    const state = createInitialState();
+    state.polishRound = MIN_REFINEMENT_ROUNDS - 1;
     state.polishConvergenceScore = 0.91;
     state.polishConverged = false;
     expect(meetsAutoApprove(state)).toBe(true);
@@ -145,6 +244,24 @@ describe("auto-approve meetsAutoApprove", () => {
     state.polishConverged = true;
     // no convergenceScore set
     expect(meetsAutoApprove(state)).toBe(true);
+  });
+});
+
+describe("minimum bead refinement rounds", () => {
+  it("defaults to four refinement rounds", () => {
+    expect(MIN_REFINEMENT_ROUNDS).toBe(4);
+  });
+
+  it("does not satisfy minimum rounds before the fourth-round threshold", () => {
+    expect(hasMetMinimumRefinementRounds(MIN_REFINEMENT_ROUNDS - 2)).toBe(false);
+  });
+
+  it("satisfies minimum rounds at the configured fourth-round threshold", () => {
+    expect(hasMetMinimumRefinementRounds(MIN_REFINEMENT_ROUNDS - 1)).toBe(true);
+  });
+
+  it("formats round progress with the minimum visible in UI text", () => {
+    expect(formatMinimumRoundProgress(1)).toBe("Round 2 of 4 minimum");
   });
 });
 
@@ -377,6 +494,60 @@ describe("plan-to-bead audit integration", () => {
     expect(approveSource).not.toContain("Implement bead ${firstBead.id} NOW");
     expect(approveSource).not.toContain("parallel_subagents` NOW to launch");
   });
+
+  it("shows bv robot-plan summary after simulation and before the approval menu", () => {
+    expect(approveSource).toContain("bvPlan");
+    expect(approveSource).toContain("formatExecutionPlanSummary(await bvPlan(oc.pi, ctx.cwd))");
+
+    const promptStart = approveSource.indexOf("const approvalPrompt =");
+    const promptEnd = approveSource.indexOf("const selectAdvancedChoice", promptStart);
+    const promptSource = approveSource.slice(promptStart, promptEnd);
+    expect(promptSource.indexOf("simulationWarning")).toBeLessThan(promptSource.indexOf("executionPlanSummary"));
+    expect(promptEnd).toBeLessThan(approveSource.indexOf("choice = await ctx.ui.select(approvalPrompt, options)"));
+  });
+
+  it("shows the beads-workflow quality checklist only on first approval entry", () => {
+    expect(approveSource).toContain("formatBeadsWorkflowQualityChecklist");
+    expect(approveSource).toContain("oc.state.polishRound === 0");
+
+    const promptStart = approveSource.indexOf("const approvalPrompt =");
+    const promptEnd = approveSource.indexOf("const selectAdvancedChoice", promptStart);
+    const promptSource = approveSource.slice(promptStart, promptEnd);
+    expect(promptSource).toContain("beadsWorkflowChecklist");
+  });
+
+  it("promotes cross-model review as an explicit readiness gate before implementation", () => {
+    expect(approveSource).toContain("needsCrossModelReviewGate");
+    expect(approveSource).toContain("Beads are not implementation-ready until at least one alternative model has reviewed them");
+    expect(approveSource).toContain("pickAlternativeBeadReviewModel");
+    expect(approveSource).toContain("crossModelReviewDone");
+
+    const gateBlock = approveSource.slice(
+      approveSource.indexOf("} else if (needsCrossModelReviewGate)"),
+      approveSource.indexOf("} else if (maxReached)")
+    );
+    expect(gateBlock).toContain("Cross-model review");
+    expect(gateBlock).toContain("Continue without cross-model review");
+    expect(gateBlock.indexOf("Cross-model review")).toBeLessThan(gateBlock.indexOf("Continue without cross-model review"));
+    expect(gateBlock).not.toContain("startLabel");
+  });
+
+  it("records successful cross-model review completion and suppresses auto-approve until the gate is resolved", () => {
+    expect(approveSource).toContain("!needsCrossModelReviewGate");
+    expect(approveSource).toContain("oc.state.crossModelReviewDone = true");
+    expect(approveSource).toContain("Cross-model review already completed this session; readiness gate skipped");
+  });
+
+  it("surfaces bv graph health and blocks implementation on cycles", () => {
+    expect(approveSource).toContain("formatGraphHealthSummary(insights, beads");
+    expect(approveSource).toContain("graphCycleCount > 0");
+    expect(approveSource).toContain("Run `br dep cycles` to identify cycles, then fix with `br dep remove` or split beads. Cycles must be resolved before implementation.");
+
+    const promptStart = approveSource.indexOf("const approvalPrompt =");
+    const promptEnd = approveSource.indexOf("const selectAdvancedChoice", promptStart);
+    const promptSource = approveSource.slice(promptStart, promptEnd);
+    expect(promptSource).toContain("graphHealthSummary");
+  });
 });
 
 // ─── Superpowers spec approval gate ───────────────────────────
@@ -538,4 +709,3 @@ describe("Superpowers spec approval — early branch wiring in approve.ts source
     expect(specBranchSlice).toContain("oc.state.planDocument = undefined");
   });
 });
-

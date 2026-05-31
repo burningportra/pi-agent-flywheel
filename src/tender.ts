@@ -51,7 +51,31 @@ const CADENCE_CHECKLIST = `## 👷 Operator Cadence Check (every ~20 min (config
 3. 🔍 **Run a review round** — pick one agent and send the fresh-eyes review prompt. Catches bugs before they compound.
 4. ⚡ **Manage rate limits** — if an agent hit rate limits, switch account with CAAM or start a fresh agent.
 5. 📦 **Periodic commit** — designate one agent to do an organized commit every 1–2 hours.
-6. 🆕 **Handle surprises** — create new beads for unanticipated issues discovered during implementation.`;
+6. 🆕 **Handle surprises** — create new beads for unanticipated issues discovered during implementation.
+
+### Operator Proof Card
+Fill this out before any intervention:
+
+\`\`\`markdown
+- Evidence:
+- Card matched:
+- Target:
+- Expected state change:
+- Recovery:
+\`\`\`
+
+### Intervention Score Matrix
+Score = Evidence × Impact × Reversibility / BlastRadius; only act if Score >= 2.0.
+
+| Evidence | Impact | Reversibility | BlastRadius | Score |
+|----------|--------|---------------|-------------|-------|
+| 0-3 | 0-3 | 1-3 | 1-3 | >= 2.0 required |
+
+### convergence triple-check
+Declare done only when ready queue empty AND no in-flight work AND no expected upstream signals.
+
+### Anti-pattern
+If you find yourself sending the same nudge twice without movement, escalate to smart-restart, not another nudge.`;
 
 // ─── SwarmTender ───────────────────────────────────────────────
 

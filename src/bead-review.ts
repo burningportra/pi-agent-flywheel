@@ -21,6 +21,20 @@ export interface VerificationEvidenceAssessment {
   manualFallbackUsed: boolean;
 }
 
+export type AcceptanceCriterionProofStatus = "proven" | "unproven" | "blocked" | "not_applicable";
+
+export interface AcceptanceCriterionEvidence {
+  criterion: string;
+  status: AcceptanceCriterionProofStatus;
+  evidence?: string;
+}
+
+export interface AcceptanceCriteriaEvidenceAssessment {
+  ok: boolean;
+  criteria: AcceptanceCriterionEvidence[];
+  issues: string[];
+}
+
 const COMMAND_START = /\b(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b[^;\n]*/gi;
 
 function normalizeEvidenceText(text: string): string {
@@ -94,6 +108,83 @@ export function assessVerificationEvidence(
   };
 }
 
+export function extractAcceptanceCriteria(description: string): string[] {
+  return description
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+\[[ xX]\]\s+/.test(line))
+    .map((line) => line.replace(/^[-*]\s+\[[ xX]\]\s+/, "").trim())
+    .filter(Boolean);
+}
+
+const COMMON_CRITERION_WORDS = new Set([
+  "the", "and", "with", "that", "this", "from", "into", "when", "then", "should", "must", "add", "all", "for", "are",
+]);
+
+function criterionTokens(criterion: string): string[] {
+  return normalizeEvidenceText(criterion)
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9_-]/g, ""))
+    .filter((token) => token.length >= 4 && !COMMON_CRITERION_WORDS.has(token));
+}
+
+function criterionMentioned(criterion: string, normalizedEvidence: string): boolean {
+  const normalizedCriterion = normalizeEvidenceText(criterion);
+  if (normalizedEvidence.includes(normalizedCriterion)) return true;
+  const tokens = criterionTokens(criterion);
+  if (tokens.length === 0) return false;
+  const hits = tokens.filter((token) => normalizedEvidence.includes(token)).length;
+  return hits >= Math.min(2, tokens.length);
+}
+
+export function assessAcceptanceCriteriaEvidence(
+  description: string,
+  evidence: string
+): AcceptanceCriteriaEvidenceAssessment {
+  const criteria = extractAcceptanceCriteria(description);
+  const normalizedEvidence = normalizeEvidenceText(evidence);
+  const manualFallbackUsed = /manual\s+(?:proof|evidence|verification|fallback)|fallback\s+(?:proof|evidence)|manual\s+inspect/i.test(evidence);
+  const mentionsAutomationBlocked = /(?:could not|couldn't|cannot|can't|unable to|blocked|unavailable|missing dependency|environment).{0,80}(?:run|execute|automation|command|check|test)|(?:command|check|test).{0,80}(?:could not|couldn't|cannot|can't|unable to|blocked|unavailable)/i.test(evidence);
+  const genericOnly = /\b(?:done|implemented|complete|completed|works|looks good|all tests pass|all tests passed|verified)\b/i.test(evidence)
+    && criteria.length > 0
+    && criteria.every((criterion) => !criterionMentioned(criterion, normalizedEvidence));
+
+  const matrix = criteria.map((criterion): AcceptanceCriterionEvidence => {
+    if (criterionMentioned(criterion, normalizedEvidence)) {
+      if (/\b(?:not applicable|n\/a)\b/i.test(evidence)) {
+        return { criterion, status: "not_applicable", evidence: "Marked not applicable in review evidence." };
+      }
+      return { criterion, status: "proven", evidence: "Criterion terms are cited in review evidence." };
+    }
+    if (manualFallbackUsed && mentionsAutomationBlocked) {
+      return { criterion, status: "blocked", evidence: "Manual fallback reported an automation blocker; criterion still needs explicit proof when possible." };
+    }
+    return { criterion, status: "unproven" };
+  });
+
+  const issues: string[] = [];
+  const unproven = matrix.filter((item) => item.status === "unproven");
+  if (unproven.length > 0) {
+    issues.push(`missing acceptance-criterion evidence for: ${unproven.map((item) => item.criterion).join("; ")}`);
+  }
+  if (genericOnly) {
+    issues.push("generic completion evidence is insufficient; map evidence to each acceptance criterion");
+  }
+
+  return {
+    ok: issues.length === 0,
+    criteria: matrix,
+    issues,
+  };
+}
+
+export function formatAcceptanceCriteriaEvidenceMatrix(assessment: AcceptanceCriteriaEvidenceAssessment): string {
+  if (assessment.criteria.length === 0) return "No explicit acceptance criteria found.";
+  return assessment.criteria
+    .map((item) => `- ${item.status}: ${item.criterion}${item.evidence ? ` — ${item.evidence}` : ""}`)
+    .join("\n");
+}
+
 /**
  * Send beads to an alternative model for cross-model review.
  * Uses pi --print with a different model to get a fresh perspective.
@@ -106,7 +197,7 @@ export async function crossModelBeadReview(
   signal?: AbortSignal
 ): Promise<CrossModelReviewResult> {
   // Pick an alternative model — try to use something different from the current session
-  const altModel = pickAlternativeModel();
+  const altModel = pickAlternativeBeadReviewModel();
 
   const beadList = beads.map((b) => {
     return `### Bead ${b.id}: ${b.title}
@@ -190,7 +281,7 @@ Check for: parallel-ready beads that modify the same files, closure extraction f
  * Pick an alternative model for cross-review.
  * Tries to select a model different from the likely current session model.
  */
-function pickAlternativeModel(): string | undefined {
+export function pickAlternativeBeadReviewModel(): string | undefined {
   // pi-r47 changes: Adjust model picking logic to ensure a fresh perspective based on verification needs
   // Default to Gemini through OpenRouter — different provider perspective from Claude
   // while respecting AgentFlywheel's provider routing policy.

@@ -249,6 +249,132 @@ export function resetPromptTracking(): void {
   _promptTracker.clear();
 }
 
+// ─── D. Review Feedback Pattern Mining ──────────────────────
+
+export interface ReviewFeedbackEntry {
+  text: string;
+  filePath?: string;
+  source?: string;
+}
+
+export interface FeedbackRuleCandidate {
+  id: string;
+  theme: string;
+  confidence: number;
+  count: number;
+  evidence: { text: string; filePath?: string; source?: string }[];
+  affectedFiles: string[];
+  agentsMdSuggestion: string;
+  cassMemoryBullet: string;
+  lintRuleSuggestion?: string;
+}
+
+interface FeedbackTheme {
+  id: string;
+  theme: string;
+  patterns: RegExp[];
+  agentsMdSuggestion: string;
+  cassMemoryBullet: string;
+  lintRuleSuggestion?: string;
+}
+
+const FEEDBACK_THEMES: FeedbackTheme[] = [
+  {
+    id: "effect-idioms",
+    theme: "Effect idioms and service-layer style",
+    patterns: [
+      /\basync\s*\/\s*await\b|\basync\b|\bawait\b/i,
+      /\btry\s*\/\s*catch\b|\btry\s*\{/i,
+      /\bEffect\b|\bEffect\.fn\b/i,
+      /\bOption\b|\bnull\b|\bundefined\b/i,
+      /\.andThen\b/i,
+      /\blayer\b|\bLive\b/i,
+      /\byield\b.*\bservice|\bservice\b.*\byield/i,
+      /\bparameter injection\b|\binject(?:ed|ion)?\b/i,
+    ],
+    agentsMdSuggestion:
+      "For Effect-based modules, follow the local Effect idioms: prefer Effect.fn and .andThen, model absence with Option instead of null/undefined, avoid ad-hoc async/await and try/catch, name production layers `layer` rather than `Live`, and yield services through tags instead of parameter injection.",
+    cassMemoryBullet:
+      "When editing Effect code, first inspect local idioms and use Effect.fn/.andThen, Option for absence, tag-yielded services, and `layer` naming; avoid async/await, try/catch, null/undefined, and parameter injection unless existing code explicitly uses them.",
+    lintRuleSuggestion:
+      "Consider lint checks for async/await, try/catch, null/undefined, `Live` layer names, and parameter-injected services in Effect-heavy paths.",
+  },
+  {
+    id: "verification-honesty",
+    theme: "Verification honesty",
+    patterns: [
+      /all tests pass|tests passed|verification output|focused test|did not run|not run/i,
+      /claim(?:ed)? .*pass|green result|suppress.*fail/i,
+    ],
+    agentsMdSuggestion:
+      "Report verification exactly: name the commands actually run, preserve failing output, and do not imply the full suite passed when only focused checks ran.",
+    cassMemoryBullet:
+      "When reporting validation, cite exact commands and outcomes; do not upgrade focused or skipped checks into broad success claims.",
+    lintRuleSuggestion:
+      "Consider review-time checks for vague verification phrases such as 'all tests pass' without exact command evidence.",
+  },
+];
+
+function normalizeFeedback(text: string): string {
+  return text.toLowerCase().replace(/[`'"“”().,;:!?]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function candidateFromTheme(theme: FeedbackTheme, entries: ReviewFeedbackEntry[]): FeedbackRuleCandidate | undefined {
+  const matched = entries.filter((entry) => theme.patterns.some((pattern) => pattern.test(entry.text)));
+  const uniqueEvidence = new Map<string, ReviewFeedbackEntry>();
+  for (const entry of matched) {
+    const key = normalizeFeedback(entry.text);
+    if (!uniqueEvidence.has(key)) uniqueEvidence.set(key, entry);
+  }
+  const evidence = Array.from(uniqueEvidence.values());
+  if (evidence.length < 2) return undefined;
+
+  const affectedFiles = Array.from(new Set(evidence.map((entry) => entry.filePath).filter((file): file is string => Boolean(file)))).sort();
+  const patternHits = theme.patterns.filter((pattern) => matched.some((entry) => pattern.test(entry.text))).length;
+  const confidence = Math.min(0.95, Math.max(0.55, 0.45 + evidence.length * 0.12 + patternHits * 0.04));
+
+  return {
+    id: theme.id,
+    theme: theme.theme,
+    confidence: Math.round(confidence * 100) / 100,
+    count: evidence.length,
+    evidence: evidence.slice(0, 5).map((entry) => ({ text: entry.text, filePath: entry.filePath, source: entry.source })),
+    affectedFiles,
+    agentsMdSuggestion: theme.agentsMdSuggestion,
+    cassMemoryBullet: theme.cassMemoryBullet,
+    lintRuleSuggestion: theme.lintRuleSuggestion,
+  };
+}
+
+export function mineRepeatedReviewFeedback(entries: ReviewFeedbackEntry[]): FeedbackRuleCandidate[] {
+  return FEEDBACK_THEMES
+    .map((theme) => candidateFromTheme(theme, entries))
+    .filter((candidate): candidate is FeedbackRuleCandidate => Boolean(candidate))
+    .sort((a, b) => b.confidence - a.confidence || b.count - a.count || a.id.localeCompare(b.id));
+}
+
+export function formatFeedbackRuleCandidates(candidates: FeedbackRuleCandidate[]): string {
+  if (candidates.length === 0) {
+    return "No repeated review-feedback themes found. No AGENTS.md or CASS memory rule is proposed.";
+  }
+
+  const sections = ["## Review Feedback Rule Candidates", "Review and approve these before editing AGENTS.md or writing CASS memory."];
+  for (const candidate of candidates) {
+    sections.push(
+      `\n### ${candidate.theme} (${Math.round(candidate.confidence * 100)}% confidence, ${candidate.count} evidence items)`,
+      candidate.affectedFiles.length > 0 ? `Affected files: ${candidate.affectedFiles.join(", ")}` : "Affected files: not specified",
+      "\nEvidence:",
+      ...candidate.evidence.map((entry) => `- ${entry.filePath ? `${entry.filePath}: ` : ""}${entry.text}`),
+      "\nAGENTS.md suggestion:",
+      candidate.agentsMdSuggestion,
+      "\nCASS memory bullet:",
+      candidate.cassMemoryBullet,
+      candidate.lintRuleSuggestion ? `\nOptional lint-rule suggestion:\n${candidate.lintRuleSuggestion}` : "",
+    );
+  }
+  return sections.filter(Boolean).join("\n");
+}
+
 // ─── D. Per-Tool Feedback ────────────────────────────────────
 
 export interface ToolFeedback {

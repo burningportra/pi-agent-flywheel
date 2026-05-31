@@ -8,7 +8,8 @@ import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
 import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
-import { assessVerificationEvidence } from "../bead-review.js";
+import { assessAcceptanceCriteriaEvidence, assessVerificationEvidence, formatAcceptanceCriteriaEvidenceMatrix } from "../bead-review.js";
+import { extractSourceResearchCard, isIntegrationHeavyBead } from "../plan-quality.js";
 
 import { FlywheelError } from "../errors.js";
 export function registerReviewTool(oc: OrchestratorContext) {
@@ -174,22 +175,28 @@ export function registerReviewTool(oc: OrchestratorContext) {
         throw new FlywheelError("BEAD_NOT_FOUND", `Bead ${params.beadId} not found. Use \`br list\` to see available beads.`);
       }
 
+      const reviewEvidenceText = [params.summary, params.feedback, params.revisionInstructions ?? ""].join("\n\n");
       const verificationContract = extractVerificationContract(bead.description ?? "");
-      if (params.verdict === "pass" && verificationContract) {
-        const evidenceText = [params.summary, params.feedback, params.revisionInstructions ?? ""].join("\n\n");
-        const evidenceAssessment = assessVerificationEvidence(verificationContract, evidenceText);
-        if (!evidenceAssessment.ok) {
+      if (params.verdict === "pass") {
+        const evidenceAssessment = verificationContract
+          ? assessVerificationEvidence(verificationContract, reviewEvidenceText)
+          : undefined;
+        const criteriaAssessment = assessAcceptanceCriteriaEvidence(bead.description ?? "", reviewEvidenceText);
+        if (evidenceAssessment?.ok === false || !criteriaAssessment.ok) {
           return {
             content: [{
               type: "text",
               text: `⚠️ Bead ${params.beadId} cannot pass review yet because the submitted evidence does not satisfy its verification contract.\n\n` +
-                `### Verification contract\n${verificationContract.body}\n\n` +
-                `### Evidence issues\n${evidenceAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` +
+                `### Command/check evidence\n${verificationContract ? verificationContract.body : "No explicit ### Verification: contract found."}\n\n` +
+                `${evidenceAssessment?.issues.length ? `Command/check issues:\n${evidenceAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` : ""}` +
+                `### Acceptance-criterion evidence\n${formatAcceptanceCriteriaEvidenceMatrix(criteriaAssessment)}\n\n` +
+                `${criteriaAssessment.issues.length ? `Criterion issues:\n${criteriaAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` : ""}` +
                 `Re-run or cite the exact required command/checks, or explain the manual proof fallback with the automation blocker. Then call \`orch_review\` again.`,
             }],
             details: {
               review: { beadId: params.beadId, passed: false },
               verificationEvidence: evidenceAssessment,
+              acceptanceCriteriaEvidence: criteriaAssessment,
             },
           };
         }
@@ -208,12 +215,23 @@ export function registerReviewTool(oc: OrchestratorContext) {
         };
       }
 
+      const sourceResearchRequired = isIntegrationHeavyBead(bead);
+      const sourceResearchCard = extractSourceResearchCard(reviewEvidenceText);
+      if (sourceResearchRequired && !sourceResearchCard && params.verdict === "pass") {
+        ctx.ui.notify(
+          `⚠️ Bead ${params.beadId} looks integration-heavy but review evidence did not include a Source Research Card.`,
+          "warning"
+        );
+      }
+
       // Record the bead result
       if (!oc.state.beadResults) oc.state.beadResults = {};
       oc.state.beadResults[params.beadId] = {
         beadId: params.beadId,
         status: params.verdict === "pass" ? "success" : "partial",
         summary: params.summary,
+        sourceResearchRequired,
+        sourceResearchCard,
       };
 
       // Store review verdict
@@ -229,6 +247,39 @@ export function registerReviewTool(oc: OrchestratorContext) {
       oc.persistState();
 
       if (params.verdict === "pass") {
+        try {
+          const { getReviewChangedFiles } = await import("../space-detector.js");
+          const { scanFakeSeamsInFiles, formatFakeSeamReport } = await import("../fake-seam-detector.js");
+          const changeSet = await getReviewChangedFiles(oc.pi, ctx.cwd, params.beadId, oc.state.workspaceChangeBaseline);
+          const fakeSeamFindings = scanFakeSeamsInFiles(ctx.cwd, changeSet.filesChanged);
+          if (fakeSeamFindings.length > 0) {
+            const overrideChoice = await ctx.ui.select(
+              `${formatFakeSeamReport(fakeSeamFindings)}\n\nBlock completion unless you explicitly approve these production fake/test seam references.`,
+              [
+                "🔄 Block completion and fix fake/test seams",
+                "✅ Override — references are intentional",
+              ]
+            );
+            if (!overrideChoice?.startsWith("✅")) {
+              oc.state.beadResults[params.beadId] = {
+                ...oc.state.beadResults[params.beadId],
+                status: "partial",
+                summary: `${params.summary}\n\nBlocked by production fake/test seam detector.`,
+              };
+              oc.persistState();
+              return {
+                content: [{
+                  type: "text",
+                  text: `${formatFakeSeamReport(fakeSeamFindings)}\n\nFix these production fake/test seams, then call \`orch_review\` again. If they are intentional production seams, explicitly choose the override when prompted.`,
+                }],
+                details: { review: { beadId: params.beadId, passed: false }, fakeSeamBlocked: true, findings: fakeSeamFindings },
+              };
+            }
+          }
+        } catch {
+          // Fake seam detection is best-effort; review flow continues if git/file inspection fails.
+        }
+
         // Update bead status to closed
         await updateBeadStatus(oc.pi, ctx.cwd, params.beadId, "closed");
         await syncBeads(oc.pi, ctx.cwd);
@@ -685,6 +736,22 @@ export function registerReviewTool(oc: OrchestratorContext) {
         oc.persistState();
 
         const review = { beadId: params.beadId, passed: false, feedback: params.feedback };
+        let handoffPath: string | undefined;
+        try {
+          const { shouldGenerateHandoff, writeHandoffArtifact } = await import("../handoff.js");
+          if (shouldGenerateHandoff({ event: "review_failure", state: oc.state, reviewFailureCount: oc.state.retryCount })) {
+            handoffPath = writeHandoffArtifact({
+              cwd: ctx.cwd,
+              state: oc.state,
+              reason: `review failed ${oc.state.retryCount} times for ${params.beadId}`,
+              blockers: [params.revisionInstructions ?? params.feedback],
+              nextSteps: [`Rework bead ${params.beadId}, then call orch_review again with exact verification evidence.`],
+              suggestedSkills: ["codebase-archaeology", "triage-issue", "tdd"],
+            });
+          }
+        } catch {
+          // Handoff generation is best-effort.
+        }
 
         if (oc.state.retryCount >= oc.state.maxRetries) {
           const cont = await ctx.ui.confirm(
@@ -758,9 +825,9 @@ export function registerReviewTool(oc: OrchestratorContext) {
           oc.persistState();
           return {
             content: [
-              { type: "text", text: "Orchestration stopped due to repeated failures." },
+              { type: "text", text: `Orchestration stopped due to repeated failures.${handoffPath ? `\n\nHandoff artifact: ${handoffPath}` : ""}` },
             ],
-            details: { review, stopped: true },
+            details: { review, stopped: true, handoffPath },
           };
         }
 
@@ -769,14 +836,26 @@ export function registerReviewTool(oc: OrchestratorContext) {
           "warning"
         );
 
+        let remediationPlanText = "";
+        try {
+          const { parseReviewFeedbackAnnotations, reviewFeedbackToMutationPlan, formatReviewFeedbackBeadPlan } = await import("../review-feedback.js");
+          const annotationInput = [params.feedback, params.revisionInstructions ?? ""].join("\n\n");
+          const annotations = parseReviewFeedbackAnnotations(annotationInput);
+          if (annotations.length > 0) {
+            remediationPlanText = `\n\n## Review Feedback Bead Plan\n\n${formatReviewFeedbackBeadPlan(reviewFeedbackToMutationPlan(annotations))}`;
+          }
+        } catch {
+          // Review-feedback conversion is advisory; normal revision flow continues if parsing degrades.
+        }
+
         return {
           content: [
             {
               type: "text",
-              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}\n\nSend these revision instructions to the responsible NTM pane (or launch a new NTM pane for this bead) rather than fixing inline, then call \`orch_review\` again to stay inside the review workflow.`, 
+              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}${remediationPlanText}${handoffPath ? `\n\nHandoff artifact: ${handoffPath}` : ""}\n\nSend these revision instructions to the responsible NTM pane (or launch a new NTM pane for this bead) rather than fixing inline, then call \`orch_review\` again to stay inside the review workflow.`, 
             },
           ],
-          details: { review, retryCount: oc.state.retryCount },
+          details: { review, retryCount: oc.state.retryCount, handoffPath },
         };
       }
     },

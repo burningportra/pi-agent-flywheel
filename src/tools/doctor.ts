@@ -22,6 +22,7 @@ export interface DoctorReport {
   cwd: string;
   overall: DoctorSeverity;
   checks: DoctorCheck[];
+  activeWorkLedger?: string;
   elapsedMs: number;
   timestamp: string;
 }
@@ -164,10 +165,34 @@ export async function runDoctorChecks(pi: ExtensionAPI, cwd: string): Promise<Do
     }),
   ]);
 
+  let activeWorkLedger: string | undefined;
+  try {
+    const [{ readBeads, readyBeads }, { buildWorkReconciliationReport, formatWorkReconciliationReport, readPiTodoFiles }, { detectSessionStage }] = await Promise.all([
+      import("../beads.js"),
+      import("../work-reconciliation.js"),
+      import("../session-state.js"),
+    ]);
+    const beads = await readBeads(pi, cwd);
+    const ready = await readyBeads(pi, cwd);
+    const checkpoint = readCheckpoint(cwd);
+    const stage = checkpoint ? detectSessionStage(checkpoint.envelope.state, beads) : undefined;
+    const report = buildWorkReconciliationReport({
+      beads,
+      readyBeads: ready,
+      todos: readPiTodoFiles(cwd),
+      state: checkpoint?.envelope.state,
+      stage,
+    });
+    activeWorkLedger = formatWorkReconciliationReport(report);
+  } catch {
+    activeWorkLedger = undefined;
+  }
+
   return {
     version: 1,
     cwd,
     checks,
+    ...(activeWorkLedger ? { activeWorkLedger } : {}),
     overall: overallSeverity(checks),
     elapsedMs: Date.now() - start,
     timestamp: new Date().toISOString(),
@@ -185,6 +210,9 @@ export function formatDoctorReport(report: DoctorReport): string {
   for (const check of report.checks) {
     lines.push(`${icon(check.severity)} **${check.name}** — ${check.message}${check.durationMs !== undefined ? ` (${check.durationMs}ms)` : ""}`);
     if (check.hint && check.severity !== "green") lines.push(`   → ${check.hint}`);
+  }
+  if (report.activeWorkLedger) {
+    lines.push("", report.activeWorkLedger);
   }
   return lines.join("\n");
 }

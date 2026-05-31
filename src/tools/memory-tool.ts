@@ -13,11 +13,12 @@ export function registerMemoryTool(oc: OrchestratorContext) {
       "Search and read CASS memory (learnings from prior orchestration runs). Use to recall past decisions, gotchas, and patterns.",
     promptSnippet: "Search CASS memory for learnings from prior orchestrations",
     parameters: Type.Object({
-      action: StringEnum(["stats", "search", "list", "context", "mark"] as const, {
+      action: StringEnum(["stats", "search", "list", "context", "mark", "mine_feedback"] as const, {
         description:
           "'stats' for summary, 'search' to find entries, 'list' to show all, " +
           "'context' to get task-relevant rules/anti-patterns, " +
-          "'mark' to give feedback on a rule (helpful/harmful)",
+          "'mark' to give feedback on a rule (helpful/harmful), " +
+          "'mine_feedback' to propose AGENTS.md/CASS rules from repeated review feedback",
       }),
       query: Type.Optional(
         Type.String({
@@ -133,6 +134,30 @@ export function registerMemoryTool(oc: OrchestratorContext) {
         return {
           content: [{ type: "text", text: `✅ Marked ${params.query} as ${verb}${reasonText}.` }],
           details: { bulletId: params.query, helpful, reason: params.reason },
+        };
+      }
+
+      // ── mine_feedback ──
+      if (params.action === "mine_feedback") {
+        if (!params.query) {
+          return {
+            content: [{ type: "text", text: "Error: 'query' parameter required — paste review feedback text to mine." }],
+            details: { error: true },
+          };
+        }
+        const { mineRepeatedReviewFeedback, formatFeedbackRuleCandidates } = await import("../feedback.js");
+        const entries = params.query
+          .split(/\n\s*\n+/)
+          .map((text) => text.trim())
+          .filter(Boolean)
+          .map((text) => {
+            const fileMatch = text.match(/\b(?:src|docs|test|tests)\/[^\s:]+/);
+            return { text, filePath: fileMatch?.[0], source: "memory-tool" };
+          });
+        const candidates = mineRepeatedReviewFeedback(entries);
+        return {
+          content: [{ type: "text", text: formatFeedbackRuleCandidates(candidates) }],
+          details: { candidates, approvalRequired: true, writesApplied: false },
         };
       }
 

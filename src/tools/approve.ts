@@ -1,12 +1,13 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { readFileSync } from "fs";
-import type { OrchestratorContext, Bead, OrchestratorState, VerificationContractIssue } from "../types.js";
+import type { OrchestratorContext, Bead, BvInsights, OrchestratorState, VerificationContractIssue } from "../types.js";
 import { freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, superpowersSpecRefinementPrompt, type BeadQualityAuditResult } from "../prompts.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
 import { sessionArtifactPath, findSessionArtifactPath } from "../session-artifacts.js";
 import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
-import { brExecJson, resilientExec } from "../cli-exec.js";
+import { brExec, brExecJson, resilientExec } from "../cli-exec.js";
+import { pickAlternativeBeadReviewModel } from "../bead-review.js";
 
 import { FlywheelError } from "../errors.js";
 import { checkPlanningToolOrdering } from "../workflows/runner.js";
@@ -138,6 +139,16 @@ export function formatDiffSummary(diff: DiffSummary): string {
 let _lastBeadSnapshotFull: BeadSnapshotFull | undefined;
 
 const MAX_POLISH_ROUNDS = 12;
+export const MIN_REFINEMENT_ROUNDS = 4;
+
+export function hasMetMinimumRefinementRounds(polishRound: number): boolean {
+  return polishRound >= MIN_REFINEMENT_ROUNDS - 1;
+}
+
+export function formatMinimumRoundProgress(polishRound: number): string {
+  const displayRound = Math.min(polishRound + 1, MIN_REFINEMENT_ROUNDS);
+  return `Round ${displayRound} of ${MIN_REFINEMENT_ROUNDS} minimum`;
+}
 
 interface ApprovalValidationInput {
   ok: boolean;
@@ -183,6 +194,80 @@ export function formatApprovalValidationWarning(validation: ApprovalValidationIn
     : "";
 
   return validationWarning + bvWarnings + shallowWarning + templateWarning + verificationWarning;
+}
+
+export function formatExecutionPlanSummary(rawPlan: string | null): string {
+  if (!rawPlan) return "";
+  try {
+    const parsed = JSON.parse(rawPlan) as {
+      plan?: {
+        tracks?: Array<{ items?: Array<{ id?: string }> }>;
+        summary?: { highest_impact?: string };
+        total_actionable?: number;
+      };
+    };
+    const tracks = parsed.plan?.tracks;
+    if (!Array.isArray(tracks) || tracks.length === 0) return "";
+    const itemCount = tracks.reduce((sum, track) => sum + (Array.isArray(track.items) ? track.items.length : 0), 0);
+    const highestImpact = parsed.plan?.summary?.highest_impact;
+    const actionable = typeof parsed.plan?.total_actionable === "number" ? parsed.plan.total_actionable : itemCount;
+    return `\n\n📊 Execution plan: ${tracks.length} parallel track${tracks.length !== 1 ? "s" : ""}, ${actionable} actionable bead${actionable !== 1 ? "s" : ""}${highestImpact ? ` (highest impact: ${highestImpact})` : ""}`;
+  } catch {
+    const compact = rawPlan.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 2).join(" ");
+    return compact ? `\n\n📊 Execution plan: ${compact.slice(0, 240)}${compact.length > 240 ? "..." : ""}` : "";
+  }
+}
+
+export function formatBeadsWorkflowQualityChecklist(validation: Pick<ApprovalValidationInput, "cycles">): string {
+  const cycleStatus = validation.cycles ? "⚠️" : "✅";
+  return [
+    "\n\n### beads-workflow Quality Checklist",
+    "Reference only — this does not block approval.",
+    "- Self-contained",
+    "- Clear scope",
+    "- Dependencies explicit",
+    "- Testable",
+    "- Includes tests",
+    "- Preserves features",
+    "- Not oversimplified",
+    `- No cycles ${cycleStatus}`,
+  ].join("\n");
+}
+
+export function graphHealthCycleCount(insights: BvInsights | null, openBeadIds: Set<string>): number {
+  return (insights?.Cycles ?? []).filter((cycle) => cycle.some((id) => openBeadIds.has(id))).length;
+}
+
+export function graphHealthOrphans(insights: BvInsights | null, openBeadIds: Set<string>): string[] {
+  return (insights?.Orphans ?? []).filter((id) => openBeadIds.has(id));
+}
+
+export function formatGraphHealthSummary(
+  insights: BvInsights | null,
+  beads: Pick<Bead, "id">[],
+  readyCount: number
+): string {
+  if (!insights) return "";
+  const openBeadIds = new Set(beads.map((b) => b.id));
+  const cycles = graphHealthCycleCount(insights, openBeadIds);
+  const orphans = graphHealthOrphans(insights, openBeadIds);
+  const bottlenecks = (insights.Bottlenecks ?? []).filter((b) => openBeadIds.has(b.ID));
+  const critical = [...bottlenecks].sort((a, b) => b.Value - a.Value)[0];
+  const lines = [
+    "\n\n### Graph Health",
+    `- Total beads: ${beads.length}`,
+    `- Ready now: ${readyCount}`,
+    `- Bottlenecks: ${bottlenecks.length}`,
+    `- Cycles: ${cycles === 0 ? "✅ none" : `⚠️ ${cycles} cycle${cycles !== 1 ? "s" : ""}`}`,
+    `- Orphans: ${orphans.length}`,
+  ];
+  if (orphans.length > 0) {
+    lines.push(`- Warning: ${orphans.length} beads have no dependency edges — verify they are intentionally standalone or add edges`);
+  }
+  if (critical) {
+    lines.push(`- Critical path bead: ${critical.ID} (highest betweenness); implement it first or split it before implementation if it is too broad`);
+  }
+  return lines.join("\n");
 }
 
 type PlanSnapshot = { fingerprint: string; lineCount: number; size: number; content: string };
@@ -288,9 +373,13 @@ export function registerApproveTool(oc: OrchestratorContext) {
     description:
       "Read beads created via br CLI, present them for user approval. Offers refinement passes (Phase 6) before execution. Call after the LLM has created beads with br create. [phase 5/6, prereq: flywheel_plan, next: flywheel_review]",
     promptSnippet: "Present beads for user approval before execution",
-    parameters: Type.Object({}),
+    parameters: Type.Object({
+      stagedPlan: Type.Optional(Type.Any({
+        description: "Structured staged bead mutation plan JSON to validate/apply before showing the approval menu",
+      })),
+    }),
 
-    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       emitToolDeprecationWarning(toolName, canonicalName("approve_beads"));
       if (!oc.state.selectedGoal) {
         throw new FlywheelError("NO_GOAL");
@@ -298,6 +387,57 @@ export function registerApproveTool(oc: OrchestratorContext) {
       const orderingRejection = checkPlanningToolOrdering("flywheel_approve_beads", oc.state);
       if (orderingRejection) {
         throw new FlywheelError("OUT_OF_ORDER_TOOL_CALL", orderingRejection.message);
+      }
+
+      if (params.stagedPlan !== undefined) {
+        const { executeBeadMutationPlan, readBeads: readExistingBeads } = await import("../beads.js");
+        const existingBeads = await readExistingBeads(oc.pi, ctx.cwd);
+        const mutationResult = await executeBeadMutationPlan(params.stagedPlan, {
+          existingBeads,
+          runner: {
+            run: async (args) => {
+              const result = await brExec(oc.pi, args, { cwd: ctx.cwd, timeout: 10000 });
+              if (result.ok) {
+                return {
+                  ok: true,
+                  stdout: result.value.stdout,
+                  stderr: result.value.stderr,
+                };
+              }
+              return {
+                ok: false,
+                stdout: result.error.stdout,
+                stderr: result.error.stderr || result.error.brError?.message,
+              };
+            },
+          },
+        });
+
+        if (!mutationResult.ok) {
+          const diagnostics = mutationResult.diagnostics
+            .map((diagnostic) => `- ${diagnostic.path}${diagnostic.beadRef ? ` (${diagnostic.beadRef})` : ""}: ${diagnostic.message}`)
+            .join("\n");
+          return {
+            content: [{
+              type: "text",
+              text:
+                `The staged bead mutation plan failed validation/apply. Fix the JSON plan and call \`agent_flywheel_approve_beads\` again with \`stagedPlan\`.\n\n` +
+                `${diagnostics || "- No diagnostic details returned."}`,
+            }],
+            details: {
+              approved: false,
+              stagedMutation: true,
+              status: mutationResult.status,
+              diagnostics: mutationResult.diagnostics,
+              createdBeads: mutationResult.createdBeads,
+              dependencyEdges: mutationResult.dependencyEdges,
+            },
+          };
+        }
+
+        await brExec(oc.pi, ["sync", "--flush-only"], { cwd: ctx.cwd, timeout: 10000 });
+        oc.setPhase("creating_beads", ctx);
+        oc.persistState();
       }
 
       // ─── Superpowers spec approval gate ─────────────────────────
@@ -672,13 +812,13 @@ export function registerApproveTool(oc: OrchestratorContext) {
         return {
           content: [{
             type: "text",
-            text: `**NEXT: Create beads from the approved plan using \`br create\` and \`br dep add\` in bash NOW. When all beads are created, call \`agent_flywheel_approve_beads\` again to re-enter the bead approval menu.**\n\nStay inside the AgentFlywheel workflow: approved plan → bead creation → bead approval → implementation.\n\nArtifact: \`${oc.state.planDocument}\`\n\n---\n\n${creationPrompt}\n\n---\n\n**After creating all beads:** call \`agent_flywheel_approve_beads\` to review and approve before implementation begins.`,
+            text: `**NEXT: Draft a structured staged bead mutation plan from the approved plan, then call \`agent_flywheel_approve_beads\` with \`stagedPlan\` to validate/apply it and enter the bead approval menu.**\n\nStay inside the AgentFlywheel workflow: approved plan → staged bead mutation plan → validation/application → bead approval → implementation.\n\nArtifact: \`${oc.state.planDocument}\`\n\n---\n\n${creationPrompt}\n\n---\n\n**After drafting the staged plan:** call \`agent_flywheel_approve_beads({ stagedPlan: <json> })\` to validate/apply before implementation begins.`,
           }],
           details: { approved: true, plan: true, creatingBeads: true, planDocument: oc.state.planDocument },
         };
       }
 
-      const { readBeads, readyBeads, extractArtifacts, validateBeads, syncBeads, updateBeadStatus, bvInsights, auditPlanToBeads } = await import("../beads.js");
+      const { readBeads, readyBeads, extractArtifacts, validateBeads, syncBeads, updateBeadStatus, bvInsights, bvPlan, auditPlanToBeads } = await import("../beads.js");
       const { beadRefinementPrompt } = await import("../prompts.js");
       const { simulateExecutionPaths, formatSimulationReport, beadsToSimulated } = await import("../plan-simulation.js");
 
@@ -689,7 +829,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
 
       if (beads.length === 0) {
         return {
-          content: [{ type: "text", text: "No open beads found. Stay inside the AgentFlywheel workflow: create beads with `br create` first, then call `agent_flywheel_approve_beads` to return to the menu." }],
+          content: [{ type: "text", text: "No open beads found. Stay inside the AgentFlywheel workflow: draft a structured staged bead mutation plan and call `agent_flywheel_approve_beads` with `stagedPlan` so it can validate/apply the plan and return to the menu." }],
           details: { approved: false },
         };
       }
@@ -716,10 +856,13 @@ export function registerApproveTool(oc: OrchestratorContext) {
         oc.state.polishRound++;
         _lastBeadSnapshot = currentSnapshot;
 
-        // Check convergence: 2 consecutive rounds with 0 changes
+        // Check convergence: 2 consecutive rounds with 0 changes, but never
+        // auto-converge before the configured minimum refinement depth.
         const pc = oc.state.polishChanges;
-        if (pc.length >= 2 && pc[pc.length - 1] === 0 && pc[pc.length - 2] === 0) {
+        if (hasMetMinimumRefinementRounds(oc.state.polishRound) && pc.length >= 2 && pc[pc.length - 1] === 0 && pc[pc.length - 2] === 0) {
           oc.state.polishConverged = true;
+        } else {
+          oc.state.polishConverged = false;
         }
       } else if (!_lastBeadSnapshot) {
         // First entry — take initial snapshot
@@ -800,9 +943,14 @@ export function registerApproveTool(oc: OrchestratorContext) {
       const verificationGateBlocked = approvalValidationBlocksStart(validation);
 
       const insights = await bvInsights(oc.pi, ctx.cwd);
+      const openBeadIdsForGraph = new Set(beads.map((b) => b.id));
+      const graphCycleCount = graphHealthCycleCount(insights, openBeadIdsForGraph);
+      const readyForGraphSummary = await readyBeads(oc.pi, ctx.cwd);
+      const graphHealthSummary = formatGraphHealthSummary(insights, beads, readyForGraphSummary.length);
       const bottleneckWarning = insights?.Bottlenecks?.length
         ? `\n\n⚠️ **Bottleneck beads:** ${insights.Bottlenecks.map((b) => b.ID).join(", ")} — high betweenness centrality means these block many downstream beads. Consider splitting them (Advanced → Fix graph issues) before implementing.`
         : "";
+      const executionPlanSummary = formatExecutionPlanSummary(await bvPlan(oc.pi, ctx.cwd));
 
       // ── Plan simulation ──
       let simulationWarning = "";
@@ -879,6 +1027,9 @@ export function registerApproveTool(oc: OrchestratorContext) {
       const qualitySummary = qualityPreview.passed
         ? `\n✅ ${beads.length}/${beads.length} beads pass quality checks • ${qualityPreview.summary.passedChecks}/${qualityPreview.summary.totalChecks} structural checks pass`
         : `\n⚠️ ${passingBeadCount}/${beads.length} beads fully pass • ${qualityPreview.summary.passedChecks}/${qualityPreview.summary.totalChecks} structural checks pass (${qualityPreview.summary.score}/100)${topQualityIssues ? ` • top issues: ${topQualityIssues}` : ""}`;
+      const beadsWorkflowChecklist = oc.state.polishRound === 0
+        ? formatBeadsWorkflowQualityChecklist(validation)
+        : "";
 
       const bottleneckIds = (validation.warnings ?? [])
         .filter((w) => w.includes("bottleneck"))
@@ -974,17 +1125,18 @@ export function registerApproveTool(oc: OrchestratorContext) {
       // ── Build UI options based on polish state ──
       const round = oc.state.polishRound;
       const maxReached = round >= MAX_POLISH_ROUNDS;
-      const converged = oc.state.polishConverged;
+      const minimumRoundsMet = hasMetMinimumRefinementRounds(round);
+      const converged = minimumRoundsMet && oc.state.polishConverged;
 
       // Round info header
       const changesInfo = oc.state.polishChanges.length > 0
         ? `\n📊 Polish history: ${oc.state.polishChanges.map((n, i) => `R${i + 1}: ${n} change${n !== 1 ? "s" : ""}`).join(", ")}`
         : "";
       const convergenceInfo = convergenceScore !== undefined
-        ? `\n📈 Convergence: ${(convergenceScore * 100).toFixed(0)}%${convergenceScore >= 0.90 ? " (diminishing returns)" : convergenceScore >= 0.75 ? " (ready to implement)" : ""}`
+        ? `\n📈 Convergence: ${(convergenceScore * 100).toFixed(0)}%${!minimumRoundsMet ? ` (${formatMinimumRoundProgress(round)})` : convergenceScore >= 0.90 ? " (diminishing returns)" : convergenceScore >= 0.75 ? " (ready to implement)" : ""}`
         : "";
       const roundHeader = round > 0
-        ? `\n🔄 Polish round ${round}${changesInfo}${convergenceInfo}${converged ? "\n✅ Steady-state reached (0 changes for 2 consecutive rounds)" : ""}`
+        ? `\n🔄 Polish round ${round} (${formatMinimumRoundProgress(round)})${changesInfo}${convergenceInfo}${converged ? "\n✅ Steady-state reached (0 changes for 2 consecutive rounds)" : ""}`
         : "";
 
       // Composite readiness score from all signals.
@@ -1026,13 +1178,21 @@ export function registerApproveTool(oc: OrchestratorContext) {
       }
 
       const foregoneReady = oc.state.foregoneScore?.recommendation === "foregone";
+      const crossModelReadinessReached = converged || foregoneReady;
+      const crossModelReviewModel = pickAlternativeBeadReviewModel() ?? "default";
+      const needsCrossModelReviewGate = !verificationGateBlocked && crossModelReadinessReached && oc.state.crossModelReviewDone !== true;
+      const crossModelReviewInfo = needsCrossModelReviewGate
+        ? `\n\n🔀 **Cross-model readiness gate:** Beads are not implementation-ready until at least one alternative model has reviewed them. Next review model: \`${crossModelReviewModel}\`.`
+        : crossModelReadinessReached && oc.state.crossModelReviewDone === true
+          ? `\n\n✅ Cross-model review already completed this session; readiness gate skipped.`
+          : "";
       const startLabel = foregoneReady
         ? "🎯 Launch — foregone conclusion reached!"
         : maxReached
         ? "▶️  Start implementing (max rounds reached)"
         : converged
           ? "▶️  Start implementing (steady-state reached ✅)"
-          : convergenceScore !== undefined && convergenceScore >= 0.75
+          : minimumRoundsMet && convergenceScore !== undefined && convergenceScore >= 0.75
           ? `▶️  Start implementing (convergence ${(convergenceScore * 100).toFixed(0)}% ✅)`
           : "▶️  Start implementing";
 
@@ -1050,6 +1210,12 @@ export function registerApproveTool(oc: OrchestratorContext) {
         } else {
           options.push(`🔍 Polish beads (round ${round + 1})`);
         }
+        options.push("⚙️ Advanced options...");
+        options.push("❌ Reject");
+      } else if (needsCrossModelReviewGate) {
+        options.push(`🔀 Cross-model review (${crossModelReviewModel})`);
+        options.push("⏭️  Continue without cross-model review");
+        options.push(`🔍 Refine further (round ${round + 1})`);
         options.push("⚙️ Advanced options...");
         options.push("❌ Reject");
       } else if (maxReached) {
@@ -1072,13 +1238,13 @@ export function registerApproveTool(oc: OrchestratorContext) {
 
       // ── Auto-approve when convergence criteria met ──
       const autoApproveEnabled = oc.state.autoApproveOnConvergence !== false; // default true
-      const meetsAutoApprove = autoApproveEnabled && round > 0 && (
+      const meetsAutoApprove = autoApproveEnabled && minimumRoundsMet && round > 0 && (
         converged || (convergenceScore !== undefined && convergenceScore >= 0.90)
       );
 
       let choice: string | undefined;
 
-      if (meetsAutoApprove && !verificationGateBlocked) {
+      if (meetsAutoApprove && !verificationGateBlocked && !needsCrossModelReviewGate) {
         // Re-run quality gate before auto-approve (qualityPreview may be stale)
         const autoQuality = await qualityCheckBeads(oc.pi, ctx.cwd);
 
@@ -1101,7 +1267,7 @@ export function registerApproveTool(oc: OrchestratorContext) {
         // If quality gate failed, fall through to manual select
       }
 
-      const approvalPrompt = `${beads.length} beads ready for: ${oc.state.selectedGoal}${roundHeader}${qualitySummary}${simulationWarning}${bottleneckWarning}${planAuditWarning}${foregoneInfo}\n\n${beadListText}${validationWarning}${convergenceTip}`;
+      const approvalPrompt = `${beads.length} beads ready for: ${oc.state.selectedGoal}${roundHeader}${qualitySummary}${beadsWorkflowChecklist}${simulationWarning}${graphHealthSummary}${executionPlanSummary}${bottleneckWarning}${planAuditWarning}${foregoneInfo}${crossModelReviewInfo}\n\n${beadListText}${validationWarning}${convergenceTip}`;
 
       const selectAdvancedChoice = async (): Promise<string | undefined> => {
         const advancedOptions: string[] = [
@@ -1521,6 +1687,9 @@ cd ${ctx.cwd}`;
           };
         }
 
+        oc.state.crossModelReviewDone = true;
+        oc.persistState();
+
         if (reviewResult.suggestions.length === 0) {
           const rawChoice = await ctx.ui.select(
             `**Cross-model review (${reviewResult.model}):** Parser found no structured suggestions.\n\n**Raw output:**\n${reviewResult.rawOutput.slice(0, 2000)}`,
@@ -1617,6 +1786,18 @@ cd ${ctx.cwd}`;
             },
           ],
           details: { approved: false, refining: true, verificationGateFailed: true, beadCount: beads.length },
+        };
+      }
+
+      if (graphCycleCount > 0) {
+        oc.setPhase("awaiting_bead_approval", ctx);
+        oc.persistState();
+        return {
+          content: [{
+            type: "text",
+            text: "⛔ Graph health gate failed: cycles detected. Run `br dep cycles` to identify cycles, then fix with `br dep remove` or split beads. Cycles must be resolved before implementation.",
+          }],
+          details: { approved: false, graphHealthFailed: true, cycles: graphCycleCount, beadCount: beads.length },
         };
       }
 

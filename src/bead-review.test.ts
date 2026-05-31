@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { assessVerificationEvidence, extractVerificationCommands, parseSuggestions } from "./bead-review.js";
+import {
+  assessAcceptanceCriteriaEvidence,
+  assessVerificationEvidence,
+  extractAcceptanceCriteria,
+  extractVerificationCommands,
+  formatAcceptanceCriteriaEvidenceMatrix,
+  parseSuggestions,
+  pickAlternativeBeadReviewModel,
+} from "./bead-review.js";
 import type { VerificationContract } from "./types.js";
 
 describe("parseSuggestions", () => {
@@ -81,6 +89,12 @@ Overall the dependency graph is correct.`;
   });
 });
 
+describe("pickAlternativeBeadReviewModel", () => {
+  it("uses an alternative Google model routed through OpenRouter", () => {
+    expect(pickAlternativeBeadReviewModel()).toBe("openrouter/google/gemini-2.5-pro");
+  });
+});
+
 describe("verification evidence assessment", () => {
   const contract: VerificationContract = {
     body: `- Commands/checks: run npm test -- src/bead-review.test.ts and npm run build.
@@ -135,5 +149,59 @@ describe("verification evidence assessment", () => {
 
     expect(result.ok).toBe(true);
     expect(result.manualFallbackUsed).toBe(true);
+  });
+});
+
+describe("acceptance criteria evidence assessment", () => {
+  const description = `Implement the feature.
+
+Acceptance criteria:
+- [ ] Add the GET /api/users endpoint with request validation.
+- [ ] Preserve existing authentication behavior.
+- [ ] Add tests for the happy path and invalid input.`;
+
+  it("extracts checkbox acceptance criteria from bead descriptions", () => {
+    expect(extractAcceptanceCriteria(description)).toEqual([
+      "Add the GET /api/users endpoint with request validation.",
+      "Preserve existing authentication behavior.",
+      "Add tests for the happy path and invalid input.",
+    ]);
+  });
+
+  it("marks each explicitly evidenced criterion as proven", () => {
+    const result = assessAcceptanceCriteriaEvidence(description, [
+      "Implemented GET /api/users endpoint with request validation.",
+      "Preserved existing authentication behavior by leaving the auth middleware path unchanged.",
+      "Added tests for the happy path and invalid input.",
+    ].join("\n"));
+
+    expect(result.ok).toBe(true);
+    expect(result.criteria.map((criterion) => criterion.status)).toEqual(["proven", "proven", "proven"]);
+  });
+
+  it("rejects generic completion claims when criteria are named", () => {
+    const result = assessAcceptanceCriteriaEvidence(description, "Implemented. All tests passed. Looks good.");
+
+    expect(result.ok).toBe(false);
+    expect(result.criteria.map((criterion) => criterion.status)).toEqual(["unproven", "unproven", "unproven"]);
+    expect(result.issues.join("\n")).toContain("generic completion evidence is insufficient");
+  });
+
+  it("allows documented manual fallback evidence as blocked rather than unproven", () => {
+    const result = assessAcceptanceCriteriaEvidence(
+      description,
+      "Manual proof fallback used: npm is unavailable, so the test command could not run. I manually inspected the endpoint, auth behavior, and test file."
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.criteria.map((criterion) => criterion.status)).toEqual(["blocked", "blocked", "blocked"]);
+  });
+
+  it("formats a per-criterion proof matrix", () => {
+    const result = assessAcceptanceCriteriaEvidence(description, "Implemented GET /api/users endpoint with request validation.");
+    const matrix = formatAcceptanceCriteriaEvidenceMatrix(result);
+
+    expect(matrix).toContain("proven: Add the GET /api/users endpoint");
+    expect(matrix).toContain("unproven: Preserve existing authentication behavior");
   });
 });

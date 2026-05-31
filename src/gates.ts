@@ -1,12 +1,32 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { OrchestratorContext, OrchestratorState } from "./types.js";
-import { polishInstructions, summaryInstructions, realityCheckInstructions, deSlopifyInstructions, landingChecklistInstructions, learningsExtractionPrompt } from "./prompts.js";
+import { existsSync, readFileSync } from "fs";
+import { polishInstructions, summaryInstructions, realityCheckInstructions, deSlopifyInstructions, landingChecklistInstructions, learningsExtractionPrompt, conformanceReviewInstructions, type ConformanceReviewArtifact } from "./prompts.js";
 import { reflectMemory } from "./memory.js";
 import { readBeads, extractArtifacts as extractBeadArtifacts } from "./beads.js";
 import { agentMailTaskPreamble } from "./agent-mail.js";
 import { detectUbs } from "./coordination.js";
 import { getDomainChecklist, formatDomainReviewItems } from "./domain-knowledge.js";
 import { DEFAULT_AUDIT_THRESHOLD, prepareComplianceAuditPlan } from "./compliance-audit.js";
+import { findSessionArtifactPath, sessionArtifactPath } from "./session-artifacts.js";
+
+export function readConformanceArtifacts(st: OrchestratorState, ctx: ExtensionContext): ConformanceReviewArtifact[] {
+  const artifactRefs: Array<{ kind: "spec" | "plan"; path?: string }> = [
+    { kind: "spec", path: st.planningWorkflow?.specArtifact },
+    { kind: "plan", path: st.planDocument },
+  ];
+
+  return artifactRefs.flatMap((artifact) => {
+    if (!artifact.path) return [];
+    const resolved = findSessionArtifactPath(ctx, artifact.path) ?? sessionArtifactPath(ctx, artifact.path);
+    if (!existsSync(resolved)) return [];
+    return [{
+      kind: artifact.kind,
+      path: artifact.path,
+      content: readFileSync(resolved, "utf8"),
+    }];
+  });
+}
 
 export async function runGuidedGates(
   oc: OrchestratorContext,
@@ -41,6 +61,7 @@ export async function runGuidedGates(
     { emoji: "🧪", label: "Test coverage", desc: "check unit tests + e2e, create tasks for gaps", auto: true },
     { emoji: "✏️", label: "De-slopify", desc: "remove AI writing patterns from docs", auto: true },
     { emoji: "🔒", label: "UBS scan", desc: "run ubs on changed files, fix all issues", auto: true },
+    { emoji: "📐", label: "Spec/plan conformance", desc: "compare implementation against approved artifacts", auto: true },
     { emoji: "🧾", label: "Beads compliance audit", desc: "verify closed beads are truly complete", auto: true },
     { emoji: "📦", label: "Commit", desc: "logical groupings with detailed messages", auto: false },
     { emoji: "🚀", label: "Ship it", desc: "commit, tag, release, deploy, monitor CI", auto: false },
@@ -242,6 +263,32 @@ export async function runGuidedGates(
         },
       ],
       details: { iterating: true, round, deSlopify: true },
+    };
+  }
+
+  if (chosen.startsWith("📐")) {
+    const conformanceArtifacts = readConformanceArtifacts(st, ctx);
+    if (conformanceArtifacts.length === 0) {
+      return {
+        content: [{
+          type: "text",
+          text: `## 📐 Spec/Plan Conformance — Round ${round}\n\nNo approved spec or plan artifact was found on this session state, so this gate is skipped gracefully. The conformance gate checks \`planningWorkflow.specArtifact\` and \`state.planDocument\` only; neither resolved to a readable artifact.${callbackHint}`,
+        }],
+        details: { iterating: true, round, conformance: true, skipped: true },
+      };
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: `${conformanceReviewInstructions(goal, conformanceArtifacts, activeBeads, beadResults, allArtifacts)}${regressionHint}`,
+      }],
+      details: {
+        iterating: true,
+        round,
+        conformance: true,
+        artifactPaths: conformanceArtifacts.map((artifact) => artifact.path),
+      },
     };
   }
 

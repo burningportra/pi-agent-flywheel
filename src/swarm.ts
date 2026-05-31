@@ -5,7 +5,7 @@
  * and SwarmTender monitoring integration.
  */
 
-import { swarmMarchingOrders, SWARM_STAGGER_DELAY_MS, SWARM_MODELS, withSubagentAutoExitInstruction } from "./prompts.js";
+import { swarmMarchingOrders, SWARM_STAGGER_DELAY_MS, SWARM_MODELS, withSubagentAutoExitInstruction, ntmOperatorTickLoopInstructions } from "./prompts.js";
 import {
   describePaneSpecs,
   formatNtmSpawnFlags,
@@ -94,7 +94,9 @@ export function formatNtmRobotManagementLoopInstructions(options: { label: strin
     "ntm --robot-wait=\"$session\" --wait-until=idle --timeout=10m || true",
     "```",
     "",
-    "Operator loop:",
+    ntmOperatorTickLoopInstructions(),
+    "",
+    "Operator loop details:",
     "1. Snapshot/resync with `ntm --robot-snapshot`; if the cursor expires, snapshot again before acting.",
     "2. Block on attention with `ntm --robot-attention --attention-session=\"$session\"` and inspect flagged panes, not just final summaries.",
     `3. Tail ${paneHint} with \`ntm --robot-tail=\"$session\" --lines=50\`; verify whether work is actually progressing with \`ntm --robot-is-working\` and recent commits/tests.`,
@@ -125,10 +127,13 @@ Workflow:
 1. Read AGENTS.md and follow all repo-local instructions.
 2. Check Agent Mail if available and reserve files listed in the bead before editing.
 3. Inspect the bead with \`br show <id>\` and keep changes within its ### Files scope.
-4. Implement the bead, run the bead's Verification commands, and do a fresh-eyes self-review.
-5. Commit only your bead changes with a message like \`bead <id>: <summary>\`.
-6. Mark the bead closed with \`br update <id> --status closed\` and \`br sync --flush-only\` after verification passes.
-7. Report the bead id, commit hash, changed files, verification output, and any blockers.
+4. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing: sources read, API contracts found, alternatives considered, selected approach, open unknowns, and evidence links/paths. Include that card in your review feedback.
+5. Implement the bead, run the bead's Verification commands, and do a fresh-eyes self-review.
+6. Commit only your bead changes with a message like \`bead <id>: <summary>\`.
+7. Mark the bead closed with \`br update <id> --status closed\` and \`br sync --flush-only\` after verification passes.
+8. Report the bead id, commit hash, changed files, verification output, Source Research Card if required, and any blockers.
+
+${ntmOperatorTickLoopInstructions()}
 
 If there is no safe ready bead, report that and exit. Do not wait idle in the pane.`);
 }

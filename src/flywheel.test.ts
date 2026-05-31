@@ -27,6 +27,7 @@ import {
   REFINEMENT_MODELS,
   pickRefinementModel,
   implementerInstructions,
+  realityCheckInstructions,
 } from "./prompts.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
 import type { Bead, BeadResult } from "./types.js";
@@ -113,6 +114,32 @@ describe("randomExplorationInstructions", () => {
   });
 });
 
+describe("realityCheckInstructions", () => {
+  it("includes the structured vision checklist, gap categories, statuses, and NO_BEAD rule", () => {
+    const bead: Bead = {
+      id: "pi-1",
+      title: "Build checkout",
+      description: "Implement checkout flow",
+      status: "open",
+      priority: 2,
+      type: "task",
+      labels: [],
+    };
+
+    const prompt = realityCheckInstructions("Build reliable checkout", [bead], []);
+
+    expect(prompt).toContain("| # | Goal | Source | Status | Evidence |");
+    for (const category of ["Vision", "Implementation", "Proof", "Performance", "Integration", "Design"]) {
+      expect(prompt).toContain(`${category}:`);
+    }
+    for (const status of ["WORKING", "PARTIAL", "STUB", "UNPROVEN", "NOT_STARTED", "REGRESSED", "NO_BEAD", "WRONG_APPROACH"]) {
+      expect(prompt).toContain(status);
+    }
+    expect(prompt).toContain("mark it NO_BEAD");
+    expect(prompt).toContain("highest-priority");
+  });
+});
+
 // ─── De-Slopify ─────────────────────────────────────────────
 describe("deSlopifyInstructions", () => {
   it("lists files to review", () => {
@@ -170,6 +197,19 @@ describe("swarmMarchingOrders", () => {
     const prompt = swarmMarchingOrders("/tmp");
     expect(prompt).not.toContain("Your assigned bead: ");
   });
+
+  it("includes the shared NTM tick loop and intervention scoring", () => {
+    const prompt = swarmMarchingOrders("/tmp");
+
+    for (const step of ["BASELINE", "ATTEND", "CLASSIFY", "SCORE", "ACT", "VERIFY", "STOP CHECK", "LOG"]) {
+      expect(prompt).toContain(step);
+    }
+    expect(prompt).toContain("ntm --robot-snapshot");
+    expect(prompt).toContain("sources");
+    expect(prompt).toContain("degraded_sources");
+    expect(prompt).toContain("Evidence × Impact × Reversibility / BlastRadius");
+    expect(prompt).toContain("Score >= 2.0");
+  });
 });
 
 describe("SWARM_STAGGER_DELAY_MS", () => {
@@ -197,6 +237,10 @@ describe("beadQualityScoringPrompt", () => {
 
 // ─── Bead Refinement ────────────────────────────────────────
 describe("beadRefinementPrompt", () => {
+  it("starts with the AGENTS.md reread preamble", () => {
+    expect(beadRefinementPrompt(0).startsWith("Reread AGENTS.md so it is still fresh in your mind.")).toBe(true);
+  });
+
   it("uses different primary mission headings for different rounds", () => {
     const round0 = beadRefinementPrompt(0);
     const round2 = beadRefinementPrompt(2);
@@ -226,6 +270,10 @@ describe("beadRefinementPrompt", () => {
 
 // ─── Fresh Context Refinement ───────────────────────────────
 describe("freshContextRefinementPrompt", () => {
+  it("starts with the AGENTS.md reread preamble", () => {
+    expect(freshContextRefinementPrompt("/tmp", "goal", 0).startsWith("Reread AGENTS.md so it is still fresh in your mind.")).toBe(true);
+  });
+
   it("includes round number and goal", () => {
     const prompt = freshContextRefinementPrompt("/tmp", "Build X", 2);
     expect(prompt).toContain("Round 3");
@@ -501,6 +549,9 @@ describe("pickRefinementModel", () => {
 });
 
 describe("beadCreationPrompt", () => {
+  const neverReferBack =
+    "It is critical that EVERYTHING from the markdown plan be embedded into the beads so that we never need to refer back to the markdown plan and we do not lose any important context or ideas or insights.";
+
   it("includes a template library section and shared template listing", () => {
     const prompt = beadCreationPrompt("Build feature X", "repo context", []);
     expect(prompt).toContain("## Template Library");
@@ -521,9 +572,19 @@ describe("beadCreationPrompt", () => {
     expect(prompt).toContain("Implement a new API endpoint for /api/users");
     expect(prompt).toContain("the final text is fully expanded");
   });
+
+  it("uses the beads-workflow never-refer-back framing", () => {
+    const prompt = beadCreationPrompt("Build feature X", "repo context", []);
+    expect(prompt).toContain(neverReferBack);
+    expect(prompt).toContain("never need to refer back to the markdown plan");
+    expect(prompt).toContain('DO NOT write beads that say things like "see the plan", "refer to plan", or "per approved plan"');
+  });
 });
 
 describe("planToBeadsPrompt", () => {
+  const neverReferBack =
+    "It is critical that EVERYTHING from the markdown plan be embedded into the beads so that we never need to refer back to the markdown plan and we do not lose any important context or ideas or insights.";
+
   const profile = {
     name: "test-repo",
     languages: ["TypeScript"],
@@ -549,6 +610,8 @@ describe("planToBeadsPrompt", () => {
     expect(prompt).toContain("Read the plan artifact");
     expect(prompt).toContain("Embed the relevant context");
     expect(prompt).toContain("Each bead must stand on its own");
+    expect(prompt).toContain(neverReferBack);
+    expect(prompt).toContain("The beads should be so detailed that we never need to consult back to the original markdown plan document");
   });
 
   it("forbids see-the-plan shorthand references", () => {
@@ -556,6 +619,7 @@ describe("planToBeadsPrompt", () => {
     expect(prompt).toContain('see the plan');
     expect(prompt).toContain('refer to plan');
     expect(prompt).toContain('per approved plan');
+    expect(prompt).toContain("no need to refer back to the markdown plan");
   });
 
   it("includes a template library section and shared template listing", () => {
@@ -577,6 +641,50 @@ describe("planToBeadsPrompt", () => {
     const prompt = planToBeadsPrompt("plans/feature-x.md", "Build feature X", profile as any);
     expect(prompt).toContain("Implement a new API endpoint for /api/users");
     expect(prompt).toContain("the final text is fully expanded with plan context");
+  });
+});
+
+describe("plan prompt grounding and validation", () => {
+  const profile = {
+    name: "test-repo",
+    languages: ["TypeScript"],
+    frameworks: ["Vitest"],
+    structure: "",
+    entrypoints: ["src/index.ts"],
+    recentCommits: [],
+    hasTests: true,
+    hasDocs: false,
+    hasCI: false,
+    todos: [],
+    keyFiles: {},
+  };
+
+  it("grounds plan generation in docs, grep/git evidence, and unproven performance claims", () => {
+    const prompt = planDocumentPrompt("Improve planning", profile as any);
+
+    expect(prompt).toContain("## Grounding");
+    expect(prompt).toContain("actual docs");
+    expect(prompt).toContain("grep");
+    expect(prompt).toContain("git history");
+    expect(prompt).toContain("bare performance numbers");
+    expect(prompt).toContain("unproven");
+  });
+
+  it("adds the 4-check validation loop to both refinement prompts while preserving NO_CHANGES", () => {
+    const standard = planRefinementPrompt("plans/foo.md", 2);
+    const fresh = freshPlanRefinementPrompt("## Plan\nDo work", "plans/foo.md", 2, "/tmp");
+
+    for (const prompt of [standard, fresh]) {
+      expect(prompt).toContain("## Required 4-Check Validation Loop");
+      expect(prompt).toContain("Self-containment check");
+      expect(prompt).toContain("Dependency-graph check");
+      expect(prompt).toContain("can you draw the DAG");
+      expect(prompt).toContain("Justification check");
+      expect(prompt).toContain("5 random implementation decisions");
+      expect(prompt).toContain("Steady-state check");
+      expect(prompt).toContain("large structural changes mean the plan is not done yet");
+      expect(prompt).toContain("NO_CHANGES");
+    }
   });
 });
 
@@ -622,6 +730,26 @@ describe("implementerInstructions", () => {
       "## Past Session Examples\n- prior run details"
     );
     expect(output.match(/## Past Session Examples/g)).toHaveLength(1);
+  });
+
+  it("injects a Source Research Card for integration-heavy beads", () => {
+    const bead = {
+      id: "test-1",
+      title: "Add Durable Object database adapter",
+      description: "Implement migration support for the Alchemy Durable Object database adapter.\n\n### Files:\n- src/adapter.ts",
+      status: "ready" as const,
+      deps: [],
+    };
+    const profile = {
+      languages: ["TypeScript"],
+      frameworks: ["vitest"],
+      testFramework: "vitest",
+    };
+    const output = implementerInstructions(bead as any, profile as any, []);
+    expect(output).toContain("Source Research Card Required");
+    expect(output).toContain("Sources read");
+    expect(output).toContain("API contracts found");
+    expect(output).toContain("Evidence links/paths");
   });
 });
 
