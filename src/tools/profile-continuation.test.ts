@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import { activeWorkflowContinuation, buildFoundationGaps } from "./profile.js";
 import { createInitialState, type OrchestratorState, type RepoProfile } from "../types.js";
@@ -30,43 +31,82 @@ function makeProfile(overrides: Partial<RepoProfile> = {}): RepoProfile {
 }
 
 describe("buildFoundationGaps", () => {
-  it("identifies the current missing-guidance seam from profile keyFiles", () => {
-    const gaps = buildFoundationGaps(makeProfile({ keyFiles: {} }));
+  it("suppresses the missing-guidance warning when the target repo has AGENTS.md", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "profile-guidance-"));
+    try {
+      writeFileSync(join(repoRoot, "AGENTS.md"), "# Agent guidance\n", "utf8");
 
-    expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+      const gaps = buildFoundationGaps(makeProfile({ keyFiles: {} }), repoRoot);
+
+      expect(gaps).not.toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
-  it("suppresses the AGENTS.md warning when the profile contains a root AGENTS.md key file", () => {
-    const gaps = buildFoundationGaps(makeProfile({ keyFiles: { "AGENTS.md": "guidance" } }));
+  it("keeps an actionable missing-guidance warning when the target repo has no guidance file", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "profile-guidance-"));
+    try {
+      const gaps = buildFoundationGaps(makeProfile({ keyFiles: { "AGENTS.md": "stale keyfile seam" } }), repoRoot);
 
-    expect(gaps).not.toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+      expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
-  it("does not treat nested or similarly named key files as root AGENTS.md guidance", () => {
-    const gaps = buildFoundationGaps(makeProfile({
-      keyFiles: {
-        "docs/AGENTS.md": "nested guidance",
-        "NOT_AGENTS.md": "not the root guidance file",
-      },
-    }));
+  it("uses the explicit target repo root instead of ambient nested cwd", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "profile-guidance-"));
+    const originalCwd = process.cwd();
+    try {
+      writeFileSync(join(repoRoot, "AGENTS.md"), "# Agent guidance\n", "utf8");
+      const nested = join(repoRoot, "packages", "app");
+      mkdirSync(nested, { recursive: true });
+      process.chdir(nested);
 
-    expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+      const gaps = buildFoundationGaps(makeProfile({ keyFiles: {} }), repoRoot);
+
+      expect(gaps).not.toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not count a directory named AGENTS.md as target repo guidance", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "profile-guidance-"));
+    try {
+      mkdirSync(join(repoRoot, "AGENTS.md"));
+
+      const gaps = buildFoundationGaps(makeProfile({ keyFiles: {} }), repoRoot);
+
+      expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it("preserves the other foundation warnings from the profile signals", () => {
-    const gaps = buildFoundationGaps(makeProfile({
-      hasTests: false,
-      hasCI: false,
-      ciPlatform: undefined,
-      recentCommits: [],
-      keyFiles: { "AGENTS.md": "guidance" },
-    }));
+    const repoRoot = mkdtempSync(join(tmpdir(), "profile-guidance-"));
+    try {
+      writeFileSync(join(repoRoot, "AGENTS.md"), "# Agent guidance\n", "utf8");
 
-    expect(gaps).toEqual([
-      "- No test framework detected. Consider adding tests before orchestrating.",
-      "- No CI/build tooling detected. Consider adding build scripts or CI.",
-      "- No git history detected. Consider initializing git for version control.",
-    ]);
+      const gaps = buildFoundationGaps(makeProfile({
+        hasTests: false,
+        hasCI: false,
+        ciPlatform: undefined,
+        recentCommits: [],
+        keyFiles: {},
+      }), repoRoot);
+
+      expect(gaps).toEqual([
+        "- No test framework detected. Consider adding tests before orchestrating.",
+        "- No CI/build tooling detected. Consider adding build scripts or CI.",
+        "- No git history detected. Consider initializing git for version control.",
+      ]);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });
 

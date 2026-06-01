@@ -3,6 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext, OrchestratorState } from "../types.js";
 import type { RepoProfile, ScanResult } from "../types.js";
 import { scanRepo } from "../scan.js";
+import { detectAgentGuidanceFiles } from "../profiler.js";
 import {
   formatRepoProfile,
   discoveryInstructions,
@@ -30,27 +31,17 @@ export interface ProfileContinuation {
 /**
  * Build the non-blocking foundation-gap warnings shown by the profile tool.
  *
- * Current seam for agent-guidance detection:
- * - registerProfileTool passes the pi tool context root (`ctx.cwd`) to scanRepo.
- * - scanRepo passes that same explicit cwd to profileRepo (including the ccc
- *   fallback path), so a guidance detector should receive `ctx.cwd`; it should
- *   not infer the target repository from ambient process.cwd().
- * - The existing AGENTS.md warning is derived only from RepoProfile.keyFiles,
- *   whose collector currently reads a fixed key-file list and does not include
- *   AGENTS.md or guidance aliases.
- *
- * Existing code/docs evidence only establishes root AGENTS.md as agent guidance.
- * collectBestPracticesGuides recognizes .claude/*.md as planning guides, not as
- * foundation-gap aliases, and no existing code recognizes CLAUDE.md,
- * .agents.md, or .github/copilot-instructions.md as equivalent guidance files.
- * A later detector should cover nested/wrong cwd by accepting the explicit repo
- * root, ignore directories named AGENTS.md, skip inaccessible candidates without
- * crashing, handle multiple candidates deterministically, and generalize warning
- * wording if aliases become supported.
+ * The profile tool passes the same explicit target repository root (`ctx.cwd`)
+ * used by scanRepo/profileRepo so guidance detection does not depend on ambient
+ * process.cwd(). When repoRoot is omitted by older tests/callers, fall back to
+ * the legacy keyFiles seam rather than doing cwd-based detection.
  */
-export function buildFoundationGaps(profile: RepoProfile): string[] {
+export function buildFoundationGaps(profile: RepoProfile, repoRoot?: string): string[] {
   const foundationGaps: string[] = [];
-  const hasAgentsMd = profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase() === "agents.md");
+  const guidance = repoRoot ? detectAgentGuidanceFiles(repoRoot) : undefined;
+  const hasAgentsMd = guidance
+    ? guidance.found
+    : profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase() === "agents.md");
   if (!hasAgentsMd) {
     foundationGaps.push("- No AGENTS.md found. Consider creating one for agent guidance.");
   }
@@ -224,7 +215,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
       }
 
       // Foundation validation — non-blocking warnings
-      const foundationGaps = buildFoundationGaps(profile);
+      const foundationGaps = buildFoundationGaps(profile, ctx.cwd);
       const foundationWarning = foundationGaps.length > 0
         ? `\n⚠️ Foundation gaps detected:\n${foundationGaps.join("\n")}\n`
         : "";
