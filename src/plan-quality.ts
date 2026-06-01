@@ -110,6 +110,33 @@ export function missingSourceResearchCardMessage(beadId: string): string {
     `Or, if this is a false positive, include this waiver line in review feedback:\n${SOURCE_RESEARCH_WAIVER_TEMPLATE}`;
 }
 
+export interface SourceResearchReviewDetails {
+  sourceResearchRequired: boolean;
+  sourceResearchCard?: string;
+  sourceResearchWaived?: string;
+  sourceResearchMissingMessage?: string;
+}
+
+export function assessSourceResearchEvidence(
+  bead: Pick<Bead, "title" | "description"> & { files?: string[] },
+  beadId: string,
+  reviewEvidenceText: string
+): SourceResearchReviewDetails {
+  const sourceResearchRequired = isIntegrationHeavyBead(bead);
+  const sourceResearchCard = extractSourceResearchCard(reviewEvidenceText);
+  const sourceResearchWaived = extractSourceResearchWaiver(reviewEvidenceText);
+  const sourceResearchMissingMessage = sourceResearchRequired && !sourceResearchCard && !sourceResearchWaived
+    ? missingSourceResearchCardMessage(beadId)
+    : undefined;
+
+  return {
+    sourceResearchRequired,
+    sourceResearchCard,
+    sourceResearchWaived,
+    sourceResearchMissingMessage,
+  };
+}
+
 // ─── Scoring Prompt ─────────────────────────────────────────
 
 /**

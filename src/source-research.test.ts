@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import {
+  assessSourceResearchEvidence,
   extractSourceResearchCard,
   extractSourceResearchWaiver,
   isIntegrationHeavyBead,
@@ -97,15 +98,39 @@ Source Research Card: not required because this only moves an internal adapter h
     expect(message).toContain("rerun review");
   });
 
-  it("review flow warns, stores Source Research Card evidence, and stores waivers", () => {
-    const reviewSource = readFileSync(new URL("./tools/review.ts", import.meta.url), "utf8");
-    expect(reviewSource).toContain("isIntegrationHeavyBead(bead)");
-    expect(reviewSource).toContain("extractSourceResearchCard(reviewEvidenceText)");
-    expect(reviewSource).toContain("extractSourceResearchWaiver(reviewEvidenceText)");
-    expect(reviewSource).toContain("missingSourceResearchCardMessage(params.beadId)");
-    expect(reviewSource).toContain("sourceResearchRequired");
-    expect(reviewSource).toContain("sourceResearchCard");
-    expect(reviewSource).toContain("sourceResearchWaived");
+  it("assesses review evidence with missing, submitted, waived, and false-positive states", () => {
+    const bead = {
+      title: "Add SDK auth middleware",
+      description: "Integrate the external package auth middleware.",
+    };
+
+    expect(assessSourceResearchEvidence(bead, "pi-src", "Implemented and tested.")).toMatchObject({
+      sourceResearchRequired: true,
+      sourceResearchCard: undefined,
+      sourceResearchWaived: undefined,
+    });
+    expect(assessSourceResearchEvidence(bead, "pi-src", "Implemented and tested.").sourceResearchMissingMessage).toContain("### Source Research Card");
+
+    const submitted = assessSourceResearchEvidence(bead, "pi-src", `### Source Research Card
+- Sources read: node_modules/sdk/README.md
+- API contracts found: createMiddleware(options)
+- Alternatives considered: local shim
+- Selected approach: package middleware
+- Open unknowns: none
+- Evidence links/paths: node_modules/sdk/README.md`);
+    expect(submitted.sourceResearchRequired).toBe(true);
+    expect(submitted.sourceResearchCard).toContain("Sources read");
+    expect(submitted.sourceResearchMissingMessage).toBeUndefined();
+
+    const waived = assessSourceResearchEvidence(bead, "pi-src", "Source Research Card: not required because this was an internal-only adapter rename.");
+    expect(waived.sourceResearchWaived).toContain("internal-only adapter rename");
+    expect(waived.sourceResearchMissingMessage).toBeUndefined();
+
+    const localOnly = assessSourceResearchEvidence({
+      title: "Refactor local adapter helper",
+      description: "Move the internal adapter class between in-repo modules; no external API or package contract is involved.",
+    }, "pi-local", "Implemented and tested.");
+    expect(localOnly).toEqual({ sourceResearchRequired: false });
   });
 
   it("implementation handoffs include a copy-paste card template and waiver", () => {

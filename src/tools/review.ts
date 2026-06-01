@@ -9,7 +9,7 @@ import { runGuidedGates } from "../gates.js";
 import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessAcceptanceCriteriaEvidence, assessVerificationEvidence, formatAcceptanceCriteriaEvidenceMatrix } from "../bead-review.js";
-import { extractSourceResearchCard, extractSourceResearchWaiver, isIntegrationHeavyBead, missingSourceResearchCardMessage } from "../plan-quality.js";
+import { assessSourceResearchEvidence } from "../plan-quality.js";
 
 import { FlywheelError } from "../errors.js";
 export function registerReviewTool(oc: OrchestratorContext) {
@@ -215,21 +215,16 @@ export function registerReviewTool(oc: OrchestratorContext) {
         };
       }
 
-      const sourceResearchRequired = isIntegrationHeavyBead(bead);
-      const sourceResearchCard = extractSourceResearchCard(reviewEvidenceText);
-      const sourceResearchWaived = extractSourceResearchWaiver(reviewEvidenceText);
-      const sourceResearchMissingMessage = sourceResearchRequired && !sourceResearchCard && !sourceResearchWaived
-        ? missingSourceResearchCardMessage(params.beadId)
-        : undefined;
-      if (sourceResearchMissingMessage && params.verdict === "pass") {
-        ctx.ui.notify(sourceResearchMissingMessage, "warning");
+      const sourceResearchDetails = assessSourceResearchEvidence(bead, params.beadId, reviewEvidenceText);
+      if (sourceResearchDetails.sourceResearchMissingMessage && params.verdict === "pass") {
+        ctx.ui.notify(sourceResearchDetails.sourceResearchMissingMessage, "warning");
       }
-      const sourceResearchDetails = {
+      const {
         sourceResearchRequired,
         sourceResearchCard,
         sourceResearchWaived,
         sourceResearchMissingMessage,
-      };
+      } = sourceResearchDetails;
 
       // Record the bead result
       if (!oc.state.beadResults) oc.state.beadResults = {};
