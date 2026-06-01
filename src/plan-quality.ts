@@ -98,7 +98,7 @@ export function extractSourceResearchWaiver(text: string): string | undefined {
 
   const card = extractSourceResearchCard(text);
   if (!card) return undefined;
-  const notRequired = card.match(/not required(?:\s+because|:)?\s+(.+)/i);
+  const notRequired = card.match(/not required(?:\s+because|:)?\s+(?:because\s+)?(.+)/i);
   return notRequired?.[1]?.trim()
     ? `Source Research Card: not required because ${notRequired[1].trim()}`
     : undefined;

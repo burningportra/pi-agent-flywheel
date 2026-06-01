@@ -79,6 +79,14 @@ Source Research Card: not required because this only moves an internal adapter h
     expect(waiver).toContain("not required because this only moves an internal adapter helper");
   });
 
+  it("extracts a structured Source Research Card not-required rationale without duplicating because", () => {
+    const waiver = extractSourceResearchWaiver(`### Source Research Card
+- Not required: because this bead only renames an internal adapter.
+- Evidence links/paths: src/local-adapter.ts`);
+
+    expect(waiver).toBe("Source Research Card: not required because this bead only renames an internal adapter.");
+  });
+
   it("formats missing-card guidance with a resolvable card and waiver path", () => {
     const message = missingSourceResearchCardMessage("topstepx-t1aba");
 
