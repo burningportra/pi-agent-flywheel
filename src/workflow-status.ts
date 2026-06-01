@@ -58,18 +58,17 @@ export function buildWorkflowStatus(
   const detectedStage = detectSessionStage(state, beads);
   const stage = hydrateInferredStagePrompts(state, beads, detectedStage);
   const orderedBeads = orderBeadsForStatus(beads, state.activeBeadIds);
-  const currentIds = new Set<string>();
-
-  if (stage.currentBeadId) currentIds.add(stage.currentBeadId);
-  for (const bead of orderedBeads) {
-    if (bead.status === "in_progress") currentIds.add(bead.id);
-  }
+  const currentIds = resolveCurrentBeadIds(stage.currentBeadId, orderedBeads);
 
   const current = orderedBeads
     .filter((bead) => currentIds.has(bead.id))
     .map(toStatusBead);
 
-  if (stage.currentBeadId && !current.some((bead) => bead.id === stage.currentBeadId)) {
+  if (
+    stage.currentBeadId &&
+    !orderedBeads.some((bead) => bead.id === stage.currentBeadId) &&
+    !current.some((bead) => bead.id === stage.currentBeadId)
+  ) {
     current.push({
       id: stage.currentBeadId,
       title: null,
@@ -83,7 +82,7 @@ export function buildWorkflowStatus(
   return {
     contract_version: WORKFLOW_STATUS_CONTRACT_VERSION,
     phase: stage.phase,
-    selected_goal: stage.goal ?? null,
+    selected_goal: selectedGoalForStatus(state.selectedGoal),
     approval_state: approvalStateForPhase(stage.phase),
     beads: {
       total: orderedBeads.length,
@@ -118,6 +117,28 @@ function hydrateInferredStagePrompts(
     confidence: detectedStage.confidence,
     inferredFrom: detectedStage.inferredFrom,
   };
+}
+
+function selectedGoalForStatus(selectedGoal: string | undefined): string | null {
+  const trimmed = selectedGoal?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function resolveCurrentBeadIds(currentBeadId: string | undefined, beads: readonly Bead[]): Set<string> {
+  const currentIds = new Set<string>();
+
+  for (const bead of beads) {
+    if (bead.status === "in_progress") currentIds.add(bead.id);
+  }
+
+  if (!currentBeadId) return currentIds;
+
+  const liveCurrent = beads.find((bead) => bead.id === currentBeadId);
+  if (!liveCurrent || liveCurrent.status === "open" || liveCurrent.status === "in_progress") {
+    currentIds.add(currentBeadId);
+  }
+
+  return currentIds;
 }
 
 function approvalStateForPhase(phase: OrchestratorPhase): WorkflowApprovalState {

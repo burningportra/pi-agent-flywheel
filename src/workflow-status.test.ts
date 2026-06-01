@@ -68,6 +68,14 @@ describe("buildWorkflowStatus", () => {
     expect(status.beads.closed).toBe(1);
   });
 
+  it("keeps the full selected goal in the status contract", () => {
+    const selectedGoal = "## Goal\nShip workflow status\n\n## Notes\nKeep the full persisted goal.";
+    const status = buildWorkflowStatus(makeState({ phase: "planning", selectedGoal }), []);
+
+    expect(status.selected_goal).toBe(selectedGoal);
+    expect(status.resume_prompt).toContain("Ship workflow status");
+  });
+
   it("reports in-progress beads as current and excludes them from pending", () => {
     const status = buildWorkflowStatus(
       makeState({ phase: "idle" }),
@@ -104,6 +112,16 @@ describe("buildWorkflowStatus", () => {
         updated_at: null,
       },
     ]);
+  });
+
+  it("does not report a closed stale currentBeadId as current", () => {
+    const status = buildWorkflowStatus(
+      makeState({ phase: "implementing", currentBeadId: "pi-done" }),
+      [makeBead("pi-done", "closed"), makeBead("pi-next", "open")]
+    );
+
+    expect(status.beads.current).toEqual([]);
+    expect(status.beads.pending.map((bead) => bead.id)).toEqual(["pi-next"]);
   });
 
   it("represents awaiting plan approval without beads", () => {
