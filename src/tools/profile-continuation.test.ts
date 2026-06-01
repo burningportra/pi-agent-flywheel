@@ -36,10 +36,21 @@ describe("buildFoundationGaps", () => {
     expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
   });
 
-  it("suppresses the AGENTS.md warning when the profile contains an agents key file", () => {
+  it("suppresses the AGENTS.md warning when the profile contains a root AGENTS.md key file", () => {
     const gaps = buildFoundationGaps(makeProfile({ keyFiles: { "AGENTS.md": "guidance" } }));
 
     expect(gaps).not.toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+  });
+
+  it("does not treat nested or similarly named key files as root AGENTS.md guidance", () => {
+    const gaps = buildFoundationGaps(makeProfile({
+      keyFiles: {
+        "docs/AGENTS.md": "nested guidance",
+        "NOT_AGENTS.md": "not the root guidance file",
+      },
+    }));
+
+    expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
   });
 
   it("preserves the other foundation warnings from the profile signals", () => {

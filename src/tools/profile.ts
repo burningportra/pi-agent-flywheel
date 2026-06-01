@@ -50,7 +50,7 @@ export interface ProfileContinuation {
  */
 export function buildFoundationGaps(profile: RepoProfile): string[] {
   const foundationGaps: string[] = [];
-  const hasAgentsMd = profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase().includes("agents.md"));
+  const hasAgentsMd = profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase() === "agents.md");
   if (!hasAgentsMd) {
     foundationGaps.push("- No AGENTS.md found. Consider creating one for agent guidance.");
   }
