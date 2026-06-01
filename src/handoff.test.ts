@@ -74,14 +74,14 @@ describe("handoff artifacts", () => {
     expect(readFileSync(path, "utf8")).toContain("# AgentFlywheel Handoff");
   });
 
-  it("review and stop/status flows report handoff paths", () => {
+  it("review and stop flows report handoff paths while status stays read-only", () => {
     const reviewSource = readFileSync(new URL("./tools/review.ts", import.meta.url), "utf8");
     expect(reviewSource).toContain("shouldGenerateHandoff({ event: \"review_failure\"");
     expect(reviewSource).toContain("handoffPath");
 
     const commandsSource = readFileSync(new URL("./commands.ts", import.meta.url), "utf8");
     expect(commandsSource).toContain("shouldGenerateHandoff({ event: \"stop\"");
-    expect(commandsSource).toContain("shouldGenerateHandoff({ event: \"status_request\"");
     expect(commandsSource).toContain("Handoff artifact");
+    expect(commandsSource).not.toContain("shouldGenerateHandoff({ event: \"status_request\"");
   });
 });

@@ -5,6 +5,7 @@ import { join, basename } from 'path';
 import { brExec, resilientExec } from './cli-exec.js';
 import { prepareComplianceAuditPlan, type ComplianceAuditMode, type ComplianceRemediationPolicy } from './compliance-audit.js';
 import { emitSlashDeprecationWarning } from './tools/shared.js';
+import { buildWorkflowStatus, type WorkflowStatusOutput } from './workflow-status.js';
 
 /**
  * Format staleness info for open beads, showing when they were created.
@@ -70,6 +71,48 @@ function formatAge(timestamp?: string): string {
   if (ageDays < 30) return `${Math.floor(ageDays / 7)}w`;
   if (ageDays < 365) return `${Math.floor(ageDays / 30)}mo`;
   return `${Math.floor(ageDays / 365)}y`;
+}
+
+function statusCommandWantsJson(args: string | undefined): boolean {
+  return (args ?? "").split(/\s+/).some((part) => part === "--json");
+}
+
+function formatWorkflowStatusForSlash(status: WorkflowStatusOutput, warnings: string[] = []): string {
+  const currentBeads = formatStatusBeadSummary(status.beads.current);
+  const pendingBeads = status.beads.pending.length === 0
+    ? "None"
+    : `${status.beads.pending.length} pending: ${formatStatusBeadSummary(status.beads.pending)}`;
+  const goalLine = status.selected_goal ? [`- Goal: ${status.selected_goal}`] : [];
+  const warningLines = warnings.length > 0
+    ? ["", "### Warnings", ...warnings.map((warning) => `- ${warning}`)]
+    : [];
+
+  return [
+    "## Flywheel Status",
+    `- Phase: ${status.phase}`,
+    ...goalLine,
+    `- Current beads: ${currentBeads}`,
+    `- Pending beads: ${pendingBeads}`,
+    `- Bead totals: ${status.beads.total} total, ${status.beads.open} open, ${status.beads.in_progress} in progress, ${status.beads.closed} closed, ${status.beads.deferred} deferred`,
+    `- Confidence: ${status.confidence}`,
+    `- Next action: ${status.next_action}`,
+    `- Resume prompt: ${status.resume_prompt}`,
+    ...warningLines,
+  ].join("\n");
+}
+
+function formatStatusBeadSummary(beads: WorkflowStatusOutput["beads"]["current"]): string {
+  if (beads.length === 0) return "None";
+  const shown = beads.slice(0, 5).map((bead) => {
+    const title = bead.title ? ` — ${bead.title}` : "";
+    return `${bead.id}${title} (${bead.status})`;
+  });
+  const remaining = beads.length - shown.length;
+  return remaining > 0 ? `${shown.join(", ")} (+${remaining} more)` : shown.join(", ");
+}
+
+function formatStatusError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // ─── Saved plan discovery ──────────────────────────────────────────────────
@@ -264,21 +307,51 @@ export function registerCommands(oc: OrchestratorContext) {
   const __originalRegisterCommand = oc.pi.registerCommand.bind(oc.pi);
   oc.pi.registerCommand = ((name: string, opts: any) => {
     const opts2 = (() => {
-      if (!opts || typeof opts.run !== 'function') return opts;
-      const __originalRun = opts.run;
-      return {
-        ...opts,
-        run: async function (this: any, ctx: any) {
-          emitSlashDeprecationWarning(name);
-          return __originalRun.call(this, ctx);
-        },
-      };
+      if (!opts) return opts;
+      if (typeof opts.handler === 'function') {
+        const __originalHandler = opts.handler;
+        return {
+          ...opts,
+          handler: async function (this: any, args: string, ctx: any) {
+            emitSlashDeprecationWarning(name);
+            return __originalHandler.call(this, args, ctx);
+          },
+        };
+      }
+      if (typeof opts.run === 'function') {
+        const __originalRun = opts.run;
+        return {
+          ...opts,
+          run: async function (this: any, ctx: any) {
+            emitSlashDeprecationWarning(name);
+            return __originalRun.call(this, ctx);
+          },
+        };
+      }
+      return opts;
     })();
     return __originalRegisterCommand(name, opts2);
   }) as typeof oc.pi.registerCommand;
 
 
   const { pi } = oc;
+
+  const workflowStatusHandler = async (args: string, ctx: any) => {
+    const warnings: string[] = [];
+    let beads: Bead[] = [];
+    try {
+      const { readBeads } = await import("./beads.js");
+      beads = await readBeads(pi, ctx.cwd);
+    } catch (error) {
+      warnings.push(`Could not read beads: ${formatStatusError(error)}`);
+    }
+
+    const status = buildWorkflowStatus(oc.state, beads);
+    const message = statusCommandWantsJson(args)
+      ? JSON.stringify(status, null, 2)
+      : formatWorkflowStatusForSlash(status, warnings);
+    ctx.ui.notify(message, warnings.length > 0 ? "warning" : "info");
+  };
 
   const startHandler = async (args: string, ctx: any) => {
 
@@ -915,36 +988,8 @@ export function registerCommands(oc: OrchestratorContext) {
 
   // ─── Command: /orchestrate-status ────────────────────────────
   pi.registerCommand("orchestrate-status", {
-    description: "Show orchestration status and history",
-    handler: async (_args, ctx) => {
-      // Show feedback history stats if available
-      try {
-        const { loadAllFeedback, computeFeedbackStats, formatFeedbackStats } = await import("./feedback.js");
-        const feedbacks = loadAllFeedback(ctx.cwd);
-        if (feedbacks.length > 0) {
-          const stats = computeFeedbackStats(feedbacks);
-          ctx.ui.notify(formatFeedbackStats(stats), "info");
-        }
-      } catch { /* best-effort */ }
-
-      if (!oc.orchestratorActive && oc.state.phase === "idle") {
-        ctx.ui.notify("No orchestration session active.", "info");
-        return;
-      }
-      try {
-        const { shouldGenerateHandoff, writeHandoffArtifact } = await import("./handoff.js");
-        if (shouldGenerateHandoff({ event: "status_request", state: oc.state })) {
-          const handoffPath = writeHandoffArtifact({
-            cwd: ctx.cwd,
-            state: oc.state,
-            reason: "status requested while active work exists",
-            nextSteps: ["Review the current widget/status, inspect the active bead, and continue or stop with the handoff path above."],
-          });
-          ctx.ui.notify(`🧾 Current handoff artifact: ${handoffPath}`, "info");
-        }
-      } catch { /* best-effort */ }
-      oc.updateWidget(ctx);
-    },
+    description: "Legacy alias of /flywheel-status",
+    handler: workflowStatusHandler,
   });
 
   // ─── Command: /memory ──────────────────────────────────────────
@@ -2316,35 +2361,13 @@ ${description}
   });
 
   pi.registerCommand("agent-flywheel-status", {
-    description: "Show current AgentFlywheel status",
-    handler: async (_args, ctx) => {
-      try {
-        const { loadAllFeedback, computeFeedbackStats, formatFeedbackStats } = await import("./feedback.js");
-        const feedbacks = loadAllFeedback(ctx.cwd);
-        if (feedbacks.length > 0) ctx.ui.notify(formatFeedbackStats(computeFeedbackStats(feedbacks)), "info");
-      } catch { /* best-effort */ }
-      if (!oc.orchestratorActive && oc.state.phase === "idle") {
-        ctx.ui.notify("No AgentFlywheel session active.", "info");
-        return;
-      }
-      oc.updateWidget(ctx);
-    },
+    description: "Legacy alias of /flywheel-status",
+    handler: workflowStatusHandler,
   });
 
   pi.registerCommand("flywheel-status", {
-    description: "Show current AgentFlywheel/orchestrator status",
-    handler: async (_args, ctx) => {
-      try {
-        const { loadAllFeedback, computeFeedbackStats, formatFeedbackStats } = await import("./feedback.js");
-        const feedbacks = loadAllFeedback(ctx.cwd);
-        if (feedbacks.length > 0) ctx.ui.notify(formatFeedbackStats(computeFeedbackStats(feedbacks)), "info");
-      } catch { /* best-effort */ }
-      if (!oc.orchestratorActive && oc.state.phase === "idle") {
-        ctx.ui.notify("No orchestration session active.", "info");
-        return;
-      }
-      oc.updateWidget(ctx);
-    },
+    description: "Show current flywheel workflow status; pass --json for the machine-readable contract",
+    handler: workflowStatusHandler,
   });
 
   pi.registerCommand("agent-flywheel-stop", {
