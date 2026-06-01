@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext, OrchestratorState } from "../types.js";
-import type { ScanResult } from "../types.js";
+import type { RepoProfile, ScanResult } from "../types.js";
 import { scanRepo } from "../scan.js";
 import {
   formatRepoProfile,
@@ -25,6 +25,45 @@ function weightedScore(idea: import("../types.js").CandidateIdea): number {
 export interface ProfileContinuation {
   text: string;
   details: Record<string, unknown>;
+}
+
+/**
+ * Build the non-blocking foundation-gap warnings shown by the profile tool.
+ *
+ * Current seam for agent-guidance detection:
+ * - registerProfileTool passes the pi tool context root (`ctx.cwd`) to scanRepo.
+ * - scanRepo passes that same explicit cwd to profileRepo (including the ccc
+ *   fallback path), so a guidance detector should receive `ctx.cwd`; it should
+ *   not infer the target repository from ambient process.cwd().
+ * - The existing AGENTS.md warning is derived only from RepoProfile.keyFiles,
+ *   whose collector currently reads a fixed key-file list and does not include
+ *   AGENTS.md or guidance aliases.
+ *
+ * Existing code/docs evidence only establishes root AGENTS.md as agent guidance.
+ * collectBestPracticesGuides recognizes .claude/*.md as planning guides, not as
+ * foundation-gap aliases, and no existing code recognizes CLAUDE.md,
+ * .agents.md, or .github/copilot-instructions.md as equivalent guidance files.
+ * A later detector should cover nested/wrong cwd by accepting the explicit repo
+ * root, ignore directories named AGENTS.md, skip inaccessible candidates without
+ * crashing, handle multiple candidates deterministically, and generalize warning
+ * wording if aliases become supported.
+ */
+export function buildFoundationGaps(profile: RepoProfile): string[] {
+  const foundationGaps: string[] = [];
+  const hasAgentsMd = profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase().includes("agents.md"));
+  if (!hasAgentsMd) {
+    foundationGaps.push("- No AGENTS.md found. Consider creating one for agent guidance.");
+  }
+  if (!profile.hasTests) {
+    foundationGaps.push("- No test framework detected. Consider adding tests before orchestrating.");
+  }
+  if (!profile.hasCI && !profile.ciPlatform) {
+    foundationGaps.push("- No CI/build tooling detected. Consider adding build scripts or CI.");
+  }
+  if (profile.recentCommits.length === 0) {
+    foundationGaps.push("- No git history detected. Consider initializing git for version control.");
+  }
+  return foundationGaps;
 }
 
 /**
@@ -185,20 +224,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
       }
 
       // Foundation validation — non-blocking warnings
-      const foundationGaps: string[] = [];
-      const hasAgentsMd = profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase().includes("agents.md"));
-      if (!hasAgentsMd) {
-        foundationGaps.push("- No AGENTS.md found. Consider creating one for agent guidance.");
-      }
-      if (!profile.hasTests) {
-        foundationGaps.push("- No test framework detected. Consider adding tests before orchestrating.");
-      }
-      if (!profile.hasCI && !profile.ciPlatform) {
-        foundationGaps.push("- No CI/build tooling detected. Consider adding build scripts or CI.");
-      }
-      if (profile.recentCommits.length === 0) {
-        foundationGaps.push("- No git history detected. Consider initializing git for version control.");
-      }
+      const foundationGaps = buildFoundationGaps(profile);
       const foundationWarning = foundationGaps.length > 0
         ? `\n⚠️ Foundation gaps detected:\n${foundationGaps.join("\n")}\n`
         : "";

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { activeWorkflowContinuation } from "./profile.js";
-import { createInitialState, type OrchestratorState } from "../types.js";
+import { activeWorkflowContinuation, buildFoundationGaps } from "./profile.js";
+import { createInitialState, type OrchestratorState, type RepoProfile } from "../types.js";
 import {
   initSuperpowersWorkflow,
   SUPERPOWERS_ADAPTER_ID,
@@ -11,6 +11,53 @@ import {
 function makeState(overrides: Partial<OrchestratorState>): OrchestratorState {
   return { ...createInitialState(), ...overrides };
 }
+
+function makeProfile(overrides: Partial<RepoProfile> = {}): RepoProfile {
+  return {
+    name: "repo",
+    languages: ["TypeScript"],
+    frameworks: [],
+    structure: "src/index.ts",
+    entrypoints: [],
+    recentCommits: [{ hash: "abc1234", message: "init", date: "2026-06-01", author: "dev" }],
+    hasTests: true,
+    hasDocs: true,
+    hasCI: true,
+    todos: [],
+    keyFiles: {},
+    ...overrides,
+  };
+}
+
+describe("buildFoundationGaps", () => {
+  it("identifies the current missing-guidance seam from profile keyFiles", () => {
+    const gaps = buildFoundationGaps(makeProfile({ keyFiles: {} }));
+
+    expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+  });
+
+  it("suppresses the AGENTS.md warning when the profile contains an agents key file", () => {
+    const gaps = buildFoundationGaps(makeProfile({ keyFiles: { "AGENTS.md": "guidance" } }));
+
+    expect(gaps).not.toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+  });
+
+  it("preserves the other foundation warnings from the profile signals", () => {
+    const gaps = buildFoundationGaps(makeProfile({
+      hasTests: false,
+      hasCI: false,
+      ciPlatform: undefined,
+      recentCommits: [],
+      keyFiles: { "AGENTS.md": "guidance" },
+    }));
+
+    expect(gaps).toEqual([
+      "- No test framework detected. Consider adding tests before orchestrating.",
+      "- No CI/build tooling detected. Consider adding build scripts or CI.",
+      "- No git history detected. Consider initializing git for version control.",
+    ]);
+  });
+});
 
 describe("activeWorkflowContinuation", () => {
   it("keeps completed discovery from reopening the profile/discovery menu", () => {
