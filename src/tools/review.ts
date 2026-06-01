@@ -9,7 +9,7 @@ import { runGuidedGates } from "../gates.js";
 import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessAcceptanceCriteriaEvidence, assessVerificationEvidence, formatAcceptanceCriteriaEvidenceMatrix } from "../bead-review.js";
-import { extractSourceResearchCard, isIntegrationHeavyBead } from "../plan-quality.js";
+import { extractSourceResearchCard, extractSourceResearchWaiver, isIntegrationHeavyBead, missingSourceResearchCardMessage } from "../plan-quality.js";
 
 import { FlywheelError } from "../errors.js";
 export function registerReviewTool(oc: OrchestratorContext) {
@@ -217,12 +217,19 @@ export function registerReviewTool(oc: OrchestratorContext) {
 
       const sourceResearchRequired = isIntegrationHeavyBead(bead);
       const sourceResearchCard = extractSourceResearchCard(reviewEvidenceText);
-      if (sourceResearchRequired && !sourceResearchCard && params.verdict === "pass") {
-        ctx.ui.notify(
-          `⚠️ Bead ${params.beadId} looks integration-heavy but review evidence did not include a Source Research Card.`,
-          "warning"
-        );
+      const sourceResearchWaived = extractSourceResearchWaiver(reviewEvidenceText);
+      const sourceResearchMissingMessage = sourceResearchRequired && !sourceResearchCard && !sourceResearchWaived
+        ? missingSourceResearchCardMessage(params.beadId)
+        : undefined;
+      if (sourceResearchMissingMessage && params.verdict === "pass") {
+        ctx.ui.notify(sourceResearchMissingMessage, "warning");
       }
+      const sourceResearchDetails = {
+        sourceResearchRequired,
+        sourceResearchCard,
+        sourceResearchWaived,
+        sourceResearchMissingMessage,
+      };
 
       // Record the bead result
       if (!oc.state.beadResults) oc.state.beadResults = {};
@@ -232,7 +239,9 @@ export function registerReviewTool(oc: OrchestratorContext) {
         summary: params.summary,
         sourceResearchRequired,
         sourceResearchCard,
-      };
+        sourceResearchWaived,
+        sourceResearchMissingMessage,
+      } as any;
 
       // Store review verdict
       if (!oc.state.beadReviews) oc.state.beadReviews = {};
@@ -485,7 +494,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId },
+            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, ...sourceResearchDetails },
           };
         }
 
@@ -647,7 +656,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}\n\n**NEXT: Launch a clear-context pi-subagent for bead ${nextBead.id}. Do not implement it inline.**\n\n${implementationHandoff}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id, launchMode: "pi-subagents" },
+            details: { review: { beadId: params.beadId, passed: true }, nextBead: nextBead.id, launchMode: "pi-subagents", ...sourceResearchDetails },
           };
         } else {
           // Multiple ready beads — use bvNext to order by impact, then hand off to pi-subagents.
@@ -717,7 +726,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n**NEXT: Launch clear-context pi-subagents for implementation. Do not implement these beads inline.**\n\n${implementationHandoff}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true, launchMode: "pi-subagents" },
+            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true, launchMode: "pi-subagents", ...sourceResearchDetails },
           };
         }
       } else {

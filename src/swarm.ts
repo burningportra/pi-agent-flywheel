@@ -14,6 +14,7 @@ import {
   type NtmPaneKind,
   type NtmPaneSpec,
 } from "./ntm-spawn.js";
+import { SOURCE_RESEARCH_CARD_TEMPLATE, SOURCE_RESEARCH_WAIVER_TEMPLATE } from "./plan-quality.js";
 import type { Bead } from "./types.js";
 import type { AgentStatus } from "./tender.js";
 
@@ -127,7 +128,11 @@ Workflow:
 1. Read AGENTS.md and follow all repo-local instructions.
 2. Check Agent Mail if available and reserve files listed in the bead before editing.
 3. Inspect the bead with \`br show <id>\` and keep changes within its ### Files scope.
-4. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing: sources read, API contracts found, alternatives considered, selected approach, open unknowns, and evidence links/paths. Include that card in your review feedback.
+4. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing and include it in your review feedback. Review will warn if this is missing; resolve false positives with the waiver line.
+
+${SOURCE_RESEARCH_CARD_TEMPLATE}
+
+False-positive waiver: ${SOURCE_RESEARCH_WAIVER_TEMPLATE}
 5. Implement the bead, run the bead's Verification commands, and do a fresh-eyes self-review.
 6. Commit only your bead changes with a message like \`bead <id>: <summary>\`.
 7. Mark the bead closed with \`br update <id> --status closed\` and \`br sync --flush-only\` after verification passes.

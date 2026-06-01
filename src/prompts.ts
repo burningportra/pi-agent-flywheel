@@ -1,7 +1,7 @@
 import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase, ImplementationWorkerCoordinationContractOptions } from "./types.js";
 import type { PlanToBeadAudit } from "./beads.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
-import { sourceResearchCardPrompt } from "./plan-quality.js";
+import { SOURCE_RESEARCH_CARD_TEMPLATE, SOURCE_RESEARCH_WAIVER_TEMPLATE, sourceResearchCardPrompt } from "./plan-quality.js";
 import { withSubagentAutoExitInstruction } from "./model-policy-patch.js";
 
 export {
@@ -1312,7 +1312,11 @@ ${beadTask}
 
 ### Bead-specific workflow
 1. Inspect the selected bead with \`br show <id>\` and keep changes within its \`### Files:\` scope unless a focused test file is necessary to prove the acceptance criteria.
-2. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing: sources read, API contracts found, alternatives considered, selected approach, open unknowns, and evidence links/paths. Include that card in your review feedback.
+2. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing and include it in your review feedback. Review will warn if this is missing; resolve false positives with the waiver line.
+
+${SOURCE_RESEARCH_CARD_TEMPLATE}
+
+False-positive waiver: ${SOURCE_RESEARCH_WAIVER_TEMPLATE}
 3. Implement with focused changes only, run the bead's Verification commands, and do a fresh-eyes self-review of the modified files.
 4. Commit only your bead changes with a message like \`bead <id>: <summary>\`.
 5. Mark the bead closed with \`br update <id> --status closed\` and \`br sync --flush-only\` after verification passes.

@@ -44,37 +44,70 @@ const INTEGRATION_HEAVY_KEYWORDS = [
 ] as const;
 
 const PACKAGE_NAME_PATTERN = /(?:^|[\s`"'(])(?:@[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+(?:-sdk|\.js|js-sdk|_sdk))(?:$|[\s`"',).])/i;
+const LOCAL_ONLY_INTEGRATION_PATTERN = /\b(?:local|internal|in-repo|repo-local|test-only)\s+(?:\w+\s+){0,3}(?:adapter|database|migration|migrations)\b/i;
 
-export function isIntegrationHeavyBead(bead: Pick<Bead, "title" | "description"> & { files?: string[] }): boolean {
-  const text = [
-    bead.title,
-    bead.description,
-    ...(bead.files ?? []),
-  ].join("\n").toLowerCase();
-
-  if (INTEGRATION_HEAVY_KEYWORDS.some((keyword) => text.includes(keyword))) return true;
-  return PACKAGE_NAME_PATTERN.test(text);
-}
-
-export function sourceResearchCardPrompt(bead: Pick<Bead, "title" | "description"> & { files?: string[] }): string {
-  if (!isIntegrationHeavyBead(bead)) return "";
-  return `## Source Research Card Required
-
-This bead looks integration-heavy. Before implementation, read the local source/docs for the relevant library or service and include a Source Research Card in your review feedback.
-
-### Source Research Card
+export const SOURCE_RESEARCH_CARD_TEMPLATE = `### Source Research Card
 - Sources read: local files, docs, vendored source, or package references consulted
 - API contracts found: concrete functions, types, protocols, lifecycle hooks, or configuration shapes
 - Alternatives considered: viable approaches and why they were not selected
 - Selected approach: the canonical API/path you will implement
 - Open unknowns: remaining uncertainty, risks, or assumptions
 - Evidence links/paths: exact repo paths, package files, docs paths, or URLs that support the choice`;
+
+export const SOURCE_RESEARCH_WAIVER_TEMPLATE = `Source Research Card: not required because <brief rationale showing this bead only touches local/internal code and no external API/library/service contract is involved>.`;
+
+export function isIntegrationHeavyBead(bead: Pick<Bead, "title" | "description"> & { files?: string[] }): boolean {
+  const text = [
+    bead.title,
+    bead.description,
+    ...(bead.files ?? []),
+  ].join("\n");
+  const lowerText = text.toLowerCase();
+
+  if (PACKAGE_NAME_PATTERN.test(text)) return true;
+  const externalSignalText = text.replace(/\b(?:no|not|without|does\s+not\s+touch\s+an?)\s+external\s+(?:api|package|service|library|contract)?/gi, "");
+  if (LOCAL_ONLY_INTEGRATION_PATTERN.test(text) && !/\b(?:external|third-party|sdk|service|api|rpc|durable object|effect sql|alchemy|auth middleware)\b/i.test(externalSignalText)) {
+    return false;
+  }
+  return INTEGRATION_HEAVY_KEYWORDS.some((keyword) => lowerText.includes(keyword));
+}
+
+export function sourceResearchCardPrompt(bead: Pick<Bead, "title" | "description"> & { files?: string[] }): string {
+  if (!isIntegrationHeavyBead(bead)) return "";
+  return `## Source Research Card Required
+
+This bead looks integration-heavy. Before implementation, read the local source/docs for the relevant library or service and include a Source Research Card in your review feedback. If this is a false positive, include the waiver line instead so review can resolve the warning deterministically.
+
+${SOURCE_RESEARCH_CARD_TEMPLATE}
+
+### False-positive waiver
+${SOURCE_RESEARCH_WAIVER_TEMPLATE}`;
 }
 
 export function extractSourceResearchCard(text: string): string | undefined {
   const match = text.match(/(?:^|\n)#{2,3}\s*Source Research Card\s*\n([\s\S]*?)(?=\n#{2,3}\s|\s*$)/i);
   const body = match?.[1]?.trim();
   return body ? `### Source Research Card\n${body}` : undefined;
+}
+
+export function extractSourceResearchWaiver(text: string): string | undefined {
+  const inline = text.match(/(?:^|\n)\s*(?:[-*]\s*)?Source Research Card:\s*not required\s+because\s+(.+?)(?=\n|$)/i);
+  if (inline?.[1]?.trim()) {
+    return `Source Research Card: not required because ${inline[1].trim()}`;
+  }
+
+  const card = extractSourceResearchCard(text);
+  if (!card) return undefined;
+  const notRequired = card.match(/not required(?:\s+because|:)?\s+(.+)/i);
+  return notRequired?.[1]?.trim()
+    ? `Source Research Card: not required because ${notRequired[1].trim()}`
+    : undefined;
+}
+
+export function missingSourceResearchCardMessage(beadId: string): string {
+  return `⚠️ Bead ${beadId} looks integration-heavy but review evidence did not include a Source Research Card.\n\n` +
+    `To resolve, rerun review with either this heading and fields:\n\n${SOURCE_RESEARCH_CARD_TEMPLATE}\n\n` +
+    `Or, if this is a false positive, include this waiver line in review feedback:\n${SOURCE_RESEARCH_WAIVER_TEMPLATE}`;
 }
 
 // ─── Scoring Prompt ─────────────────────────────────────────
