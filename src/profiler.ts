@@ -1,5 +1,15 @@
+import { statSync } from "fs";
+import { join, resolve } from "path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { RepoProfile, TodoItem, CommitSummary } from "./types.js";
+
+export interface AgentGuidanceDetection {
+  found: boolean;
+  files: string[];
+  checked: string[];
+}
+
+const AGENT_GUIDANCE_CANDIDATE_PATHS = ["AGENTS.md"] as const;
 
 /**
  * Collect raw repo signals using pi.exec for shell commands.
@@ -52,6 +62,36 @@ export async function profileRepo(
 }
 
 // ─── Collectors ────────────────────────────────────────────────
+
+/**
+ * Detect supported project-level agent guidance files under an explicit repo root.
+ *
+ * Public evidence paths stay repository-relative so profile output and tests do
+ * not leak machine-specific absolute paths. Missing or inaccessible candidates
+ * are treated as absent; a directory named like a guidance file does not count.
+ */
+export function detectAgentGuidanceFiles(repoRoot: string): AgentGuidanceDetection {
+  const root = resolve(repoRoot);
+  const checked = [...AGENT_GUIDANCE_CANDIDATE_PATHS];
+  const files: string[] = [];
+
+  for (const relativePath of checked) {
+    try {
+      const stats = statSync(join(root, relativePath));
+      if (stats.isFile()) {
+        files.push(relativePath);
+      }
+    } catch {
+      // Missing or inaccessible candidates are not guidance evidence.
+    }
+  }
+
+  return {
+    found: files.length > 0,
+    files,
+    checked,
+  };
+}
 
 async function collectFileTree(
   pi: ExtensionAPI,
