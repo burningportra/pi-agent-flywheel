@@ -19,27 +19,19 @@ const mockExistsSync = existsSync as unknown as ReturnType<typeof vi.fn>;
 
 describe("selectStrategy", () => {
   it("returns beads+agentmail when both beads and agentMail are true", () => {
-    expect(selectStrategy({ beads: true, agentMail: true, sophia: true })).toBe("beads+agentmail");
-  });
-
-  it("returns beads+agentmail ignoring sophia when beads+agentMail available", () => {
-    expect(selectStrategy({ beads: true, agentMail: true, sophia: false })).toBe("beads+agentmail");
-  });
-
-  it("returns sophia when beads+agentMail unavailable but sophia is true", () => {
-    expect(selectStrategy({ beads: false, agentMail: false, sophia: true })).toBe("sophia");
+    expect(selectStrategy({ beads: true, agentMail: true })).toBe("beads+agentmail");
   });
 
   it("returns worktrees when nothing is available", () => {
-    expect(selectStrategy({ beads: false, agentMail: false, sophia: false })).toBe("worktrees");
+    expect(selectStrategy({ beads: false, agentMail: false })).toBe("worktrees");
   });
 
   it("returns worktrees when only beads is available (not enough without agentMail)", () => {
-    expect(selectStrategy({ beads: true, agentMail: false, sophia: false })).toBe("worktrees");
+    expect(selectStrategy({ beads: true, agentMail: false })).toBe("worktrees");
   });
 
   it("returns worktrees when only agentMail is available (not enough without beads)", () => {
-    expect(selectStrategy({ beads: false, agentMail: true, sophia: false })).toBe("worktrees");
+    expect(selectStrategy({ beads: false, agentMail: true })).toBe("worktrees");
   });
 });
 
@@ -47,11 +39,11 @@ describe("selectStrategy", () => {
 
 describe("selectMode", () => {
   it("returns single-branch when agentMail is available", () => {
-    expect(selectMode({ beads: false, agentMail: true, sophia: false })).toBe("single-branch");
+    expect(selectMode({ beads: false, agentMail: true })).toBe("single-branch");
   });
 
   it("returns worktree when agentMail is unavailable", () => {
-    expect(selectMode({ beads: true, agentMail: false, sophia: true })).toBe("worktree");
+    expect(selectMode({ beads: true, agentMail: false })).toBe("worktree");
   });
 });
 
@@ -66,23 +58,23 @@ describe("detectCoordinationBackend", () => {
     mockExistsSync.mockReset();
   });
 
-  it("returns all true when all tools are available", async () => {
+  it("returns beads and agentMail availability without probing unsupported CR tools", async () => {
     mockExistsSync.mockReturnValue(true);
     mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
       if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
       if (cmd === "curl") return { code: 0, stdout: '{"status":"ok"}', stderr: "" };
-      if (cmd === "sophia" && args[0] === "--help") return { code: 0, stdout: "sophia help", stderr: "" };
-      if (cmd === "sophia" && args[0] === "cr") return { code: 0, stdout: '{"ok":true}', stderr: "" };
+      if (cmd === "legacy-cr") throw new Error("unsupported CR tools should not be probed");
       return { code: 1, stdout: "", stderr: "" };
     });
 
     const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
     expect(result.beads).toBe(true);
     expect(result.agentMail).toBe(true);
-    expect(result.sophia).toBe(true);
+    expect(Object.keys(result).sort()).toEqual(["agentMail", "beads", "preCommitGuardInstalled"]);
+    expect(mockPi.exec.mock.calls.some(([cmd]) => cmd === "legacy-cr")).toBe(false);
   });
 
-  it("returns all false when no tools are available", async () => {
+  it("returns all false when no supported tools are available", async () => {
     mockExistsSync.mockReturnValue(false);
     mockPi.exec.mockImplementation(async () => {
       throw new Error("command not found");
@@ -91,79 +83,15 @@ describe("detectCoordinationBackend", () => {
     const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
     expect(result.beads).toBe(false);
     expect(result.agentMail).toBe(false);
-    expect(result.sophia).toBe(false);
+    expect(Object.keys(result).sort()).toEqual(["agentMail", "beads", "preCommitGuardInstalled"]);
   });
 
-  it("returns partial availability: br yes, agent-mail no, sophia yes", async () => {
+  it("returns partial availability: br yes, agent-mail no", async () => {
     mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
       if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
       if (cmd === "curl") return { code: 1, stdout: "", stderr: "" }; // unreachable
       if (cmd === "uv") return { code: 1, stdout: "", stderr: "" }; // not installed, degrade cleanly
-      if (cmd === "sophia" && args[0] === "--help") return { code: 0, stdout: "sophia help", stderr: "" };
-      if (cmd === "sophia" && args[0] === "cr") return { code: 0, stdout: '{"ok":true}', stderr: "" };
-      return { code: 1, stdout: "", stderr: "" };
-    });
-
-    mockExistsSync.mockImplementation((p: string) => {
-      if (p.endsWith(".beads")) return true;
-      if (p.endsWith("SOPHIA.yaml")) return true;
-      return false;
-    });
-
-    const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
-    expect(result.beads).toBe(true);
-    expect(result.agentMail).toBe(false);
-    expect(result.sophia).toBe(true);
-  });
-
-  it("returns beads false when .beads/ directory is missing", async () => {
-    mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
-      if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
-      if (cmd === "curl") return { code: 0, stdout: '{"status":"ok"}', stderr: "" };
-      if (cmd === "sophia" && args[0] === "--help") return { code: 0, stdout: "sophia help", stderr: "" };
-      if (cmd === "sophia" && args[0] === "cr") return { code: 0, stdout: '{"ok":true}', stderr: "" };
-      return { code: 1, stdout: "", stderr: "" };
-    });
-
-    mockExistsSync.mockImplementation((p: string) => {
-      if (p.endsWith(".beads")) return false; // not initialized
-      if (p.endsWith("SOPHIA.yaml")) return true;
-      return false;
-    });
-
-    const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
-    expect(result.beads).toBe(false);
-    expect(result.sophia).toBe(true);
-  });
-
-  it("returns sophia false instead of throwing when sophia JSON is invalid", async () => {
-    mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
-      if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
-      if (cmd === "curl") return { code: 0, stdout: '{"status":"ok"}', stderr: "" };
-      if (cmd === "sophia" && args[0] === "--help") return { code: 0, stdout: "sophia help", stderr: "" };
-      if (cmd === "sophia" && args[0] === "cr") return { code: 0, stdout: 'not json', stderr: "" };
-      return { code: 1, stdout: "", stderr: "" };
-    });
-
-    mockExistsSync.mockImplementation((p: string) => {
-      if (p.endsWith(".beads")) return true;
-      if (p.endsWith("SOPHIA.yaml")) return true;
-      return false;
-    });
-
-    const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
-    expect(result.beads).toBe(true);
-    expect(result.agentMail).toBe(true);
-    expect(result.sophia).toBe(false);
-  });
-
-  it("returns agentMail false when probes fail or startup cannot launch", async () => {
-    mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
-      if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
-      if (cmd === "curl") throw new Error("connection refused");
-      if (cmd === "uv") return { code: 0, stdout: "", stderr: "" };
-      if (cmd === "bash") throw new Error("spawn failed");
-      if (cmd === "sophia") return { code: 1, stdout: "", stderr: "" };
+      if (cmd === "legacy-cr") throw new Error("unsupported CR tools should not be probed");
       return { code: 1, stdout: "", stderr: "" };
     });
 
@@ -172,7 +100,41 @@ describe("detectCoordinationBackend", () => {
     const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
     expect(result.beads).toBe(true);
     expect(result.agentMail).toBe(false);
-    expect(result.sophia).toBe(false);
+    expect(Object.keys(result).sort()).toEqual(["agentMail", "beads", "preCommitGuardInstalled"]);
+    expect(mockPi.exec.mock.calls.some(([cmd]) => cmd === "legacy-cr")).toBe(false);
+  });
+
+  it("returns beads false when .beads/ directory is missing", async () => {
+    mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
+      if (cmd === "curl") return { code: 0, stdout: '{"status":"ok"}', stderr: "" };
+      return { code: 1, stdout: "", stderr: "" };
+    });
+
+    mockExistsSync.mockImplementation((p: string) => {
+      if (p.endsWith(".beads")) return false; // not initialized
+      return false;
+    });
+
+    const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
+    expect(result.beads).toBe(false);
+    expect(result.agentMail).toBe(true);
+  });
+
+  it("returns agentMail false when probes fail or startup cannot launch", async () => {
+    mockPi.exec.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === "br" && args[0] === "--help") return { code: 0, stdout: "br help", stderr: "" };
+      if (cmd === "curl") throw new Error("connection refused");
+      if (cmd === "uv") return { code: 0, stdout: "", stderr: "" };
+      if (cmd === "bash") throw new Error("spawn failed");
+      return { code: 1, stdout: "", stderr: "" };
+    });
+
+    mockExistsSync.mockImplementation((p: string) => p.endsWith(".beads"));
+
+    const result = await detectCoordinationBackend(mockPi, "/fake/cwd");
+    expect(result.beads).toBe(true);
+    expect(result.agentMail).toBe(false);
   });
 
   it("caches the result on second call", async () => {

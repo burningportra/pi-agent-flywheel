@@ -6,7 +6,7 @@
 
 When `/orchestrate` runs implementation steps, it needs to coordinate potentially many parallel agents working on the same codebase. The coordination system handles three concerns:
 
-1. **Backend detection** — discover which tools are available (beads, Agent Mail, Sophia)
+1. **Backend detection** — discover which tools are available (beads, Agent Mail)
 2. **Strategy selection** — pick the best coordination mode for the environment
 3. **Swarm management** — compose, launch, and monitor parallel agents
 
@@ -24,19 +24,18 @@ Key source files:
 
 ## Backend Detection
 
-`detectCoordinationBackend()` in `src/coordination.ts` probes for three independent backends in parallel:
+`detectCoordinationBackend()` in `src/coordination.ts` probes for supported coordination backends in parallel:
 
 | Backend | Detection method |
 |---------|-----------------|
 | **Beads** (`br` CLI) | Runs `br --help` and checks for `.beads/` directory |
 | **Agent Mail** | Hits `http://127.0.0.1:8765/health/liveness`; if unreachable but installed, starts the server in the background and waits up to 5s |
-| **Sophia** | Runs `sophia --help`, checks for `SOPHIA.yaml`, and verifies `sophia cr list --json` returns `ok: true` |
 
 Results are cached after the first call. Use `resetDetection()` to force a re-probe (e.g. after installing a missing tool mid-session).
 
 ```ts
 const backend = await detectCoordinationBackend(pi, cwd);
-// => { beads: true, agentMail: true, sophia: false, preCommitGuardInstalled: true }
+// => { beads: true, agentMail: true, preCommitGuardInstalled: true }
 ```
 
 ### Auto-start behavior
@@ -56,8 +55,7 @@ When Agent Mail is detected, the system also checks for a git pre-commit hook th
 | Priority | Strategy | Requirements | What it provides |
 |----------|----------|-------------|-----------------|
 | 1 (best) | `beads+agentmail` | `br` CLI + Agent Mail server | Task lifecycle via beads, messaging, file reservations |
-| 2 | `sophia` | Sophia CLI + `SOPHIA.yaml` | CR/task lifecycle, worktree isolation |
-| 3 (fallback) | `worktrees` | Just git | Worktree isolation only — no task tracking or messaging |
+| 2 (fallback) | `worktrees` | Just git | Worktree isolation only — no task tracking or messaging |
 
 `selectMode()` picks the git workflow based on Agent Mail availability:
 
@@ -188,8 +186,8 @@ When an agent completes its work, `removeAgent(stepIndex)` removes it from monit
 ```
 /orchestrate
   │
-  ├─ detectCoordinationBackend()     ← probes beads, agent-mail, sophia
-  │    └─ selectStrategy()           ← picks beads+agentmail / sophia / worktrees
+  ├─ detectCoordinationBackend()     ← probes beads and agent-mail
+  │    └─ selectStrategy()           ← picks beads+agentmail / worktrees
   │    └─ selectMode()               ← single-branch or worktree
   │
   ├─ recommendComposition()          ← agent count + model mix

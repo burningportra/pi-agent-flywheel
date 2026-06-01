@@ -315,17 +315,6 @@ The orchestrator uses [CASS](https://github.com/Dicklesworthstone/cass_memory_sy
 
 When cm is not installed, memory gracefully degrades to no-op (empty results).
 
-#### Sophia Integration
-
-When [Sophia](https://github.com/sophialab/sophia) is initialized:
-
-- `orch_plan` creates a CR with task contracts (intent, acceptance, scope)
-- `orch_review` checkpoints tasks via `sophia cr task done`
-- Completion runs `sophia cr validate` + `sophia cr review`
-- Session restore re-detects Sophia and rebuilds CR state via `getCRStatus`
-
-**Fallback**: no Sophia = no CR tracking; everything else works.
-
 ## Flywheel-Derived Prompts
 
 | Function | Pattern | Used In |
@@ -364,12 +353,11 @@ src/
 ├── beads.ts           # br CLI wrapper: list, ready, done, create beads + quality/template checks
 ├── bead-review.ts     # Cross-model bead review via alternative AI model
 ├── commands.ts        # Command registration (/orchestrate, /orchestrate-status, /orchestrate-reset)
-├── coordination.ts    # Coordination backend detection (beads, sophia, agent-mail)
+├── coordination.ts    # Coordination backend detection (beads, agent-mail)
 ├── agent-mail.ts      # Agent-mail integration for multi-agent coordination
 ├── agents-md.ts       # AGENTS.md generation for sub-agent context
 ├── goal-refinement.ts # Goal refinement and constraint extraction
 ├── gates.ts           # Guided review gates (7-step sequential flow with resumable state)
-├── sophia.ts          # Sophia CLI wrapper + dependency analysis + merge
 ├── worktree.ts        # WorktreePool + autoCommitWorktree
 ├── tender.ts          # SwarmTender: agent health + conflict detection
 ├── memory.ts          # CASS memory: wraps cm CLI for rules, context, and feedback

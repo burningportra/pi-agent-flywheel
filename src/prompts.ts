@@ -96,7 +96,6 @@ export function formatRepoProfile(profile: RepoProfile, scanResult?: ScanResult)
 
 // ─── System Prompt for Orchestrator Mode ────────────────────
 export function orchestratorSystemPrompt(
-  hasSophia: boolean,
   coordBackend?: import("./coordination.js").CoordinationBackend
 ): string {
   // Build coordination section based on detected backends
@@ -124,27 +123,7 @@ The orchestrator uses **beads** for task lifecycle and **agent-mail** for inter-
 
 ### Parallel Execution
 When beads have disjoint files and agent-mail is available, agents work in the **same directory** with file reservations (no worktrees needed).
-When files overlap, fall back to git worktree isolation.
-${hasSophia ? "\nSophia is also available as a secondary backend for CR/task management." : ""}`;
-  } else if (hasSophia) {
-    coordinationSection = `
-## Sophia Integration
-The orchestrator uses Sophia for change request and task management. When beads are created:
-- A Sophia CR is created automatically with tasks matching beads
-- Use \`sophia cr task done <crId> <taskId> --commit-type feat --from-contract\` to checkpoint completed tasks
-- After all beads, \`sophia cr validate\` and \`sophia cr review\` run automatically
-
-## Parallel Execution with Worktree Isolation
-When beads are independent (no shared files), use \`parallel_subagents\` with git worktree isolation:
-
-1. The orchestrator creates a **WorktreePool** - each parallel bead gets its own git worktree checkout
-2. For each parallel group, spawn sub-agents via \`parallel_subagents\`, passing the worktree path as the working directory
-3. Each sub-agent works in isolation - no file conflicts between parallel beads
-4. After all agents in a group complete, worktree changes are merged back to the main branch sequentially
-5. Worktrees are cleaned up after merge
-
-Use \`br ready\` to determine which beads can run in parallel.
-If worktree creation fails, the orchestrator falls back to sequential execution in the shared directory.`;
+When files overlap, fall back to git worktree isolation.`;
   }
 
   return `You are operating as a repo-aware multi-agent orchestrator. You have access to specialized orchestrator tools that drive a structured workflow.

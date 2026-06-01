@@ -482,12 +482,9 @@ export interface OrchestratorState {
     baseBranch: string;
     worktrees: { path: string; branch: string; stepIndex: number }[];
   };
-  sophiaCRId?: number;
-  sophiaCRBranch?: string;
-  sophiaCRTitle?: string;
 
   // ─── Coordination backend state ────────────────────────────
-  /** Detected coordination backends (beads, agentMail, sophia) */
+  /** Detected coordination backends (beads, agentMail) */
   coordinationBackend?: import("./coordination.js").CoordinationBackend;
   /** Selected coordination strategy based on available backends */
   coordinationStrategy?: import("./coordination.js").CoordinationStrategy;
@@ -653,8 +650,6 @@ export interface OrchestratorContext {
   set orchestratorActive(v: boolean);
   /** Orchestrator version string. */
   version: string;
-  /** Sophia CR result (if sophia backend active). */
-  sophiaCRResult?: import("./sophia.js").PlanToCRResult;
   /** Worktree pool for parallel execution. */
   worktreePool?: import("./worktree.js").WorktreePool;
   /** Swarm tender for monitoring parallel agents. */

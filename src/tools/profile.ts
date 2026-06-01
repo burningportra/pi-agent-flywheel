@@ -161,7 +161,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
       oc.state.scanResult = scanResult;
       oc.state.repoProfile = profile;
 
-      // Detect all coordination backends (beads, agent-mail, sophia)
+      // Detect supported coordination backends (beads, agent-mail)
       const coordBackend = await detectCoordinationBackend(oc.pi, ctx.cwd);
       const coordStrategy = selectStrategy(coordBackend);
       oc.state.coordinationBackend = coordBackend;
@@ -207,7 +207,6 @@ export function registerProfileTool(oc: OrchestratorContext) {
       const coordParts: string[] = [];
       if (coordBackend.beads) coordParts.push("beads");
       if (coordBackend.agentMail) coordParts.push("agent-mail");
-      if (coordBackend.sophia) coordParts.push("sophia");
       
       const missingTools: string[] = [];
       if (!coordBackend.beads) missingTools.push("`br init` for task tracking");
@@ -215,7 +214,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
       
       const coordLine = coordParts.length > 0
         ? `🤝 Coordination: ${coordParts.join(" + ")} → strategy: **${coordStrategy}**`
-        : "🤝 Coordination: bare worktrees (no beads/agent-mail/sophia detected)";
+        : "🤝 Coordination: bare worktrees (no beads/agent-mail detected)";
       
       const upgradeHint = missingTools.length > 0 && coordParts.length < 2
         ? `\n💡 **Upgrade available:** Install ${missingTools.join(", ")} for enhanced coordination. Run \`/orchestrate-setup\` for guided install.`

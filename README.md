@@ -51,7 +51,7 @@ Then open any repository in `pi` and type:
 | **Custom-goal brainstorming** | For user-entered goals, asks clarifying questions, compares approaches, and saves a deterministic decision record under `brainstorming/` | Adapt a Superpowers-style brainstorming process without changing generated-idea discovery |
 | **Review gates** | Auto-decides review-agent passes, then runs fresh-eyes, polish, ergonomics, reality-check, and bead-compliance flows | Closed beads are treated as claims that require evidence |
 | **Crash recovery** | Checkpoints state after phase changes so interrupted runs can resume | Restart `/agent-flywheel` and resume from the latest checkpoint |
-| **Graceful degradation** | Optional tools (`ccc`, Sophia, CASS, MCP Agent Mail, beads, `ntm`) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
+| **Graceful degradation** | Optional tools (`ccc`, CASS, MCP Agent Mail, beads, `ntm`) improve the loop but are not mandatory | Missing `ccc` falls back to the built-in profiler |
 
 ### Recommended “Runs Nicely” Stack
 
@@ -125,7 +125,7 @@ You: /agent-flywheel
    A bead should include the rationale, acceptance criteria, and file scope needed by a fresh agent. Template shorthand is rejected before it can leak into execution.
 
 3. **Optional power tools, safe fallback path**  
-   `ccc`, CASS, Sophia, `br`, `bv`, `ntm`, and agent-mail can make the loop stronger, but the extension keeps moving when optional integrations are absent.
+   `ccc`, CASS, `br`, `bv`, `ntm`, and agent-mail can make the loop stronger, but the extension keeps moving when optional integrations are absent.
 
 4. **Parallelism needs coordination**  
    Multi-agent work is only useful when file ownership, task dependencies, review order, and recovery paths are explicit.
@@ -315,7 +315,6 @@ pi install -l git:github.com/burningportra/pi-agent-flywheel
 | `ntm` | Current | Strongly recommended for swarms | Launching, tending, and observing parallel agents |
 | [`ccc`](https://github.com/cocoindex-io/cocoindex-code) | Current | Optional | Richer codebase scanning |
 | CASS `cm` | Current | Optional | Procedural memory retrieval/storage |
-| Sophia | Current | Optional | Structured change requests and validation |
 
 If strongly recommended tools are missing, `/agent-flywheel` can still help with discovery/planning/review, but the full multi-agent execution loop is much smoother with beads, MCP Agent Mail, and `ntm` installed.
 
@@ -533,14 +532,6 @@ cm init --starter typescript
 cm doctor --json
 ```
 
-#### Sophia
-
-```bash
-pip install sophia-cli
-cd ~/Code/my-project
-sophia init
-```
-
 #### Beads and graph-aware routing
 
 ```bash
@@ -582,7 +573,7 @@ See [`docs/setup.md`](docs/setup.md) for more detailed setup notes.
                                        ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         Optional coordination                         │
-│ Sophia CRs · agent-mail reservations · CASS memory · MemPalace mining │
+│ agent-mail reservations · CASS memory · MemPalace mining │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -775,7 +766,7 @@ The project expects the `@earendil-works/*` packages and `typebox` listed in `de
 
 - **It is a pi extension, not a standalone CLI.** You use it from inside `pi`.
 - **Parallel execution depends on your environment.** Worktrees, model availability, local tooling, and shell permissions determine how much autonomy is practical.
-- **Optional integrations are best-effort.** Missing `ccc`, Sophia, CASS, or agent-mail reduces capability but should not block the basic workflow.
+- **Optional integrations are best-effort.** Missing `ccc`, CASS, or agent-mail reduces capability but should not block the basic workflow.
 - **Review gates are not formal verification.** They improve discipline and evidence collection, but you still own the final merge decision.
 - **Large repo scans can be noisy.** The approval gate exists because generated plans should be edited before implementation.
 - **No npm package is documented here.** The supported install path is through `pi install` from GitHub or a local checkout.
@@ -830,7 +821,7 @@ The core **Agentic Coding Flywheel** concept was invented by [Dicklesworthstone]
 
 ## Learn More
 
-- [Setup & Configuration](docs/setup.md) — prerequisites, `ccc`, subscriptions, Sophia, CASS
+- [Setup & Configuration](docs/setup.md) — prerequisites, `ccc`, subscriptions, CASS
 - [Architecture](docs/architecture.md) — scan pipeline, context priority, bead templates, workflow internals
 - [Planning & Review](docs/planning-and-review.md) — planning, approval, and review behavior
 - [Coordination & Swarm](docs/coordination-and-swarm.md) — multi-agent coordination notes

@@ -10,7 +10,6 @@ import type {
 import { createInitialState } from "./types.js";
 import { registerCommands } from "./commands.js";
 import { orchestratorSystemPrompt } from "./prompts.js";
-import { type PlanToCRResult } from "./sophia.js";
 import {
   detectCoordinationBackend,
   selectMode,
@@ -144,7 +143,6 @@ export default function (pi: ExtensionAPI) {
   const ensureAgentMailProject = (cwd: string) =>
     _ensureAgentMailProject(pi.exec.bind(pi) as ExecFn, cwd);
 
-  let sophiaCRResult: PlanToCRResult | undefined;
   let worktreePool: WorktreePool | undefined;
   let swarmTender: import("./tender.js").SwarmTender | undefined;
   let dashboardController: DashboardController | undefined;
@@ -284,7 +282,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, ctx) => {
     if (!orchestratorActive) return;
     return {
-      systemPrompt: event.systemPrompt + "\n\n" + orchestratorSystemPrompt(state.coordinationBackend?.sophia ?? false, state.coordinationBackend),
+      systemPrompt: event.systemPrompt + "\n\n" + orchestratorSystemPrompt(state.coordinationBackend),
     };
   });
 
@@ -367,34 +365,6 @@ export default function (pi: ExtensionAPI) {
         state.coordinationBackend = freshBackend;
         state.coordinationStrategy = selectStrategy(freshBackend);
         state.coordinationMode ??= selectMode(freshBackend);
-        if (state.sophiaCRId) {
-          // Try to rebuild full CR state from sophia if available
-          if (state.coordinationBackend?.sophia) {
-            const { getCRStatus } = await import("./sophia.js");
-            const crStatus = await getCRStatus(pi, ctx.cwd, state.sophiaCRId);
-            if (crStatus.ok && crStatus.data) {
-              sophiaCRResult = {
-                cr: {
-                  id: crStatus.data.id,
-                  branch: crStatus.data.branch,
-                  title: crStatus.data.title,
-                },
-                taskIds: new Map(),
-              };
-            } else {
-              sophiaCRResult = {
-                cr: { id: state.sophiaCRId, branch: state.sophiaCRBranch ?? "", title: state.sophiaCRTitle ?? "" },
-                taskIds: new Map(),
-              };
-            }
-          } else {
-            sophiaCRResult = {
-              cr: { id: state.sophiaCRId, branch: state.sophiaCRBranch ?? "", title: state.sophiaCRTitle ?? "" },
-              taskIds: new Map(),
-            };
-          }
-        }
-
         // Restore bead tracking — beads survive on disk in .beads/
         if (state.activeBeadIds && state.activeBeadIds.length > 0) {
           const done = Object.values(state.beadResults ?? {}).filter(r => r.status === "success").length;
@@ -456,12 +426,6 @@ export default function (pi: ExtensionAPI) {
   function persistState() {
     // Sync ephemeral state into persisted state
     state.worktreePoolState = worktreePool?.getState();
-    if (sophiaCRResult) {
-      state.sophiaCRId = sophiaCRResult.cr.id;
-      state.sophiaCRBranch = sophiaCRResult.cr.branch;
-      state.sophiaCRTitle = sophiaCRResult.cr.title;
-      // sophiaTaskIds removed — task mapping now lives in sophia CR
-    }
     // Deep copy via JSON to create a true snapshot — prevents shared array
     // references between appended entries and the live in-memory state
     pi.appendEntry("orchestrator-state", JSON.parse(JSON.stringify(state)));
@@ -480,8 +444,6 @@ export default function (pi: ExtensionAPI) {
     get orchestratorActive() { return orchestratorActive; },
     set orchestratorActive(v) { orchestratorActive = v; },
     version: ORCHESTRATOR_VERSION,
-    get sophiaCRResult() { return sophiaCRResult; },
-    set sophiaCRResult(v) { sophiaCRResult = v; },
     get worktreePool() { return worktreePool; },
     set worktreePool(v) { worktreePool = v; },
     get swarmTender() { return swarmTender; },

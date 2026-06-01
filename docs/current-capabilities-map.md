@@ -81,12 +81,11 @@ Multi-agent coordination, messaging, and conflict prevention.
 
 | Capability | Source | Details |
 |------------|--------|---------|
-| Backend detection | `src/coordination.ts` — `detectCoordinationBackend()` | Auto-detects beads, agent-mail, sophia availability |
-| Strategy selection | `src/coordination.ts` — `selectStrategy()` | `beads+agentmail` > `sophia` > `worktrees` |
+| Backend detection | `src/coordination.ts` — `detectCoordinationBackend()` | Auto-detects beads and agent-mail availability |
+| Strategy selection | `src/coordination.ts` — `selectStrategy()` | `beads+agentmail` > `worktrees` |
 | Agent Mail RPC | `src/agent-mail.ts` — `agentMailRPC()`, `ensureAgentMailProject()` | JSON-RPC calls to agent-mail MCP server for messaging + file reservations |
 | Agent Mail task preamble | `src/agent-mail.ts` — `agentMailTaskPreamble()` | Injects agent-mail bootstrap instructions into sub-agent tasks |
 | AGENTS.md generation | `src/agents-md.ts` — `ensureAgentMailSection()` | Writes/updates agent-mail + beads integration docs in AGENTS.md |
-| Sophia integration | `src/sophia.ts` | CR lifecycle, task contracts, dependency analysis, merge |
 | File reservation helpers | `src/agent-mail.ts` — `amRpcCmd()` | Generate curl commands for file reservations |
 
 ## 7. Launching the Swarm

@@ -70,34 +70,6 @@ Parallel agent features (deep planning, creative brainstorm) require access to m
 
 > **No subscription?** Everything still works — use "Standard" planning (single model) instead of "Deep plan". Reviews run with your default model.
 
-## Sophia Integration (Optional)
-
-[Sophia](https://github.com/sophialab/sophia) adds structured change tracking on top of git. When detected, pi-agent-flywheel automatically creates Change Requests (CRs) with task contracts.
-
-### What Sophia adds
-
-- **Plan → CR mapping**: each approved plan becomes a Sophia CR with formal task contracts (intent, acceptance criteria, scope)
-- **Task checkpointing**: `orch_review` marks tasks done via `sophia cr task done`
-- **Validation on completion**: runs `sophia cr validate` + `sophia cr review` at the end
-- **Session restore**: re-detects Sophia state and rebuilds CR context if you resume a session
-
-### How to enable
-
-1. **Install Sophia**:
-   ```bash
-   pip install sophia-cli
-   ```
-
-2. **Initialize in your repo**:
-   ```bash
-   cd your-project
-   sophia init
-   ```
-
-3. **Run `/orchestrate`** — the extension auto-detects Sophia and uses it. No extra flags needed.
-
-> **No Sophia?** CR tracking is skipped. Everything else works the same.
-
 ## Optional Configuration
 
 ### CASS Memory (Optional, Recommended)

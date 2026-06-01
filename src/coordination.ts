@@ -12,8 +12,6 @@ export interface CoordinationBackend {
   beads: boolean;
   /** Agent-mail MCP server reachable */
   agentMail: boolean;
-  /** Sophia CLI installed AND SOPHIA.yaml present */
-  sophia: boolean;
   /** Whether .git/hooks/pre-commit contains the agent-mail guard */
   preCommitGuardInstalled?: boolean;
 }
@@ -22,17 +20,14 @@ export interface CoordinationBackend {
  * Coordination strategy derived from available backends.
  *
  * - "beads+agentmail": full coordination — beads for task lifecycle, agent-mail for messaging + file reservations
- * - "sophia": legacy — sophia CR/task lifecycle, worktrees for isolation
  * - "worktrees": bare — worktree isolation only, no task tracking or messaging
  */
 export type CoordinationStrategy =
   | "beads+agentmail"
-  | "sophia"
   | "worktrees";
 
 export function selectStrategy(backend: CoordinationBackend): CoordinationStrategy {
   if (backend.beads && backend.agentMail) return "beads+agentmail";
-  if (backend.sophia) return "sophia";
   return "worktrees";
 }
 
@@ -59,10 +54,9 @@ export async function detectCoordinationBackend(
 ): Promise<CoordinationBackend> {
   if (_cached) return _cached;
 
-  const [beads, agentMail, sophia] = await Promise.all([
+  const [beads, agentMail] = await Promise.all([
     detectBeads(pi, cwd),
     detectAgentMail(pi),
-    detectSophia(pi, cwd),
   ]);
 
   const preCommitGuardInstalled = agentMail
@@ -76,7 +70,7 @@ export async function detectCoordinationBackend(
     );
   }
 
-  _cached = { beads, agentMail, sophia, preCommitGuardInstalled };
+  _cached = { beads, agentMail, preCommitGuardInstalled };
   return _cached;
 }
 
@@ -213,22 +207,3 @@ export function resetUbsCache(): void {
   _ubsAvailable = null;
 }
 
-async function detectSophia(pi: ExtensionAPI, cwd: string): Promise<boolean> {
-  // CLI available
-  const helpResult = await resilientExec(pi, "sophia", ["--help"], { timeout: 3000, cwd, maxRetries: 0 });
-  if (!helpResult.ok || helpResult.value.code !== 0) return false;
-
-  // SOPHIA.yaml present (initialized)
-  if (!existsSync(join(cwd, "SOPHIA.yaml"))) return false;
-
-  // Can list CRs (fully functional)
-  const listResult = await resilientExec(pi, "sophia", ["cr", "list", "--json"], { timeout: 3000, cwd, maxRetries: 0 });
-  if (!listResult.ok || listResult.value.code !== 0) return false;
-
-  try {
-    const parsed = JSON.parse(listResult.value.stdout);
-    return parsed.ok === true;
-  } catch {
-    return false;
-  }
-}

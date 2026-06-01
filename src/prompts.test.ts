@@ -55,7 +55,7 @@ describe("structured bead mutation prompt handoffs", () => {
   });
 
   it("keeps robot workflow guidance on the structured mutation path", () => {
-    const prompt = orchestratorSystemPrompt(false, { beads: true, agentMail: true, sophia: false });
+    const prompt = orchestratorSystemPrompt({ beads: true, agentMail: true });
 
     expect(prompt).toContain("Draft staged bead mutation plans as structured JSON data");
     expect(prompt).toContain("validate/apply it and enter the bead approval menu");
