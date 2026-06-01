@@ -219,7 +219,7 @@ export function parsePlanQualityScore(output: string): PlanQualityScore | null {
 
 /** Clamp a score to 0-100, defaulting to 50 for non-numeric values. */
 function clampScore(value: unknown): number {
-  if (typeof value !== "number" || isNaN(value)) return 50;
+  if (typeof value !== "number" || Number.isNaN(value)) return 50;
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
