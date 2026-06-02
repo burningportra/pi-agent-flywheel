@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   classifyProviderAuthEvidence,
   isProviderLaunchable,
+  preflightWorkerProviders,
   providerPreflightRepairGuidance,
   type ProviderPreflightCheck,
   type ProviderPreflightResult,
@@ -127,5 +128,89 @@ describe("provider preflight classifier", () => {
 
     expect(guidance).toContain("Do not retry endlessly");
     expect(guidance).toContain("repair auth or switch");
+  });
+});
+
+describe("preflightWorkerProviders", () => {
+  const cwd = "/repo";
+
+  it("summarizes an available safe probe", async () => {
+    const exec = vi.fn().mockResolvedValue({ code: 0, stdout: "cc available", stderr: "" });
+    const summary = await preflightWorkerProviders({
+      cwd,
+      exec,
+      checks: [{ id: "impl:cc", label: "Claude Code", surface: "claude-code", required: true, probe: { command: "cc", args: ["--help"] } }],
+    });
+
+    expect(exec).toHaveBeenCalledWith("cc", ["--help"], { cwd, timeout: 2500 });
+    expect(summary.status).toBe("available");
+    expect(summary.launchableCount).toBe(1);
+    expect(summary.requiredUnavailable).toBe(false);
+    expect(summary.selectedCheckIds).toEqual(["impl:cc"]);
+    expect(summary.results[0].evidence).toContain("cc --help");
+  });
+
+  it("marks required unauthorized checks unavailable without retrying", async () => {
+    const exec = vi.fn().mockResolvedValue({ code: 403, stdout: "", stderr: "permission_error: OAuth authentication is currently not allowed" });
+    const summary = await preflightWorkerProviders({
+      cwd,
+      exec,
+      timeoutMs: 1000,
+      checks: [{ id: "review:claude", label: "Claude reviewer", surface: "subagent", required: true, probe: { command: "pi", args: ["--print", "ping"] } }],
+    });
+
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(summary.status).toBe("unauthorized");
+    expect(summary.requiredUnavailable).toBe(true);
+    expect(summary.launchableCount).toBe(0);
+    expect(summary.repairGuidance.join("\n")).toContain("Do not retry endlessly");
+  });
+
+  it("classifies missing command probes as unavailable", async () => {
+    const exec = vi.fn().mockRejectedValue(new Error("spawn ntm ENOENT"));
+    const summary = await preflightWorkerProviders({
+      cwd,
+      exec,
+      checks: [{ id: "impl:ntm", label: "NTM", surface: "ntm", required: true, probe: { command: "ntm", args: ["--help"] } }],
+    });
+
+    expect(summary.results[0].status).toBe("unavailable");
+    expect(summary.requiredUnavailable).toBe(true);
+  });
+
+  it("keeps optional unavailable checks from blocking when another provider is launchable", async () => {
+    const exec = vi
+      .fn()
+      .mockResolvedValueOnce({ code: 127, stdout: "", stderr: "command not found: cursor" })
+      .mockResolvedValueOnce({ code: 0, stdout: "codex help", stderr: "" });
+    const summary = await preflightWorkerProviders({
+      cwd,
+      exec,
+      checks: [
+        { id: "impl:cursor", label: "Cursor agent", surface: "cursor-agent", required: false, probe: { command: "cursor", args: ["--help"] } },
+        { id: "impl:codex", label: "Codex", surface: "codex", required: false, probe: { command: "codex", args: ["--help"] } },
+      ],
+    });
+
+    expect(summary.status).toBe("available");
+    expect(summary.requiredUnavailable).toBe(false);
+    expect(summary.launchableCount).toBe(1);
+    expect(summary.selectedCheckIds).toEqual(["impl:codex"]);
+    expect(summary.downgradeReasons).toContain("Optional Cursor agent is unavailable");
+  });
+
+  it("returns not_checked when no safe probe exists", async () => {
+    const exec = vi.fn();
+    const summary = await preflightWorkerProviders({
+      cwd,
+      exec,
+      checks: [{ id: "impl:unknown", label: "Unknown worker", surface: "unknown", required: false }],
+    });
+
+    expect(exec).not.toHaveBeenCalled();
+    expect(summary.status).toBe("not_checked");
+    expect(summary.results[0].status).toBe("not_checked");
+    expect(summary.results[0].launchable).toBe(false);
+    expect(summary.results[0].evidence.join("\n")).toContain("no safe bounded probe");
   });
 });

@@ -23,6 +23,12 @@ export type ProviderLaunchSurface =
   | "codex"
   | "unknown";
 
+export interface ProviderPreflightProbe {
+  /** Safe, bounded command used only to prove the local launch surface exists. */
+  command: string;
+  args: string[];
+}
+
 export interface ProviderPreflightCheck {
   /** Stable identifier for this check, for example "reviewer:claude". */
   id: string;
@@ -33,6 +39,8 @@ export interface ProviderPreflightCheck {
   surface: ProviderLaunchSurface;
   /** Required checks block or downgrade launch when unavailable. */
   required: boolean;
+  /** Optional safe probe. Omit when no non-destructive dry-run/help surface exists. */
+  probe?: ProviderPreflightProbe;
 }
 
 export interface ProviderPreflightResult {
@@ -51,6 +59,23 @@ export interface ProviderPreflightSummary {
   selectedCheckIds: string[];
   downgradeReasons: string[];
   repairGuidance: string[];
+}
+
+export interface ProviderPreflightExecResult {
+  code?: number | null;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface ProviderPreflightExec {
+  (cmd: string, args: string[], opts: { cwd: string; timeout: number }): Promise<ProviderPreflightExecResult>;
+}
+
+export interface PreflightWorkerProvidersOptions {
+  cwd: string;
+  checks: ProviderPreflightCheck[];
+  exec: ProviderPreflightExec;
+  timeoutMs?: number;
 }
 
 export interface ProviderAuthEvidence {
@@ -226,4 +251,111 @@ export function providerPreflightRepairGuidance(status: ProviderPreflightStatus)
 
 export function isProviderLaunchable(status: ProviderPreflightStatus): boolean {
   return status === "available";
+}
+
+const DEFAULT_PREFLIGHT_TIMEOUT_MS = 2500;
+const MAX_PREFLIGHT_TIMEOUT_MS = 5000;
+const MAX_EVIDENCE_CHARS = 500;
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function summarizeStatus(results: ProviderPreflightResult[], requiredUnavailable: boolean): ProviderPreflightStatus {
+  if (requiredUnavailable) {
+    return results.find((result) => result.check.required && !result.launchable)?.status ?? "unknown_failure";
+  }
+  if (results.some((result) => result.status === "available")) return "available";
+  if (results.length > 0 && results.every((result) => result.status === "not_checked")) return "not_checked";
+  return results[0]?.status ?? "not_checked";
+}
+
+function resultForCheck(check: ProviderPreflightCheck, status: ProviderPreflightStatus, evidence: string[]): ProviderPreflightResult {
+  return {
+    status,
+    check,
+    launchable: isProviderLaunchable(status),
+    evidence,
+    repairGuidance: providerPreflightRepairGuidance(status),
+  };
+}
+
+function normalizeTimeoutMs(timeoutMs: number | undefined): number {
+  if (timeoutMs === undefined) return DEFAULT_PREFLIGHT_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return DEFAULT_PREFLIGHT_TIMEOUT_MS;
+  return Math.min(Math.floor(timeoutMs), MAX_PREFLIGHT_TIMEOUT_MS);
+}
+
+function probeCommandLine(probe: ProviderPreflightProbe): string {
+  return `${probe.command} ${probe.args.join(" ")}`.trim();
+}
+
+function boundedEvidence(label: string, value: string | undefined): string[] {
+  const trimmed = value?.trim();
+  if (!trimmed) return [];
+  const bounded = trimmed.length > MAX_EVIDENCE_CHARS ? `${trimmed.slice(0, MAX_EVIDENCE_CHARS)}…` : trimmed;
+  return [`${label}: ${bounded}`];
+}
+
+function evidenceForExecResult(probe: ProviderPreflightProbe, result: ProviderPreflightExecResult): string[] {
+  return [
+    probeCommandLine(probe),
+    `exit=${result.code ?? "unknown"}`,
+    ...boundedEvidence("stdout", result.stdout),
+    ...boundedEvidence("stderr", result.stderr),
+  ];
+}
+
+function evidenceForExecError(probe: ProviderPreflightProbe, error: unknown): string[] {
+  return [probeCommandLine(probe), ...boundedEvidence("error", textFromError(error))];
+}
+
+/**
+ * Run safe, bounded worker-provider preflight probes and aggregate launchability.
+ *
+ * This runner only executes checks that explicitly provide a non-destructive
+ * probe (typically `--help`, `--version`, or an existing dry-run surface). A
+ * provider without such a probe is reported as `not_checked`; the runner never
+ * starts real workers and never retries failed/unauthorized probes.
+ */
+export async function preflightWorkerProviders(options: PreflightWorkerProvidersOptions): Promise<ProviderPreflightSummary> {
+  const timeout = normalizeTimeoutMs(options.timeoutMs);
+  const results: ProviderPreflightResult[] = [];
+
+  for (const check of options.checks) {
+    if (!check.probe) {
+      results.push(resultForCheck(check, "not_checked", [`${check.label}: no safe bounded probe configured`]));
+      continue;
+    }
+
+    try {
+      const probe = await options.exec(check.probe.command, check.probe.args, { cwd: options.cwd, timeout });
+      const status = classifyProviderAuthEvidence({
+        code: probe.code,
+        exitCode: probe.code,
+        stdout: probe.stdout ?? "",
+        stderr: probe.stderr ?? "",
+      });
+      results.push(resultForCheck(check, status, evidenceForExecResult(check.probe, probe)));
+    } catch (error) {
+      const status = classifyProviderAuthEvidence({ error });
+      results.push(resultForCheck(check, status, evidenceForExecError(check.probe, error)));
+    }
+  }
+
+  const launchableResults = results.filter((result) => result.launchable);
+  const requiredUnavailable = results.some((result) => result.check.required && !result.launchable);
+  const downgradeReasons = results
+    .filter((result) => !result.launchable)
+    .map((result) => `${result.check.required ? "Required" : "Optional"} ${result.check.label} is ${result.status}`);
+
+  return {
+    status: summarizeStatus(results, requiredUnavailable),
+    launchableCount: launchableResults.length,
+    requiredUnavailable,
+    results,
+    selectedCheckIds: launchableResults.map((result) => result.check.id),
+    downgradeReasons,
+    repairGuidance: uniqueStrings(results.flatMap((result) => result.repairGuidance)),
+  };
 }
