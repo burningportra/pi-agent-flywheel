@@ -61,6 +61,14 @@ export interface ProviderPreflightSummary {
   repairGuidance: string[];
 }
 
+export interface ReviewWorkerLaunchSafety {
+  launchableReviewerIds: string[];
+  degradedReviewerIds: string[];
+  canProceed: boolean;
+  explanation: string;
+  repairGuidance: string[];
+}
+
 export interface ProviderPreflightExecResult {
   code?: number | null;
   stdout?: string;
@@ -251,6 +259,59 @@ export function providerPreflightRepairGuidance(status: ProviderPreflightStatus)
 
 export function isProviderLaunchable(status: ProviderPreflightStatus): boolean {
   return status === "available";
+}
+
+export function decideReviewWorkerLaunchSafety(
+  reviewerChecks: ProviderPreflightCheck[],
+  providerPreflight: ProviderPreflightSummary,
+): ReviewWorkerLaunchSafety {
+  const reviewerIds = reviewerChecks.map((check) => check.id);
+  const resultsById = new Map(providerPreflight.results.map((result) => [result.check.id, result]));
+  const launchableReviewerIds = reviewerIds.filter((id) => resultsById.get(id)?.launchable === true);
+  const degradedReviewerIds = reviewerIds.filter((id) => !launchableReviewerIds.includes(id));
+  const degradedDetails = degradedReviewerIds.map((id) => {
+    const result = resultsById.get(id);
+    const label = result?.check.label ?? reviewerChecks.find((check) => check.id === id)?.label ?? id;
+    const evidence = result?.evidence.length ? ` Evidence: ${result.evidence.join("; ")}` : "";
+    return `- ${label} (${id}) is ${result?.status ?? "not_checked"}.${evidence}`;
+  });
+  const repairGuidance = uniqueStrings([
+    ...providerPreflight.repairGuidance,
+    ...degradedReviewerIds.flatMap((id) => providerPreflight.results.find((result) => result.check.id === id)?.repairGuidance ?? []),
+  ]);
+
+  if (launchableReviewerIds.length === reviewerIds.length) {
+    return {
+      launchableReviewerIds,
+      degradedReviewerIds: [],
+      canProceed: true,
+      explanation: `All ${reviewerIds.length} review worker(s) passed provider preflight and are launchable.`,
+      repairGuidance: [],
+    };
+  }
+
+  if (launchableReviewerIds.length > 0) {
+    return {
+      launchableReviewerIds,
+      degradedReviewerIds,
+      canProceed: true,
+      explanation: `Provider preflight degraded review capacity: ${launchableReviewerIds.length}/${reviewerIds.length} reviewer(s) are launchable. Skipped reviewers:\n${degradedDetails.join("\n")}`,
+      repairGuidance,
+    };
+  }
+
+  return {
+    launchableReviewerIds: [],
+    degradedReviewerIds,
+    canProceed: false,
+    explanation: `Provider preflight found zero launchable review workers. Peer review was not run and must not be treated as passed. Degraded reviewers:\n${degradedDetails.join("\n")}`,
+    repairGuidance,
+  };
+}
+
+export function formatReviewWorkerLaunchSafety(safety: ReviewWorkerLaunchSafety): string {
+  const guidance = safety.repairGuidance.length ? `\n\nRepair guidance:\n${safety.repairGuidance.map((item) => `- ${item}`).join("\n")}` : "";
+  return `${safety.explanation}${guidance}`;
 }
 
 const DEFAULT_PREFLIGHT_TIMEOUT_MS = 2500;

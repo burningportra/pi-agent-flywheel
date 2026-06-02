@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   classifyProviderAuthEvidence,
+  decideReviewWorkerLaunchSafety,
+  formatReviewWorkerLaunchSafety,
   isProviderLaunchable,
   preflightWorkerProviders,
   providerPreflightRepairGuidance,
@@ -128,6 +130,68 @@ describe("provider preflight classifier", () => {
 
     expect(guidance).toContain("Do not retry endlessly");
     expect(guidance).toContain("repair auth or switch");
+  });
+});
+
+describe("decideReviewWorkerLaunchSafety", () => {
+  const checks: ProviderPreflightCheck[] = [
+    { id: "fresh-eyes", label: "Fresh eyes", surface: "subagent", required: false },
+    { id: "polish", label: "Polish", surface: "subagent", required: false },
+  ];
+
+  function summary(results: ProviderPreflightResult[]): ProviderPreflightSummary {
+    return {
+      status: results.some((result) => result.launchable) ? "available" : results[0]?.status ?? "not_checked",
+      launchableCount: results.filter((result) => result.launchable).length,
+      requiredUnavailable: false,
+      results,
+      selectedCheckIds: results.filter((result) => result.launchable).map((result) => result.check.id),
+      downgradeReasons: results.filter((result) => !result.launchable).map((result) => `${result.check.label} ${result.status}`),
+      repairGuidance: results.flatMap((result) => result.repairGuidance),
+    };
+  }
+
+  it("allows all healthy review workers", () => {
+    const safety = decideReviewWorkerLaunchSafety(checks, summary(checks.map((check) => ({
+      status: "available",
+      check,
+      launchable: true,
+      evidence: ["exit=0"],
+      repairGuidance: [],
+    }))));
+
+    expect(safety.canProceed).toBe(true);
+    expect(safety.launchableReviewerIds).toEqual(["fresh-eyes", "polish"]);
+    expect(safety.degradedReviewerIds).toEqual([]);
+  });
+
+  it("allows partial review worker availability with explicit degraded output", () => {
+    const safety = decideReviewWorkerLaunchSafety(checks, summary([
+      { status: "available", check: checks[0], launchable: true, evidence: ["exit=0"], repairGuidance: [] },
+      { status: "unavailable", check: checks[1], launchable: false, evidence: ["command not found"], repairGuidance: ["install tool"] },
+    ]));
+
+    expect(safety.canProceed).toBe(true);
+    expect(safety.launchableReviewerIds).toEqual(["fresh-eyes"]);
+    expect(safety.degradedReviewerIds).toEqual(["polish"]);
+    expect(formatReviewWorkerLaunchSafety(safety)).toContain("degraded review capacity");
+    expect(formatReviewWorkerLaunchSafety(safety)).toContain("Skipped reviewers");
+  });
+
+  it("blocks fake successful peer review when zero reviewers are launchable", () => {
+    const safety = decideReviewWorkerLaunchSafety(checks, summary(checks.map((check) => ({
+      status: "unauthorized",
+      check,
+      launchable: false,
+      evidence: ["status 403 OAuth authentication is currently not allowed"],
+      repairGuidance: providerPreflightRepairGuidance("unauthorized"),
+    }))));
+
+    expect(safety.canProceed).toBe(false);
+    expect(safety.launchableReviewerIds).toEqual([]);
+    expect(safety.degradedReviewerIds).toEqual(["fresh-eyes", "polish"]);
+    expect(formatReviewWorkerLaunchSafety(safety)).toContain("zero launchable review workers");
+    expect(formatReviewWorkerLaunchSafety(safety)).toContain("Do not retry endlessly");
   });
 });
 

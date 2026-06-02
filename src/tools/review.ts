@@ -12,6 +12,9 @@ import { assessAcceptanceCriteriaEvidence, assessVerificationEvidence, formatAcc
 import { assessSourceResearchEvidence } from "../plan-quality.js";
 
 import { FlywheelError } from "../errors.js";
+import { decideImplementationLaunchSafety, detectInteractiveSubagentToolSurface } from "../coordination.js";
+import { preflightAgentMail } from "../agent-mail.js";
+import { decideReviewWorkerLaunchSafety, formatReviewWorkerLaunchSafety, preflightWorkerProviders, type ProviderPreflightCheck } from "../provider-preflight.js";
 export function registerReviewTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
@@ -477,19 +480,64 @@ export function registerReviewTool(oc: OrchestratorContext) {
             },
           ];
 
-          const hitMeResults = await oc.runHitMeAgents(agentConfigs, ctx.cwd, ctx);
+          const reviewerChecks: ProviderPreflightCheck[] = agentConfigs.map((config) => ({
+            id: config.name,
+            label: config.name,
+            surface: "subagent",
+            required: false,
+            probe: { command: "pi", args: ["--version"] },
+          }));
+          const reviewProviderPreflight = await preflightWorkerProviders({
+            cwd: ctx.cwd,
+            checks: reviewerChecks,
+            exec: async (cmd, args, opts) => {
+              const result = await resilientExec(oc.pi, cmd, args, { cwd: opts.cwd, timeout: opts.timeout, maxRetries: 0, logWarnings: false });
+              if (!result.ok) throw result.error;
+              return result.value;
+            },
+          });
+          const reviewLaunchSafety = decideReviewWorkerLaunchSafety(reviewerChecks, reviewProviderPreflight);
+          const reviewLaunchSafetyText = formatReviewWorkerLaunchSafety(reviewLaunchSafety);
+
+          if (!reviewLaunchSafety.canProceed) {
+            oc.state.beadHitMeCompleted[params.beadId] = false;
+            oc.state.beadResults[params.beadId] = {
+              ...oc.state.beadResults[params.beadId],
+              status: "partial",
+              summary: `${params.summary}\n\nAutomatic review pass blocked: ${reviewLaunchSafety.explanation}`,
+            };
+            oc.persistState();
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `## ⚠️ Automatic Review Pass Blocked — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${reviewLaunchSafetyText}\n\nNo peer reviewers were launched. Retry after repairing provider/auth, explicitly accept degraded reviewer capacity, or switch to a launchable provider before calling \`orch_review\` again.`,
+                },
+              ],
+              details: { review: { beadId: params.beadId, passed: false }, hitMe: true, round, bead: params.beadId, providerPreflight: reviewProviderPreflight, reviewLaunchSafety, ...sourceResearchDetails },
+            };
+          }
+
+          const launchableReviewerIds = new Set(reviewLaunchSafety.launchableReviewerIds);
+          const launchableAgentConfigs = agentConfigs.filter((config) => launchableReviewerIds.has(config.name));
+          const hitMeResults = await oc.runHitMeAgents(launchableAgentConfigs, ctx.cwd, ctx);
 
           oc.state.beadHitMeCompleted[params.beadId] = true;
           oc.persistState();
+
+          const degradedReviewText = reviewLaunchSafety.degradedReviewerIds.length > 0
+            ? `\n\n## ⚠️ Degraded Review Capacity\n\n${reviewLaunchSafetyText}\n\nCompleted reviewers: ${reviewLaunchSafety.launchableReviewerIds.join(", ") || "none"}\nSkipped reviewers: ${reviewLaunchSafety.degradedReviewerIds.join(", ")}`
+            : "";
 
           return {
             content: [
               {
                 type: "text",
-                text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
+                text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}${degradedReviewText}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, ...sourceResearchDetails },
+            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, providerPreflight: reviewProviderPreflight, reviewLaunchSafety, ...sourceResearchDetails },
           };
         }
 
@@ -668,9 +716,26 @@ export function registerReviewTool(oc: OrchestratorContext) {
             oc.state.coordinationMode,
             !!oc.state.coordinationBackend?.agentMail
           );
-          const modeLabel = executionMode === "single-branch"
-            ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
-            : "🌿 Worktree mode — use isolated checkouts if the orchestrator provides them.";
+          const agentMailPreflight = executionMode === "single-branch"
+            ? await preflightAgentMail(oc.pi.exec)
+            : undefined;
+          const ntmAvailableResult = await resilientExec(oc.pi, "ntm", ["--help"], { cwd: ctx.cwd, timeout: 3000, maxRetries: 0, logWarnings: false });
+          const interactiveSubagentsAvailable = detectInteractiveSubagentToolSurface(
+            (process.env.PI_AVAILABLE_TOOLS ?? process.env.PI_TOOL_NAMES ?? "").split(",").map((tool) => tool.trim()).filter(Boolean)
+          );
+          const launchDecision = decideImplementationLaunchSafety({
+            readyBeads: ready.map((readyBead) => ({ id: readyBead.id, title: readyBead.title, files: extractBeadArtifacts(readyBead) })),
+            requestedMode: executionMode,
+            agentMailPreflight,
+            worktreeAvailable: executionMode === "worktree" || !!oc.worktreePool,
+            visibleNtmAvailable: ntmAvailableResult.ok && ntmAvailableResult.value.code === 0,
+            interactiveSubagentsAvailable,
+          });
+          const modeLabel = launchDecision.mode === "single-branch-parallel"
+            ? "🤝 Single-branch mode — shared checkout; Agent Mail reservations available and ready bead file scopes are disjoint."
+            : launchDecision.mode === "worktree-parallel"
+              ? "🌿 Worktree mode — use isolated checkouts for parallel workers; Agent Mail reservations are not required."
+              : "🚦 Sequential mode — launch one worker only because parallel same-checkout safety could not be proven.";
 
           let forecastAdvisory = "";
           try {
@@ -707,21 +772,22 @@ export function registerReviewTool(oc: OrchestratorContext) {
           const { formatImplementationWorkerHandoff } = await import("../prompts.js");
           const implementationHandoff = formatImplementationWorkerHandoff({
             cwd: ctx.cwd,
-            workerCount: ready.length,
-            readyBeadIds: ready.map((b) => b.id),
-            executionModeLabel: modeLabel,
+            workerCount: launchDecision.workerCount,
+            readyBeadIds: launchDecision.selectedBeadIds,
+            assignedBeadId: launchDecision.parallel ? undefined : launchDecision.selectedBeadIds[0],
+            executionModeLabel: `${modeLabel}\n\n${launchDecision.explanation}`,
             completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
           });
-          ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${ready.length} beads now ready for pi-subagent implementation.`, "info");
+          ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${launchDecision.selectedBeadIds.length} bead(s) selected by launch safety gate.`, "info");
 
           return {
             content: [
               {
                 type: "text",
-                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n**NEXT: Launch clear-context pi-subagents for implementation. Do not implement these beads inline.**\n\n${implementationHandoff}`,
+                text: `✅ Bead ${params.beadId} (${bead.title}) passed.${freshEyesStatusText}${forecastAdvisory}\n\n${launchDecision.explanation}\n\n**NEXT: Launch clear-context pi-subagents for implementation according to the safety decision above. Do not implement these beads inline.**\n\n${implementationHandoff}`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, readyBeads: ready.map((b) => b.id), launchingParallel: true, launchMode: "pi-subagents", ...sourceResearchDetails },
+            details: { review: { beadId: params.beadId, passed: true }, readyBeads: launchDecision.selectedBeadIds, launchingParallel: launchDecision.parallel, launchMode: launchDecision.mode, launchSafety: launchDecision, ...sourceResearchDetails },
           };
         }
       } else {
