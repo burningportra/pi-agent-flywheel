@@ -8,6 +8,9 @@ import { sessionArtifactPath, findSessionArtifactPath } from "../session-artifac
 import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { brExec, brExecJson, resilientExec } from "../cli-exec.js";
 import { pickAlternativeBeadReviewModel } from "../bead-review.js";
+import { decideImplementationLaunchSafety, detectInteractiveSubagentToolSurface } from "../coordination.js";
+import { preflightAgentMail } from "../agent-mail.js";
+import { preflightWorkerProviders, type ProviderPreflightCheck } from "../provider-preflight.js";
 
 import { FlywheelError } from "../errors.js";
 import { checkPlanningToolOrdering } from "../workflows/runner.js";
@@ -1876,16 +1879,48 @@ cd ${ctx.cwd}`;
         // Fresh-eyes monitoring is fail-open; implementation launch continues.
       }
 
-      // Determine if we can run in parallel
-      const hasParallel = ready.length > 1;
-
       const executionMode = resolveExecutionMode(
         oc.state.coordinationMode,
         !!oc.state.coordinationBackend?.agentMail
       );
-      const modeLabel = executionMode === "single-branch"
-        ? "🤝 Single-branch mode — shared checkout; coordinate with reservations when available."
-        : "🌿 Worktree mode — use isolated checkouts if the orchestrator provides them.";
+      const agentMailPreflight = executionMode === "single-branch" && ready.length > 1
+        ? await preflightAgentMail(oc.pi.exec)
+        : undefined;
+      const providerChecks: ProviderPreflightCheck[] = [
+        { id: "impl:ntm", label: "NTM visible panes", surface: "ntm", required: true, probe: { command: "ntm", args: ["--help"] } },
+        { id: "impl:claude-code", label: "Claude Code", provider: "anthropic", surface: "claude-code", required: false, probe: { command: "cc", args: ["--help"] } },
+        { id: "impl:cursor-agent", label: "Cursor agent", provider: "google/openrouter", surface: "cursor-agent", required: false, probe: { command: "cursor", args: ["--help"] } },
+        { id: "impl:codex", label: "Codex", surface: "codex", required: false, probe: { command: "codex", args: ["--help"] } },
+      ];
+      const providerPreflight = ready.length > 1
+        ? await preflightWorkerProviders({
+          cwd: ctx.cwd,
+          checks: providerChecks,
+          exec: async (cmd, args, opts) => {
+            const result = await resilientExec(oc.pi, cmd, args, { cwd: opts.cwd, timeout: opts.timeout, maxRetries: 0, logWarnings: false });
+            if (!result.ok) throw result.error;
+            return result.value;
+          },
+        })
+        : undefined;
+      const ntmAvailableResult = providerPreflight?.results.find((result) => result.check.id === "impl:ntm");
+      const interactiveSubagentsAvailable = detectInteractiveSubagentToolSurface(
+        (process.env.PI_AVAILABLE_TOOLS ?? process.env.PI_TOOL_NAMES ?? "").split(",").map((tool) => tool.trim()).filter(Boolean)
+      );
+      const launchDecision = decideImplementationLaunchSafety({
+        readyBeads: ready.map((bead) => ({ id: bead.id, title: bead.title, files: extractArtifacts(bead) })),
+        requestedMode: executionMode,
+        agentMailPreflight,
+        worktreeAvailable: executionMode === "worktree" || !!oc.worktreePool,
+        visibleNtmAvailable: ntmAvailableResult?.launchable === true,
+        interactiveSubagentsAvailable,
+        providerPreflight,
+      });
+      const modeLabel = launchDecision.mode === "single-branch-parallel"
+        ? "🤝 Single-branch mode — shared checkout; Agent Mail reservations available and ready bead file scopes are disjoint."
+        : launchDecision.mode === "worktree-parallel"
+          ? "🌿 Worktree mode — use isolated checkouts for parallel workers; Agent Mail reservations are not required."
+          : "🚦 Sequential mode — launch one worker only because parallel same-checkout safety could not be proven.";
 
       const { bvInsights: fetchBvInsights } = await import("../beads.js");
       const launchInsights = await fetchBvInsights(oc.pi, ctx.cwd);
@@ -1913,12 +1948,12 @@ cd ${ctx.cwd}`;
         .filter(([, result]) => result.status === "success")
         .map(([id]) => id);
 
-      if (hasParallel) {
+      if (launchDecision.parallel) {
         const implementationHandoff = formatImplementationWorkerHandoff({
           cwd: ctx.cwd,
-          workerCount: ready.length,
-          readyBeadIds: ready.map((b) => b.id),
-          executionModeLabel: modeLabel,
+          workerCount: launchDecision.workerCount,
+          readyBeadIds: launchDecision.selectedBeadIds,
+          executionModeLabel: `${modeLabel}\n\n${launchDecision.explanation}`,
           completedBeadIds,
         });
 
@@ -1926,24 +1961,24 @@ cd ${ctx.cwd}`;
           content: [
             {
               type: "text",
-              text: `Beads approved! ${beads.length} total, ${ready.length} ready now.${bvRecommendation}\n\n**NEXT: Launch clear-context pi-subagents for implementation. Do not implement these beads inline.**\n\n${implementationHandoff}`,
+              text: `Beads approved! ${beads.length} total, ${ready.length} ready now.${bvRecommendation}\n\n${launchDecision.explanation}\n\n**NEXT: Launch clear-context implementation workers according to the safety decision above. Do not implement these beads inline.**\n\n${implementationHandoff}`,
             },
           ],
-          details: { approved: true, beadCount: beads.length, readyCount: ready.length, parallel: true, launchMode: "pi-subagents" },
+          details: { approved: true, beadCount: beads.length, readyCount: ready.length, parallel: true, launchMode: launchDecision.mode, launchSafety: launchDecision, providerPreflight },
         };
       }
 
-      const firstBead = ready[0];
+      const firstBead = ready.find((bead) => bead.id === launchDecision.selectedBeadIds[0]) ?? ready[0];
       await updateBeadStatus(oc.pi, ctx.cwd, firstBead.id, "in_progress");
       await syncBeads(oc.pi, ctx.cwd);
 
       const implementationHandoff = formatImplementationWorkerHandoff({
         cwd: ctx.cwd,
         workerCount: 1,
-        title: `pi-subagents implementation handoff — ${firstBead.id}`,
+        title: `implementation handoff — ${firstBead.id}`,
         readyBeadIds: [firstBead.id],
         assignedBeadId: firstBead.id,
-        executionModeLabel: modeLabel,
+        executionModeLabel: `${modeLabel}\n\n${launchDecision.explanation}`,
         completedBeadIds,
       });
 
@@ -1951,10 +1986,10 @@ cd ${ctx.cwd}`;
         content: [
           {
             type: "text",
-            text: `Beads approved! ${beads.length} total, starting with ${firstBead.id}.${bvRecommendation}\n\n**NEXT: Launch a clear-context pi-subagent for bead ${firstBead.id}. Do not implement it inline.**\n\n${implementationHandoff}`,
+            text: `Beads approved! ${beads.length} total, starting with ${firstBead.id}.${bvRecommendation}\n\n${launchDecision.explanation}\n\n**NEXT: Launch one clear-context implementation worker for bead ${firstBead.id}. Do not implement it inline.**\n\n${implementationHandoff}`,
           },
         ],
-        details: { approved: true, beadCount: beads.length, readyCount: ready.length, firstBead: firstBead.id, launchMode: "pi-subagents" },
+        details: { approved: true, beadCount: beads.length, readyCount: ready.length, firstBead: firstBead.id, launchMode: launchDecision.mode, launchSafety: launchDecision, providerPreflight },
       };
     },
 

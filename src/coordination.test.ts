@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { selectStrategy, selectMode, detectCoordinationBackend, resetDetection, detectUbs, resetUbsCache } from "./coordination.js";
+import {
+  selectStrategy,
+  selectMode,
+  detectCoordinationBackend,
+  resetDetection,
+  detectUbs,
+  resetUbsCache,
+  decideImplementationLaunchSafety,
+  detectInteractiveSubagentToolSurface,
+  findFileScopeConflicts,
+} from "./coordination.js";
 
 // ─── Mock fs ────────────────────────────────────────────────
 
@@ -44,6 +54,258 @@ describe("selectMode", () => {
 
   it("returns worktree when agentMail is unavailable", () => {
     expect(selectMode({ beads: true, agentMail: false })).toBe("worktree");
+  });
+});
+
+// ─── Implementation launch safety ──────────────────────────
+
+describe("implementation launch safety", () => {
+  const availableAgentMail = {
+    status: "available" as const,
+    reservationsAvailable: true,
+    evidence: ["health_check: exit=0"],
+    repairGuidance: [],
+  };
+
+  it("allows parallel single-branch only when Agent Mail reservations are available, scopes are disjoint, and supervision is controllable", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/a.ts"] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+    });
+
+    expect(decision.mode).toBe("single-branch-parallel");
+    expect(decision.parallel).toBe(true);
+    expect(decision.explanation).toContain("Agent Mail reservations are available and file scopes are disjoint");
+  });
+
+  it("downgrades overlapping file scopes away from same-checkout parallel launch and names conflicting bead/file pairs", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-ko73", files: ["src/tools/shared.ts", "src/tools/triage.ts"] },
+        { id: "pi-jp4p", files: ["src/tools/shared.ts", "src/tools/status.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+    });
+
+    expect(decision.mode).toBe("sequential");
+    expect(decision.parallel).toBe(false);
+    expect(decision.conflicts).toEqual([{ file: "src/tools/shared.ts", beadIds: ["pi-ko73", "pi-jp4p"] }]);
+    expect(decision.explanation).toContain("src/tools/shared.ts (pi-ko73 ↔ pi-jp4p)");
+  });
+
+  it("chooses worktree isolation for overlapping scopes when worktrees are available", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/shared.ts"] },
+        { id: "pi-b", files: ["src/shared.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: true,
+      visibleNtmAvailable: true,
+    });
+
+    expect(decision.mode).toBe("worktree-parallel");
+    expect(decision.parallel).toBe(true);
+    expect(decision.explanation).toContain("worktree isolation");
+  });
+
+  it("downgrades same-checkout parallel launch when Agent Mail is unavailable even for disjoint scopes", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/a.ts"] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: {
+        status: "unauthorized",
+        reservationsAvailable: false,
+        evidence: ['health_check: exit=0 stdout={"detail":"Unauthorized"}'],
+        repairGuidance: ["Do not retry endlessly on 401/Unauthorized"],
+      },
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+    });
+
+    expect(decision.mode).toBe("sequential");
+    expect(decision.agentMailStatus).toBe("unauthorized");
+    expect(decision.explanation).toContain("Agent Mail preflight: unauthorized");
+    expect(decision.explanation).toContain("Do not retry endlessly");
+  });
+
+  it("treats missing file scopes as unsafe for same-checkout parallel launch", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: [] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+    });
+
+    expect(decision.mode).toBe("sequential");
+    expect(decision.missingFileScopeBeadIds).toEqual(["pi-a"]);
+    expect(decision.explanation).toContain("Missing file scopes: pi-a");
+  });
+
+  it("allows explicit worktree mode to launch parallel workers without Agent Mail reservations", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "worktree",
+      readyBeads: [
+        { id: "pi-a", files: ["src/shared.ts"] },
+        { id: "pi-b", files: ["src/shared.ts"] },
+      ],
+      worktreeAvailable: true,
+      visibleNtmAvailable: true,
+    });
+
+    expect(decision.mode).toBe("worktree-parallel");
+    expect(decision.agentMailStatus).toBe("not_required");
+  });
+
+  it("downgrades multi-agent same-checkout launch when no interactive or visible supervision surface is available", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/a.ts"] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: false,
+      interactiveSubagentsAvailable: false,
+    });
+
+    expect(decision.mode).toBe("sequential");
+    expect(decision.explanation).toContain("no visible/interactive multi-agent supervision surface detected");
+  });
+
+  it("keeps healthy provider preflight green for same-checkout parallel launch", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/a.ts"] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+      providerPreflight: {
+        status: "available",
+        launchableCount: 1,
+        requiredUnavailable: false,
+        selectedCheckIds: ["impl:ntm"],
+        downgradeReasons: [],
+        repairGuidance: [],
+        results: [{
+          status: "available",
+          launchable: true,
+          evidence: ["ntm --help", "exit=0"],
+          repairGuidance: [],
+          check: { id: "impl:ntm", label: "NTM visible panes", surface: "ntm", required: true },
+        }],
+      },
+    });
+
+    expect(decision.mode).toBe("single-branch-parallel");
+    expect(decision.providerStatus).toBe("available");
+  });
+
+  it("downgrades unauthorized required provider preflight before multi-worker handoff", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/a.ts"] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+      providerPreflight: {
+        status: "unauthorized",
+        launchableCount: 0,
+        requiredUnavailable: true,
+        selectedCheckIds: [],
+        downgradeReasons: ["Required Claude Code is unauthorized"],
+        repairGuidance: ["Do not retry endlessly on 401/403/Unauthorized evidence"],
+        results: [{
+          status: "unauthorized",
+          launchable: false,
+          evidence: ["cc --help", "stderr: permission_error"],
+          repairGuidance: ["Do not retry endlessly on 401/403/Unauthorized evidence"],
+          check: { id: "impl:cc", label: "Claude Code", surface: "claude-code", required: true },
+        }],
+      },
+    });
+
+    expect(decision.mode).toBe("sequential");
+    expect(decision.parallel).toBe(false);
+    expect(decision.explanation).toContain("Provider preflight: unauthorized");
+    expect(decision.explanation).toContain("permission_error");
+    expect(decision.explanation).toContain("Do not retry endlessly");
+  });
+
+  it("routes around an optional unavailable provider when another provider is launchable", () => {
+    const decision = decideImplementationLaunchSafety({
+      requestedMode: "single-branch",
+      readyBeads: [
+        { id: "pi-a", files: ["src/a.ts"] },
+        { id: "pi-b", files: ["src/b.ts"] },
+      ],
+      agentMailPreflight: availableAgentMail,
+      worktreeAvailable: false,
+      visibleNtmAvailable: true,
+      providerPreflight: {
+        status: "available",
+        launchableCount: 1,
+        requiredUnavailable: false,
+        selectedCheckIds: ["impl:codex"],
+        downgradeReasons: ["Optional Cursor agent is unavailable"],
+        repairGuidance: ["Verify installation and PATH"],
+        results: [
+          {
+            status: "unavailable",
+            launchable: false,
+            evidence: ["cursor --help", "exit=127"],
+            repairGuidance: ["Verify installation and PATH"],
+            check: { id: "impl:cursor", label: "Cursor agent", surface: "cursor-agent", required: false },
+          },
+          {
+            status: "available",
+            launchable: true,
+            evidence: ["codex --help", "exit=0"],
+            repairGuidance: [],
+            check: { id: "impl:codex", label: "Codex", surface: "codex", required: false },
+          },
+        ],
+      },
+    });
+
+    expect(decision.mode).toBe("single-branch-parallel");
+    expect(decision.downgradeReasons).toContain("Optional Cursor agent is unavailable");
+  });
+
+  it("detects pi-interactive-subagents style tool surfaces", () => {
+    expect(detectInteractiveSubagentToolSurface(["subagent", "subagent_interrupt", "subagent_resume", "caller_ping"])).toBe(true);
+    expect(detectInteractiveSubagentToolSurface(["subagent"])).toBe(false);
+  });
+
+  it("finds exact file conflicts only once per bead even when files repeat", () => {
+    expect(findFileScopeConflicts([
+      { id: "pi-a", files: ["src/shared.ts", "src/shared.ts"] },
+      { id: "pi-b", files: ["src/shared.ts"] },
+    ])).toEqual([{ file: "src/shared.ts", beadIds: ["pi-a", "pi-b"] }]);
   });
 });
 

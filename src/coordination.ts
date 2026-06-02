@@ -2,8 +2,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, chmodSync } from "fs";
 import { join } from "path";
 import type { CoordinationMode } from "./types.js";
-import type { ExecFn } from "./agent-mail.js";
+import type { AgentMailPreflightResult, ExecFn } from "./agent-mail.js";
 import { brExec, resilientExec } from "./cli-exec.js";
+import type { ProviderPreflightSummary } from "./provider-preflight.js";
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -38,6 +39,234 @@ export function selectStrategy(backend: CoordinationBackend): CoordinationStrate
  */
 export function selectMode(backend: CoordinationBackend): CoordinationMode {
   return backend.agentMail ? "single-branch" : "worktree";
+}
+
+// ─── Implementation launch safety ─────────────────────────────
+
+export interface LaunchSafetyBead {
+  id: string;
+  title?: string;
+  files: string[];
+}
+
+export interface LaunchFileConflict {
+  file: string;
+  beadIds: string[];
+}
+
+export type ImplementationLaunchMode = "single-branch-parallel" | "worktree-parallel" | "sequential";
+
+export interface ImplementationLaunchSafetyDecision {
+  mode: ImplementationLaunchMode;
+  workerCount: number;
+  selectedBeadIds: string[];
+  parallel: boolean;
+  conflicts: LaunchFileConflict[];
+  missingFileScopeBeadIds: string[];
+  agentMailStatus: AgentMailPreflightResult["status"] | "not_required";
+  providerStatus: ProviderPreflightSummary["status"] | "not_checked";
+  providerPreflight?: ProviderPreflightSummary;
+  downgradeReasons: string[];
+  repairGuidance: string[];
+  supervision: "interactive-subagents" | "visible-ntm" | "single-worker";
+  explanation: string;
+}
+
+export function findFileScopeConflicts(beads: readonly LaunchSafetyBead[]): LaunchFileConflict[] {
+  const fileToBeads = new Map<string, string[]>();
+  for (const bead of beads) {
+    const uniqueFiles = new Set(bead.files.map((file) => file.trim()).filter(Boolean));
+    for (const file of uniqueFiles) {
+      const beadIds = fileToBeads.get(file) ?? [];
+      beadIds.push(bead.id);
+      fileToBeads.set(file, beadIds);
+    }
+  }
+  return [...fileToBeads.entries()]
+    .filter(([, beadIds]) => beadIds.length > 1)
+    .map(([file, beadIds]) => ({ file, beadIds }));
+}
+
+export function detectInteractiveSubagentToolSurface(toolNames: readonly string[] | undefined): boolean {
+  if (!toolNames) return false;
+  const tools = new Set(toolNames);
+  return tools.has("subagent") && tools.has("subagent_interrupt") && tools.has("subagent_resume");
+}
+
+function describeLaunchDecision(decision: Omit<ImplementationLaunchSafetyDecision, "explanation">): string {
+  const lines: string[] = [];
+  const providerDowngrades = decision.providerPreflight?.results.filter((result) => !result.launchable) ?? [];
+  if (decision.mode === "single-branch-parallel") {
+    lines.push(`✅ Parallel single-branch launch allowed for ${decision.selectedBeadIds.join(", ")}: Agent Mail reservations are available and file scopes are disjoint.`);
+  } else if (decision.mode === "worktree-parallel") {
+    lines.push(`🌿 Parallel launch downgraded to worktree isolation for ${decision.selectedBeadIds.join(", ")}.`);
+  } else {
+    lines.push(`🚦 Launch reduced to a single worker for ${decision.selectedBeadIds[0] ?? "the next bead"}.`);
+  }
+
+  if (decision.conflicts.length > 0) {
+    lines.push(`Conflicting bead/file pairs: ${decision.conflicts.map((c) => `${c.file} (${c.beadIds.join(" ↔ ")})`).join("; ")}.`);
+  }
+  if (decision.missingFileScopeBeadIds.length > 0) {
+    lines.push(`Missing file scopes: ${decision.missingFileScopeBeadIds.join(", ")}.`);
+  }
+  if (decision.agentMailStatus !== "available" && decision.agentMailStatus !== "not_required") {
+    lines.push(`Agent Mail preflight: ${decision.agentMailStatus}.`);
+  }
+  if (decision.providerPreflight && providerDowngrades.length > 0) {
+    const launchable = decision.providerPreflight.results
+      .filter((result) => result.launchable)
+      .map((result) => result.check.label)
+      .join(", ");
+    const unavailable = providerDowngrades
+      .map((result) => `${result.check.required ? "required" : "optional"} ${result.check.label}: ${result.status}${result.evidence.length ? ` (${result.evidence.join("; ")})` : ""}`)
+      .join("; ");
+    lines.push(`Provider preflight: ${decision.providerStatus}${launchable ? `; launchable route(s): ${launchable}` : ""}; skipped/degraded: ${unavailable}.`);
+  }
+  if (decision.downgradeReasons.length > 0) {
+    lines.push(`Downgrade reason: ${decision.downgradeReasons.join("; ")}.`);
+  }
+  if (decision.repairGuidance.length > 0) {
+    lines.push(`Repair/preflight guidance: ${decision.repairGuidance.join(" | ")}`);
+  }
+  if (decision.supervision === "interactive-subagents") {
+    lines.push("Supervisor surface: interactive subagents with resume/interrupt support are available.");
+  } else if (decision.supervision === "visible-ntm") {
+    lines.push("Supervisor surface: use visible/controllable NTM panes; avoid hidden non-interactive workers.");
+  } else {
+    lines.push("Supervisor surface: single worker avoids hidden non-interactive multi-agent coordination risk.");
+  }
+  return lines.join("\n");
+}
+
+export function decideImplementationLaunchSafety(input: {
+  readyBeads: readonly LaunchSafetyBead[];
+  requestedMode: CoordinationMode;
+  agentMailPreflight?: AgentMailPreflightResult;
+  worktreeAvailable: boolean;
+  interactiveSubagentsAvailable?: boolean;
+  visibleNtmAvailable?: boolean;
+  providerPreflight?: ProviderPreflightSummary;
+}): ImplementationLaunchSafetyDecision {
+  const readyBeads = [...input.readyBeads];
+  const selectedAll = readyBeads.map((bead) => bead.id);
+  const conflicts = findFileScopeConflicts(readyBeads);
+  const missingFileScopeBeadIds = readyBeads.filter((bead) => bead.files.length === 0).map((bead) => bead.id);
+  const hasParallel = readyBeads.length > 1;
+  const agentMailStatus: ImplementationLaunchSafetyDecision["agentMailStatus"] = input.requestedMode === "worktree"
+    ? "not_required"
+    : input.agentMailPreflight?.status ?? "server_unreachable";
+  const reservationsAvailable = input.requestedMode === "worktree"
+    ? true
+    : input.agentMailPreflight?.reservationsAvailable === true;
+  const hasControllableMultiAgentSurface = !!input.interactiveSubagentsAvailable || !!input.visibleNtmAvailable;
+  const providerStatus = input.providerPreflight?.status ?? "not_checked";
+  const providerLaunchable = !input.providerPreflight || input.providerPreflight.launchableCount > 0;
+  const providerBlocksParallel = !!input.providerPreflight && !providerLaunchable;
+
+  const downgradeReasons: string[] = [];
+  if (!hasParallel) {
+    const base = {
+      mode: "sequential" as const,
+      workerCount: Math.min(1, readyBeads.length),
+      selectedBeadIds: selectedAll.slice(0, 1),
+      parallel: false,
+      conflicts,
+      missingFileScopeBeadIds,
+      agentMailStatus,
+      downgradeReasons,
+      providerStatus,
+      providerPreflight: input.providerPreflight,
+      repairGuidance: [...(input.agentMailPreflight?.repairGuidance ?? []), ...(input.providerPreflight?.repairGuidance ?? [])],
+      supervision: "single-worker" as const,
+    };
+    return { ...base, explanation: describeLaunchDecision(base) };
+  }
+
+  if (input.requestedMode === "worktree" && !providerBlocksParallel) {
+    const base = {
+      mode: "worktree-parallel" as const,
+      workerCount: readyBeads.length,
+      selectedBeadIds: selectedAll,
+      parallel: true,
+      conflicts,
+      missingFileScopeBeadIds,
+      agentMailStatus,
+      downgradeReasons: ["explicit worktree mode isolates worker changes; Agent Mail reservations are not required", ...(input.providerPreflight?.downgradeReasons ?? [])],
+      providerStatus,
+      providerPreflight: input.providerPreflight,
+      repairGuidance: input.providerPreflight?.repairGuidance ?? [],
+      supervision: (input.interactiveSubagentsAvailable ? "interactive-subagents" : "visible-ntm") as "visible-ntm" | "interactive-subagents",
+    };
+    return { ...base, explanation: describeLaunchDecision(base) };
+  }
+
+  if (!reservationsAvailable) downgradeReasons.push(`Agent Mail reservations unavailable (${agentMailStatus})`);
+  if (conflicts.length > 0) downgradeReasons.push("ready bead file scopes overlap");
+  if (missingFileScopeBeadIds.length > 0) downgradeReasons.push("one or more ready beads are missing ### Files scope");
+  if (!hasControllableMultiAgentSurface) downgradeReasons.push("no visible/interactive multi-agent supervision surface detected");
+  if (input.providerPreflight) {
+    downgradeReasons.push(...input.providerPreflight.downgradeReasons);
+    if (providerBlocksParallel) downgradeReasons.push(`no launchable worker provider/surface available (${providerStatus})`);
+  }
+
+  const safeSingleBranchParallel = reservationsAvailable
+    && conflicts.length === 0
+    && missingFileScopeBeadIds.length === 0
+    && hasControllableMultiAgentSurface
+    && !providerBlocksParallel;
+
+  if (safeSingleBranchParallel) {
+    const base = {
+      mode: "single-branch-parallel" as const,
+      workerCount: readyBeads.length,
+      selectedBeadIds: selectedAll,
+      parallel: true,
+      conflicts,
+      missingFileScopeBeadIds,
+      agentMailStatus,
+      downgradeReasons,
+      providerStatus,
+      providerPreflight: input.providerPreflight,
+      repairGuidance: input.providerPreflight?.repairGuidance ?? [],
+      supervision: (input.interactiveSubagentsAvailable ? "interactive-subagents" : "visible-ntm") as "interactive-subagents" | "visible-ntm",
+    };
+    return { ...base, explanation: describeLaunchDecision(base) };
+  }
+
+  if (input.worktreeAvailable) {
+    const base = {
+      mode: "worktree-parallel" as const,
+      workerCount: readyBeads.length,
+      selectedBeadIds: selectedAll,
+      parallel: true,
+      conflicts,
+      missingFileScopeBeadIds,
+      agentMailStatus,
+      downgradeReasons,
+      providerStatus,
+      providerPreflight: input.providerPreflight,
+      repairGuidance: [...(input.agentMailPreflight?.repairGuidance ?? []), ...(input.providerPreflight?.repairGuidance ?? [])],
+      supervision: "visible-ntm" as const,
+    };
+    return { ...base, explanation: describeLaunchDecision(base) };
+  }
+
+  const base = {
+    mode: "sequential" as const,
+    workerCount: 1,
+    selectedBeadIds: selectedAll.slice(0, 1),
+    parallel: false,
+    conflicts,
+    missingFileScopeBeadIds,
+    agentMailStatus,
+    downgradeReasons,
+    providerStatus,
+    providerPreflight: input.providerPreflight,
+    repairGuidance: [...(input.agentMailPreflight?.repairGuidance ?? []), ...(input.providerPreflight?.repairGuidance ?? [])],
+    supervision: "single-worker" as const,
+  };
+  return { ...base, explanation: describeLaunchDecision(base) };
 }
 
 // ─── Detection ─────────────────────────────────────────────────

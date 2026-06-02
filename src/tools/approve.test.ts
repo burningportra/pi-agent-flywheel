@@ -39,6 +39,17 @@ describe("approval structured mutation handoff", () => {
     expect(source).not.toContain("using `br create` and `br dep add` in bash NOW");
     expect(source).not.toContain("create beads with `br create` first");
   });
+
+  it("runs launch safety preflight before parallel implementation handoff", () => {
+    const source = readFileSync(new URL("./approve.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("preflightAgentMail");
+    expect(source).toContain("decideImplementationLaunchSafety");
+    expect(source).toContain("extractArtifacts(bead)");
+    expect(source).toContain("Agent Mail reservations available and ready bead file scopes are disjoint");
+    expect(source).toContain("Sequential mode — launch one worker only");
+    expect(source).toContain("launchSafety");
+  });
 });
 
 describe("bv execution plan approval summary", () => {
@@ -488,11 +499,11 @@ describe("plan-to-bead audit integration", () => {
     expect(approveSource).toContain("oc.state.planDocument");
   });
 
-  it("launches implementation through clear-context pi-subagents instead of inline work", () => {
-    expect(approveSource).toContain("Launch clear-context pi-subagents for implementation");
-    expect(approveSource).toContain("Launch a clear-context pi-subagent for bead ${firstBead.id}");
+  it("launches implementation through clear-context workers instead of inline work", () => {
+    expect(approveSource).toContain("Launch clear-context implementation workers according to the safety decision above");
+    expect(approveSource).toContain("Launch one clear-context implementation worker for bead ${firstBead.id}");
     expect(approveSource).toContain("Do not implement these beads inline");
-    expect(approveSource).toContain('launchMode: "pi-subagents"');
+    expect(approveSource).toContain("launchSafety");
     expect(approveSource).not.toContain("Implement bead ${firstBead.id} NOW");
     expect(approveSource).not.toContain("parallel_subagents` NOW to launch");
     expect(approveSource).not.toContain("Launch the NTM implementation swarm now");
