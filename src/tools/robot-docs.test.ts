@@ -19,12 +19,19 @@ describe("R-003: flywheel_robot_docs handbook", () => {
     }
   });
 
-  it("references the canonical capabilities/triage/doctor tools", () => {
+  it("references the canonical capabilities/status/triage/doctor tools", () => {
     const docs = buildRobotDocs();
     expect(docs).toContain(canonicalName("capabilities"));
+    expect(docs).toContain(canonicalName("status"));
     expect(docs).toContain(canonicalName("triage"));
     expect(docs).toContain(canonicalName("doctor"));
     expect(docs).toContain(canonicalName("robot_docs"));
+  });
+
+  it("documents flywheel_status as the recovery-first call after reload or compaction", () => {
+    const docs = buildRobotDocs();
+    expect(docs).toContain("flywheel_status       # recovery-first");
+    expect(docs).toContain("after reload, compaction, or handoff");
   });
 
   it("documents both deprecation env vars", () => {
@@ -46,6 +53,15 @@ describe("R-003: flywheel_robot_docs handbook", () => {
     expect(docs).toContain("## 7. NTM implementation panes");
     expect(docs).toContain("--agent");
     expect(docs).toContain("preferred over `--gmi`");
+  });
+
+  it("documents provider preflight diagnostics and unauthorized repair guidance", () => {
+    const docs = buildRobotDocs();
+    expect(docs).toContain("provider_preflight.not_checked");
+    expect(docs).toContain("bounded provider/model preflight probes");
+    expect(docs).toContain("OAuth 403");
+    expect(docs).toContain("switch provider/model");
+    expect(docs).toContain("downgrade worker count");
   });
 
   it("documents the read-only release checklist workflow", () => {

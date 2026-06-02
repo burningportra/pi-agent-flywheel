@@ -74,10 +74,11 @@ export function buildRobotDocs(): string {
   lines.push("/flywheel-cleanup     # release worktrees + reservations");
   lines.push("```");
   lines.push("");
-  lines.push("**4.5 Diagnose health.**");
+  lines.push("**4.5 Diagnose health or resume after reload/compaction.**");
   lines.push("```");
-  lines.push("flywheel_doctor       # read-only health check");
-  lines.push("flywheel_triage       # mega-command: quick_ref + recommendations + commands + health");
+  lines.push("flywheel_status       # recovery-first: parseable phase, goal, beads, confidence, next action");
+  lines.push("flywheel_doctor       # read-only health check; reports provider preflight as not_checked unless launch-time probes have run");
+  lines.push("flywheel_triage       # mega-command: quick_ref + recommendations + commands + health; includes read-only provider_preflight.not_checked guidance");
   lines.push("```");
   lines.push("");
   lines.push("**4.6 Prepare a release/version handoff (read-only).**");
@@ -90,10 +91,11 @@ export function buildRobotDocs(): string {
   lines.push("");
   lines.push("## 5. Self-discovery surfaces");
   lines.push("");
+  lines.push("- `flywheel_status` — recovery-first machine-readable status after reload, compaction, or handoff.");
   lines.push("- `flywheel_capabilities` — machine-readable JSON contract (tools, schemas, error codes, phases).");
   lines.push("- `flywheel_robot_docs` — this document.");
-  lines.push("- `flywheel_doctor` — read-only health diagnostics.");
-  lines.push("- `flywheel_triage` — single-call mega-command (recommended first invocation).");
+  lines.push("- `flywheel_doctor` — read-only health diagnostics; provider/model auth is surfaced as `not_checked` because the bounded probes run at implementation/review launch time.");
+  lines.push("- `flywheel_triage` — single-call mega-command (recommended first invocation), including read-only `provider_preflight.not_checked` guidance.");
   lines.push("");
   lines.push("## 6. Environment variables");
   lines.push("");
@@ -103,6 +105,7 @@ export function buildRobotDocs(): string {
   lines.push("## 7. NTM implementation panes");
   lines.push("");
   lines.push("Implementation launches use visible NTM worker panes, not inline edits in the orchestrator chat.");
+  lines.push("Before implementation or review workers start, AgentFlywheel runs bounded provider/model preflight probes for the selected worker surfaces. Unauthorized evidence such as 401/403, `Unauthorized`, or OAuth 403 means auth is blocked; do not retry endlessly. Check OAuth policy, API keys, account and organization permissions, switch provider/model if needed, retry only after repair, or downgrade worker count/parallelism.");
   lines.push("- Anthropic → `--cc`");
   lines.push("- OpenAI/Codex → `--cod`");
   lines.push("- Google/Gemini ergonomics → `--agent` (Cursor CLI; preferred over `--gmi`)");

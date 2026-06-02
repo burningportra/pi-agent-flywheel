@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
-import type { OrchestratorContext } from "../types.js";
+import type { OrchestratorContext, OrchestratorPhase } from "../types.js";
+import { buildWorkflowStatus } from "../workflow-status.js";
 import { canonicalName } from "./shared.js";
 
 /**
@@ -28,6 +29,11 @@ export interface TriageHealth {
   phase: string;
   worktree_pool_present: boolean;
   swarm_tender_present: boolean;
+  provider_preflight: {
+    status: "not_checked";
+    reason: string;
+    launch_time_check: string;
+  };
 }
 
 export interface TriageQuickRef {
@@ -49,20 +55,27 @@ export interface TriageOutput {
 export const TRIAGE_CONTRACT_VERSION = "1.0";
 export const TRIAGE_TTL_SECONDS = 60;
 
-const NEXT_TOOL_BY_PHASE: Record<string, string | null> = {
+const NEXT_TOOL_BY_PHASE: Record<OrchestratorPhase, string | null> = {
   idle: "flywheel_profile",
-  profile: "flywheel_discover",
-  discover: "flywheel_select",
-  select: "flywheel_plan",
-  plan: "flywheel_approve_beads",
-  approve: "flywheel_review",
-  review: null,
+  profiling: "flywheel_profile",
+  discovering: "flywheel_discover",
+  awaiting_selection: "flywheel_select",
+  planning: "flywheel_plan",
   researching: "flywheel_research",
+  awaiting_plan_approval: "flywheel_approve_beads",
+  creating_beads: "flywheel_approve_beads",
+  refining_beads: "flywheel_approve_beads",
+  awaiting_bead_approval: "flywheel_approve_beads",
+  implementing: "flywheel_review",
+  reviewing: "flywheel_review",
+  iterating: "flywheel_review",
+  complete: null,
 };
 
 export function buildTriage(oc: OrchestratorContext): TriageOutput {
   const state = oc.state;
-  const phase = (state.phase ?? "idle") as string;
+  const status = buildWorkflowStatus(state, []);
+  const phase = status.phase;
   const hasGoal = !!state.selectedGoal;
   const hasProfile = !!state.repoProfile;
   const activeBeadIds = state.activeBeadIds ?? [];
@@ -77,12 +90,12 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
   let blocking: string | null = null;
   if (researchState?.url && !hasGoal) blocking = null;
   else if (!hasProfile) blocking = "NO_PROFILE: call flywheel_profile first";
-  else if (!hasGoal && phase === "discover") blocking = "NO_GOAL: call flywheel_select after discover";
-  else if (!state.candidateIdeas?.length && phase === "select") blocking = "NO_IDEAS: call flywheel_discover first";
+  else if (!hasGoal && phase === "discovering") blocking = "NO_GOAL: call flywheel_select after discover";
+  else if (!state.candidateIdeas?.length && phase === "awaiting_selection") blocking = "NO_IDEAS: call flywheel_discover first";
 
   const quick_ref: TriageQuickRef = {
     phase,
-    next_canonical_tool: NEXT_TOOL_BY_PHASE[phase] ?? null,
+    next_canonical_tool: NEXT_TOOL_BY_PHASE[phase],
     blocking_error: blocking,
   };
 
@@ -94,6 +107,11 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
     phase,
     worktree_pool_present: false, // populated externally if available
     swarm_tender_present: false,
+    provider_preflight: {
+      status: "not_checked",
+      reason: "flywheel_triage is read-only and does not run provider/model probes.",
+      launch_time_check: "Implementation and review worker launches run bounded provider preflight before starting NTM panes.",
+    },
   };
 
   const recs: TriageRecommendation[] = [];
@@ -127,6 +145,7 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
   }
 
   const copy_paste_workflow = [
+    "flywheel_status        # recovery-first: parseable phase, goal, beads, confidence, next action",
     "flywheel_capabilities  # discover the tool surface",
     "flywheel_robot_docs    # paste-ready handbook",
     "flywheel_doctor        # health check",
@@ -149,7 +168,7 @@ export function registerTriageTool(oc: OrchestratorContext) {
   oc.pi.registerTool({
     name: canonicalName("triage"),
     label: "Flywheel Triage",
-    description: "Mega-command: returns quick_ref + recommendations + commands + health in one call. Recommended FIRST invocation when starting work with pi-agent-flywheel — replaces the doctor+profile+state+beads round-trip dance.",
+    description: "Mega-command: returns quick_ref + recommendations + commands + health in one call. Use after flywheel_status when resuming/recovering, or as a first-call shortcut for a fresh session.",
     promptSnippet: "Return one-shot triage: phase, recommendations, health, copy-paste workflow",
     parameters: Type.Object({}),
 

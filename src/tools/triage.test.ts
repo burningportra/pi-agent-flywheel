@@ -31,7 +31,7 @@ describe("R-004: flywheel_triage mega-command", () => {
   });
 
   it("all recommendation commands use canonical names (no legacy prefix)", () => {
-    const profileSet = makeOC({ phase: "profile", repoProfile: { name: "x", languages: [], frameworks: [], keyFiles: {}, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false } });
+    const profileSet = makeOC({ phase: "discovering", repoProfile: { name: "x", languages: [], frameworks: [], keyFiles: {}, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false } });
     const t = buildTriage(profileSet);
     const commands = t.recommendations.map((r) => r.command);
     for (const c of commands) {
@@ -39,20 +39,24 @@ describe("R-004: flywheel_triage mega-command", () => {
     }
   });
 
-  it("copy_paste_workflow includes capabilities + robot_docs + doctor", () => {
+  it("copy_paste_workflow starts with recovery status and includes capabilities + robot_docs + doctor", () => {
     const t = buildTriage(makeOC());
     const joined = t.copy_paste_workflow.join("\n");
+    expect(t.copy_paste_workflow[0]).toContain("flywheel_status");
     expect(joined).toContain("flywheel_capabilities");
     expect(joined).toContain("flywheel_robot_docs");
     expect(joined).toContain("flywheel_doctor");
   });
 
-  it("quick_ref.next_canonical_tool advances through the phase order", () => {
+  it("quick_ref.next_canonical_tool advances through the status phase order", () => {
     expect(buildTriage(makeOC({ phase: "idle" })).quick_ref.next_canonical_tool).toBe("flywheel_profile");
-    expect(buildTriage(makeOC({ phase: "profile" })).quick_ref.next_canonical_tool).toBe("flywheel_discover");
-    expect(buildTriage(makeOC({ phase: "discover" })).quick_ref.next_canonical_tool).toBe("flywheel_select");
+    expect(buildTriage(makeOC({ phase: "profiling" })).quick_ref.next_canonical_tool).toBe("flywheel_profile");
+    expect(buildTriage(makeOC({ phase: "discovering" })).quick_ref.next_canonical_tool).toBe("flywheel_discover");
+    expect(buildTriage(makeOC({ phase: "awaiting_selection" })).quick_ref.next_canonical_tool).toBe("flywheel_select");
     expect(buildTriage(makeOC({ phase: "researching" })).quick_ref.next_canonical_tool).toBe("flywheel_research");
-    expect(buildTriage(makeOC({ phase: "review" })).quick_ref.next_canonical_tool).toBe(null);
+    expect(buildTriage(makeOC({ phase: "awaiting_bead_approval" })).quick_ref.next_canonical_tool).toBe("flywheel_approve_beads");
+    expect(buildTriage(makeOC({ phase: "reviewing" })).quick_ref.next_canonical_tool).toBe("flywheel_review");
+    expect(buildTriage(makeOC({ phase: "complete" })).quick_ref.next_canonical_tool).toBe("flywheel_profile");
   });
 
   it("researching state recommends flywheel_research rather than repo profiling", () => {
@@ -75,5 +79,12 @@ describe("R-004: flywheel_triage mega-command", () => {
   it("blocking_error fires NO_PROFILE in idle state with no profile loaded", () => {
     const t = buildTriage(makeOC());
     expect(t.quick_ref.blocking_error).toContain("NO_PROFILE");
+  });
+
+  it("surfaces provider preflight as read-only not_checked launch-time guidance", () => {
+    const t = buildTriage(makeOC());
+    expect(t.health.provider_preflight.status).toBe("not_checked");
+    expect(t.health.provider_preflight.reason).toContain("read-only");
+    expect(t.health.provider_preflight.launch_time_check).toContain("launches run bounded provider preflight");
   });
 });

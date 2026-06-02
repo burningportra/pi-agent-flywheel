@@ -83,8 +83,8 @@ pi
 # 4. Or skip discovery and give it a goal directly
 /agent-flywheel reduce flaky auth tests and add regression coverage
 
-# 5. Check progress during a run
-/agent-flywheel-status
+# 5. Check progress during a run or recover after reload/compaction
+/flywheel-status
 
 # 6. Before a release handoff, inspect versions, dirty scope, and recommended checks
 /flywheel-release-checklist
@@ -260,13 +260,13 @@ Verify it loaded:
 pi list | grep pi-agent-flywheel
 ```
 
-Open any project and run:
+Open any project and run the preferred status command:
 
 ```text
-/agent-flywheel-status
+/flywheel-status
 ```
 
-Expected idle-state output is a phase/status summary rather than a missing-command error.
+Expected idle-state output is a phase/status summary rather than a missing-command error. Older installs may also expose `/agent-flywheel-status` as a legacy alias.
 
 ### 2. Install from a local checkout
 
@@ -398,12 +398,42 @@ Research an external repository and adapt useful ideas into the current project.
 /agent-flywheel-research https://github.com/charmbracelet/bubbletea
 ```
 
-### `/agent-flywheel-status`
+### `/flywheel-status` (preferred) and `/agent-flywheel-status` (legacy alias)
 
-Show the current orchestration phase and progress.
+Show the current orchestration phase and progress without changing checkpoints, beads, or orchestration state. Use this read-only surface first after reload, context compaction, or handoff:
+
+- `flywheel_status` tool for tool-driven recovery
+- `/flywheel-status --json` for slash-command recovery
 
 ```text
-/agent-flywheel-status
+/flywheel-status
+/flywheel-status --json
+```
+
+Treat the returned `next_action` as the safe resume path before issuing additional workflow commands. The human-readable command is useful for a quick live check; prefer `flywheel_status` or `/flywheel-status --json` when another agent needs stable fields.
+
+Compact recovery example:
+
+```json
+{
+  "contract_version": 1,
+  "phase": "implementing",
+  "selected_goal": "Ship workflow status recovery",
+  "approval_state": "approved",
+  "beads": {
+    "total": 2,
+    "open": 1,
+    "in_progress": 1,
+    "closed": 0,
+    "deferred": 0,
+    "current": [{ "id": "pi-123", "title": "Wire status command", "status": "in_progress", "priority": 1, "type": "feature", "updated_at": "2026-06-01T00:00:00Z" }],
+    "pending": [{ "id": "pi-124", "title": "Document status recovery", "status": "open", "priority": 2, "type": "task", "updated_at": "2026-06-01T00:05:00Z" }]
+  },
+  "next_action": "Continue the current bead pi-123, then run the configured verification.",
+  "resume_prompt": "Resume AgentFlywheel from the implementing phase...",
+  "confidence": "high",
+  "inferred_from": ["persisted phase implementing", "in-progress bead pi-123"]
+}
 ```
 
 ### `/agent-flywheel-doctor`
@@ -414,7 +444,7 @@ Run a read-only diagnostic for runtime prerequisites and common failure points.
 /agent-flywheel-doctor
 ```
 
-Checks include git, Node, `br`/`bv`, `ntm`, CASS `cm`, agent-mail, checkpoints, and orphaned worktrees.
+Checks include git, Node, `br`/`bv`, `ntm`, CASS `cm`, agent-mail, checkpoints, orphaned worktrees, and provider preflight readiness. Doctor/triage remain read-only: they report provider readiness as `not_checked` unless launch-time probes have run. If a worker launch reports unauthorized provider evidence such as OAuth 403, 401, or `Unauthorized`, repair OAuth/API-key/account/org permissions, switch provider/model, retry after repair, or downgrade worker count/parallelism instead of retrying endlessly.
 
 ### `/agent-flywheel-release-checklist`
 
@@ -551,7 +581,7 @@ See [`docs/setup.md`](docs/setup.md) for more detailed setup notes.
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                           pi command layer                            │
-│ /agent-flywheel  /agent-flywheel-status  /agent-flywheel-doctor       │
+│ /agent-flywheel  /flywheel-status  /agent-flywheel-doctor             │
 └──────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼

@@ -5,6 +5,7 @@ import type { OrchestratorContext } from "../types.js";
 import { readCheckpoint, inspectZombieState } from "../checkpoint.js";
 import { AGENT_MAIL_URL, agentMailRPC } from "../agent-mail.js";
 import { brExec } from "../cli-exec.js";
+import { providerPreflightRepairGuidance } from "../provider-preflight.js";
 
 import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export type DoctorSeverity = "green" | "yellow" | "red";
@@ -125,6 +126,11 @@ export async function runDoctorChecks(pi: ExtensionAPI, cwd: string): Promise<Do
         hint: "Run `br init` if this project should use beads, or continue with direct/worktree mode.",
       };
     }),
+    timedCheck("provider_preflight_readiness", async () => ({
+      severity: "yellow",
+      message: "provider preflight not_checked by doctor; worker launches run bounded provider/model checks before starting panes",
+      hint: providerPreflightRepairGuidance("not_checked").join(" ") + " If launch reports unauthorized/OAuth 403, check auth config, switch provider/model, retry after repair, or downgrade worker count.",
+    })),
     timedCheck("checkpoint_validity", async () => {
       const checkpoint = readCheckpoint(cwd);
       if (!checkpoint) return { severity: "green", message: "no active checkpoint" };
