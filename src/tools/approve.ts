@@ -1889,7 +1889,7 @@ cd ${ctx.cwd}`;
       const providerChecks: ProviderPreflightCheck[] = [
         { id: "impl:ntm", label: "NTM visible panes", surface: "ntm", required: true, probe: { command: "ntm", args: ["--help"] } },
         { id: "impl:claude-code", label: "Claude Code", provider: "anthropic", surface: "claude-code", required: false, probe: { command: "cc", args: ["--help"] } },
-        { id: "impl:cursor-agent", label: "Cursor agent", provider: "google/openrouter", surface: "cursor-agent", required: false, probe: { command: "cursor", args: ["--help"] } },
+        { id: "impl:cursor-agent", label: "Cursor Agent CLI", provider: "google/openrouter", surface: "cursor-agent", required: false, probe: { command: "agent", args: ["--help"] } },
         { id: "impl:codex", label: "Codex", surface: "codex", required: false, probe: { command: "codex", args: ["--help"] } },
       ];
       const providerPreflight = ready.length > 1

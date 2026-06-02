@@ -218,7 +218,7 @@ Initial prompt given to each agent with:
 Recommended mix for a typical swarm:
 - **cc=2** (Claude Code instances)
 - **cod=1** (Codex instance)
-- **agent=1** (Cursor Agent CLI — preferred over **gmi** for Gemini-class ergonomics work)
+- **cursor=1** (NTM Cursor pane backed by the official Cursor Agent CLI command `agent` — preferred over **gmi** for Gemini-class ergonomics work)
 
 ### Thundering Herd Fix
 **Stagger agent launches by 30 seconds** to prevent all agents from grabbing the same ready beads simultaneously.

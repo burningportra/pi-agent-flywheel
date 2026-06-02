@@ -271,15 +271,15 @@ describe("implementation launch safety", () => {
         launchableCount: 1,
         requiredUnavailable: false,
         selectedCheckIds: ["impl:codex"],
-        downgradeReasons: ["Optional Cursor agent is unavailable"],
+        downgradeReasons: ["Optional Cursor Agent CLI is unavailable"],
         repairGuidance: ["Verify installation and PATH"],
         results: [
           {
             status: "unavailable",
             launchable: false,
-            evidence: ["cursor --help", "exit=127"],
+            evidence: ["agent --help", "exit=127"],
             repairGuidance: ["Verify installation and PATH"],
-            check: { id: "impl:cursor", label: "Cursor agent", surface: "cursor-agent", required: false },
+            check: { id: "impl:cursor", label: "Cursor Agent CLI", surface: "cursor-agent", required: false },
           },
           {
             status: "available",
@@ -293,7 +293,7 @@ describe("implementation launch safety", () => {
     });
 
     expect(decision.mode).toBe("single-branch-parallel");
-    expect(decision.downgradeReasons).toContain("Optional Cursor agent is unavailable");
+    expect(decision.downgradeReasons).toContain("Optional Cursor Agent CLI is unavailable");
   });
 
   it("detects pi-interactive-subagents style tool surfaces", () => {

@@ -245,13 +245,13 @@ describe("preflightWorkerProviders", () => {
   it("keeps optional unavailable checks from blocking when another provider is launchable", async () => {
     const exec = vi
       .fn()
-      .mockResolvedValueOnce({ code: 127, stdout: "", stderr: "command not found: cursor" })
+      .mockResolvedValueOnce({ code: 127, stdout: "", stderr: "command not found: agent" })
       .mockResolvedValueOnce({ code: 0, stdout: "codex help", stderr: "" });
     const summary = await preflightWorkerProviders({
       cwd,
       exec,
       checks: [
-        { id: "impl:cursor", label: "Cursor agent", surface: "cursor-agent", required: false, probe: { command: "cursor", args: ["--help"] } },
+        { id: "impl:cursor", label: "Cursor Agent CLI", surface: "cursor-agent", required: false, probe: { command: "agent", args: ["--help"] } },
         { id: "impl:codex", label: "Codex", surface: "codex", required: false, probe: { command: "codex", args: ["--help"] } },
       ],
     });
@@ -260,7 +260,7 @@ describe("preflightWorkerProviders", () => {
     expect(summary.requiredUnavailable).toBe(false);
     expect(summary.launchableCount).toBe(1);
     expect(summary.selectedCheckIds).toEqual(["impl:codex"]);
-    expect(summary.downgradeReasons).toContain("Optional Cursor agent is unavailable");
+    expect(summary.downgradeReasons).toContain("Optional Cursor Agent CLI is unavailable");
   });
 
   it("returns not_checked when no safe probe exists", async () => {

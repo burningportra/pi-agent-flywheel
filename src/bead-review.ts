@@ -35,7 +35,9 @@ export interface AcceptanceCriteriaEvidenceAssessment {
   issues: string[];
 }
 
-const COMMAND_START = /\b(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b[^;\n]*/gi;
+const COMMAND_VERBS = "cd|bash|npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git|grep|rg";
+const COMMAND_START = new RegExp(`\\b(?:${COMMAND_VERBS})\\b[^;\\n]*`, "gi");
+const COMMAND_SPLIT = new RegExp(`\\s+and\\s+(?=(?:${COMMAND_VERBS})\\b)|\\s*,\\s*(?=(?:${COMMAND_VERBS})\\b)`, "i");
 
 function normalizeEvidenceText(text: string): string {
   return text.toLowerCase().replace(/[`'"“”]/g, "").replace(/\s+/g, " ").trim();
@@ -50,32 +52,156 @@ function normalizeCommand(command: string): string {
     .trim();
 }
 
-export function extractVerificationCommands(contract: VerificationContract): string[] {
-  const commands: string[] = [];
-  const matches = contract.body.match(COMMAND_START);
-  if (!matches) return commands;
-  
-  for (const match of matches) {
-    const raw = match
-      .split(/\s+and\s+(?=(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b)/i)
-      .flatMap((part) => part.split(/\s*,\s*(?=(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git)\b)/i));
-    for (const part of raw) {
-      const command = normalizeCommand(part);
-      if (command.length > 0 && !commands.includes(command)) commands.push(command);
+function verificationCommandSource(body: string): string {
+  const lines = body.split("\n");
+  const start = lines.findIndex((line) => /commands\/checks\s*:/i.test(line));
+  if (start < 0) return body;
+
+  const collected: string[] = [];
+  for (let i = start; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (i > start && /(?:success\s+looks\s+like|manual\s+proof\s+fallback)\s*:/i.test(line)) break;
+    collected.push(line);
+  }
+  return collected.join("\n");
+}
+
+interface VerificationCommandCandidate {
+  command: string;
+  context: string;
+  optional: boolean;
+  alternativeGroup?: string;
+  alternativeKey?: string;
+  alternativeLabel?: string;
+}
+
+function alternativeFromContext(context: string): Pick<VerificationCommandCandidate, "alternativeGroup" | "alternativeKey" | "alternativeLabel"> {
+  const normalized = normalizeEvidenceText(context);
+  const match = normalized.match(/\b(branch|layout|path|option|alternative)\s+([a-z0-9_-]+)\b/);
+  if (!match) return {};
+  return {
+    alternativeGroup: match[1],
+    alternativeKey: match[2],
+    alternativeLabel: `${match[1]} ${match[2]}`,
+  };
+}
+
+function isOptionalCommandContext(context: string): boolean {
+  const normalized = normalizeEvidenceText(context);
+  return /\b(optional|fallback|manual proof fallback|manual fallback|if possible|when possible|only if automation is blocked)\b/.test(normalized);
+}
+
+function extractVerificationCommandCandidates(contract: VerificationContract): VerificationCommandCandidate[] {
+  const candidates: VerificationCommandCandidate[] = [];
+  const source = verificationCommandSource(contract.body);
+  const clauses = source
+    .split(/[;\n]/)
+    .flatMap((clause) => clause.split(COMMAND_SPLIT))
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+
+  for (const clause of clauses) {
+    const matches = clause.match(COMMAND_START);
+    if (!matches) continue;
+    for (const match of matches) {
+      const command = normalizeCommand(match);
+      if (!command) continue;
+      const alternative = alternativeFromContext(clause);
+      if (!candidates.some((candidate) => candidate.command === command)) {
+        candidates.push({
+          command,
+          context: clause,
+          optional: isOptionalCommandContext(clause),
+          ...alternative,
+        });
+      }
     }
   }
-  return commands;
+
+  return candidates;
+}
+
+export function extractVerificationCommands(contract: VerificationContract): string[] {
+  return extractVerificationCommandCandidates(contract)
+    .filter((candidate) => !candidate.optional)
+    .map((candidate) => candidate.command);
+}
+
+function hasPassingEvidenceForCommand(command: string, normalizedEvidence: string): boolean {
+  const normalizedCommand = normalizeEvidenceText(command);
+  const index = normalizedEvidence.indexOf(normalizedCommand);
+  if (index < 0) return false;
+  const window = normalizedEvidence.slice(index, index + normalizedCommand.length + 180);
+  return /\b(?:passed|pass|succeeded|success|exit\s*0|exit=0|exited\s+0|completed\s+successfully)\b/.test(window);
+}
+
+function evidenceSelectsAlternative(candidate: VerificationCommandCandidate, normalizedEvidence: string): boolean {
+  if (!candidate.alternativeLabel) return false;
+  const label = candidate.alternativeLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const selected = new RegExp(`(?:${label}\\s+(?:selected|present|approved|chosen)|(?:selected|approved|chosen)\\s+${label})`).test(normalizedEvidence);
+  return selected || hasPassingEvidenceForCommand(candidate.command, normalizedEvidence);
+}
+
+function resolveVerificationCommandCandidates(
+  candidates: VerificationCommandCandidate[],
+  normalizedEvidence: string,
+): { required: VerificationCommandCandidate[]; ignored: VerificationCommandCandidate[] } {
+  const nonOptional = candidates.filter((candidate) => !candidate.optional);
+  const required = new Set(nonOptional);
+  const ignored = new Set(candidates.filter((candidate) => candidate.optional));
+  const groups = new Map<string, VerificationCommandCandidate[]>();
+
+  for (const candidate of nonOptional) {
+    if (!candidate.alternativeGroup || !candidate.alternativeKey) continue;
+    const key = candidate.alternativeGroup;
+    groups.set(key, [...(groups.get(key) ?? []), candidate]);
+  }
+
+  for (const groupCandidates of groups.values()) {
+    const keys = new Set(groupCandidates.map((candidate) => candidate.alternativeKey));
+    if (keys.size < 2) continue;
+    const selected = groupCandidates.filter((candidate) => evidenceSelectsAlternative(candidate, normalizedEvidence));
+    const selectedKeys = new Set(selected.map((candidate) => candidate.alternativeKey));
+    if (selectedKeys.size !== 1) continue;
+    const selectedKey = [...selectedKeys][0];
+    for (const candidate of groupCandidates) {
+      if (candidate.alternativeKey !== selectedKey) {
+        required.delete(candidate);
+        ignored.add(candidate);
+      }
+    }
+  }
+
+  return { required: [...required], ignored: [...ignored] };
+}
+
+function removeIgnoredCommandFailureEvidence(evidence: string, ignored: VerificationCommandCandidate[]): string {
+  if (ignored.length === 0) return evidence;
+  return evidence
+    .split("\n")
+    .filter((line) => {
+      const normalizedLine = normalizeEvidenceText(line);
+      return !ignored.some((candidate) => {
+        const command = normalizeEvidenceText(candidate.command);
+        const label = candidate.alternativeLabel ? normalizeEvidenceText(candidate.alternativeLabel) : "";
+        return normalizedLine.includes(command) || (label.length > 0 && normalizedLine.includes(label));
+      });
+    })
+    .join("\n");
 }
 
 export function assessVerificationEvidence(
   contract: VerificationContract,
   evidence: string
 ): VerificationEvidenceAssessment {
-  const requiredCommands = extractVerificationCommands(contract);
+  const commandCandidates = extractVerificationCommandCandidates(contract);
   const normalizedEvidence = normalizeEvidenceText(evidence);
+  const resolvedCommands = resolveVerificationCommandCandidates(commandCandidates, normalizedEvidence);
+  const requiredCommands = resolvedCommands.required.map((candidate) => candidate.command);
+  const failureScanEvidence = removeIgnoredCommandFailureEvidence(evidence, resolvedCommands.ignored);
   const manualFallbackUsed = /manual\s+(?:proof|evidence|verification|fallback)|fallback\s+(?:proof|evidence)|manual\s+inspect/i.test(evidence);
   const mentionsAutomationBlocked = /(?:could not|couldn't|cannot|can't|unable to|blocked|unavailable|missing dependency|environment).{0,80}(?:run|execute|automation|command|check|test)|(?:command|check|test).{0,80}(?:could not|couldn't|cannot|can't|unable to|blocked|unavailable)/i.test(evidence);
-  const reportsFailureOrSkipped = /\b(?:failed|failing|failure|skipped|skip|not run|did not run|wasn't run|was not run|not executed)\b/i.test(evidence);
+  const reportsFailureOrSkipped = /\b(?:failed|failing|failure|skipped|skip|not run|did not run|wasn't run|was not run|not executed)\b/i.test(failureScanEvidence);
   const genericOnly = /\b(?:tests passed|all tests pass|build passed|checks passed|verified|looks good)\b/i.test(evidence)
     && requiredCommands.length > 0
     && requiredCommands.every((command) => !normalizedEvidence.includes(normalizeEvidenceText(command)));

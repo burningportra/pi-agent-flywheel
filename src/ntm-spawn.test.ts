@@ -9,23 +9,28 @@ import {
 } from "./ntm-spawn.js";
 
 describe("formatNtmSpawnFlags", () => {
-  it("formats mixed pane flags", () => {
+  it("formats mixed pane flags with NTM's Cursor flag", () => {
     const flags = formatNtmSpawnFlags([
       { kind: "cc", count: 1, model: "opus" },
       { kind: "cod", count: 1 },
-      { kind: "agent", count: 1 },
+      { kind: "cursor", count: 1 },
     ]);
     expect(flags).toContain("--cc=1:opus");
     expect(flags).toContain("--cod=1");
-    expect(flags).toContain("--agent=1");
+    expect(flags).toContain("--cursor=1");
+    expect(flags).not.toContain("--agent=");
     expect(flags).not.toContain("--gmi");
+  });
+
+  it("maps legacy agent pane specs to NTM's Cursor flag", () => {
+    expect(formatNtmSpawnFlags([{ kind: "agent", count: 1 }])).toBe("--cursor=1");
   });
 });
 
 describe("recommendSwarmPaneMix", () => {
-  it("includes agent instead of gmi for small projects", () => {
+  it("includes cursor instead of gmi for small projects", () => {
     const mix = recommendSwarmPaneMix(10);
-    expect(mix.some((s) => s.kind === "agent")).toBe(true);
+    expect(mix.some((s) => s.kind === "cursor")).toBe(true);
     expect(mix.some((s) => s.kind === "gmi")).toBe(false);
     expect(totalPaneCount(mix)).toBe(3);
   });
@@ -33,7 +38,7 @@ describe("recommendSwarmPaneMix", () => {
   it("scales to requested agent count", () => {
     const mix = recommendSwarmPaneMix(200, 5);
     expect(totalPaneCount(mix)).toBe(5);
-    expect(mix.some((s) => s.kind === "agent")).toBe(true);
+    expect(mix.some((s) => s.kind === "cursor")).toBe(true);
   });
 });
 
@@ -46,8 +51,8 @@ describe("resolveSinglePaneSpec", () => {
     expect(resolveSinglePaneSpec("openai-codex/gpt-5.4").kind).toBe("cod");
   });
 
-  it("routes Gemini to agent before gmi", () => {
-    expect(resolveSinglePaneSpec("openrouter/google/gemini-3.1-pro-preview").kind).toBe("agent");
+  it("routes Gemini to cursor before gmi", () => {
+    expect(resolveSinglePaneSpec("openrouter/google/gemini-3.1-pro-preview").kind).toBe("cursor");
   });
 
   it("falls back to gmi when agent CLI unavailable", () => {
@@ -64,7 +69,7 @@ describe("paneSpecsForLaunch", () => {
       model: "openrouter/google/gemini-3.1-pro-preview",
     });
     expect(specs).toHaveLength(1);
-    expect(specs[0].kind).toBe("agent");
+    expect(specs[0].kind).toBe("cursor");
   });
 });
 
@@ -74,7 +79,7 @@ describe("scalePaneMixToTotal", () => {
       [
         { kind: "cc", count: 1 },
         { kind: "cod", count: 1 },
-        { kind: "agent", count: 1 },
+        { kind: "cursor", count: 1 },
       ],
       5,
     );

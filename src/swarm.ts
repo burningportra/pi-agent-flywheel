@@ -42,9 +42,9 @@ export interface NtmLaunchOptions {
   label: string;
   /** Total worker panes when paneSpecs is omitted. */
   agentCount: number;
-  /** Explicit NTM pane mix (`--cc`, `--cod`, `--agent`; preferred over `--gmi`). */
+  /** Explicit NTM pane mix (`--cc`, `--cod`, `--cursor`; preferred over `--gmi`). */
   paneSpecs?: NtmPaneSpec[];
-  /** Model hint for single-pane launches (routes cc/cod/agent). */
+  /** Model hint for single-pane launches (routes cc/cod/cursor). */
   model?: string;
   /** Open bead count used to pick default mix when scaling swarm size. */
   openBeadCount?: number;
@@ -130,6 +130,8 @@ Workflow:
 3. Inspect the bead with \`br show <id>\` and keep changes within its ### Files scope.
 4. If the bead is integration-heavy (migration, adapter, Durable Object, Effect SQL, Alchemy, RPC, database, auth middleware, SDK, or package integration), complete a Source Research Card before editing and include it in your review feedback. Review will warn if this is missing; resolve false positives with the waiver line.
 
+${formatWorkerSupervisionGuidance({ interactiveSubagentsAvailable: false })}
+
 ${SOURCE_RESEARCH_CARD_TEMPLATE}
 
 False-positive waiver: ${SOURCE_RESEARCH_WAIVER_TEMPLATE}
@@ -160,6 +162,7 @@ function modelLabelForPaneKind(kind: NtmPaneKind): string {
       return SWARM_MODELS.opus;
     case "cod":
       return SWARM_MODELS.gpt;
+    case "cursor":
     case "agent":
       return "cursor-agent";
     case "gmi":
@@ -174,6 +177,21 @@ function modelsFromPaneSpecs(paneSpecs: NtmPaneSpec[]): Array<{ model: string; c
     model: modelLabelForPaneKind(spec.kind),
     count: spec.count,
   }));
+}
+
+export function formatWorkerSupervisionGuidance(options: { interactiveSubagentsAvailable: boolean }): string {
+  if (options.interactiveSubagentsAvailable) {
+    return [
+      "### Worker supervision surface",
+      "Use pi-interactive-subagents-style workers only when the tool surface supports live supervision: `subagent`, `subagent_interrupt`, `subagent_resume`, and caller-to-parent `caller_ping`.",
+      "Workers that need supervisor decisions should use `caller_ping` instead of becoming unreachable while running.",
+    ].join("\n");
+  }
+  return [
+    "### Worker supervision surface",
+    "Do not launch hidden/non-interactive multi-agent workers for same-checkout work: a running worker that cannot respond to intercom can miss supervisor decisions.",
+    "Prefer visible NTM panes (`--cc`, `--cod`, `--cursor`) or reduce to one worker until an interrupt/resume/caller_ping-capable surface is available.",
+  ].join("\n");
 }
 
 // ─── Agent Composition ──────────────────────────────────────
@@ -221,12 +239,19 @@ export function generateAgentConfigs(
 ): SwarmAgentConfig[] {
   const configs: SwarmAgentConfig[] = [];
 
-  // Distribute models across agents according to composition
+  // Distribute models across agents according to composition. Be defensive for
+  // callers that provide pane specs without a precomputed roster.
   const modelQueue: string[] = [];
-  for (const { model, count: modelCount } of composition.models) {
-    for (let i = 0; i < modelCount; i++) {
+  const modelRoster = composition.models.length > 0
+    ? composition.models
+    : modelsFromPaneSpecs(composition.paneSpecs);
+  for (const { model, count: modelCount } of modelRoster) {
+    for (let i = 0; i < Math.max(0, Math.floor(modelCount)); i++) {
       modelQueue.push(model);
     }
+  }
+  if (modelQueue.length === 0) {
+    modelQueue.push("cursor-agent");
   }
 
   for (let i = 0; i < count; i++) {
@@ -302,7 +327,7 @@ export function formatSwarmStatus(
 }
 
 /**
- * Format a managed NTM launch command. Launches visible cc/cod/agent panes
+ * Format a managed NTM launch command. Launches visible cc/cod/cursor panes
  * instead of asking the current orchestrator agent to edit inline.
  */
 export function formatNtmLaunchInstructions(options: NtmLaunchOptions): string {
@@ -322,7 +347,7 @@ export function formatNtmLaunchInstructions(options: NtmLaunchOptions): string {
   return [
     `## ${title}`,
     "",
-    `Launch **${agentCount} managed NTM worker pane${agentCount === 1 ? "" : "s"}** (${mixLine}). Cursor is preferred over Gemini (\`--gmi\`) for ergonomics-style work. Do **not** implement inline in the current chat; let the NTM panes claim/complete beads and report back.`,
+    `Launch **${agentCount} managed NTM worker pane${agentCount === 1 ? "" : "s"}** (${mixLine}). Cursor Agent panes use NTM \`--cursor\` (backed by the official Cursor CLI command \`agent\`) and are preferred over Gemini (\`--gmi\`) for ergonomics-style work. Do **not** implement inline in the current chat; let the NTM panes claim/complete beads and report back.`,
     noteBlock,
     "",
     "```bash",
@@ -332,7 +357,7 @@ export function formatNtmLaunchInstructions(options: NtmLaunchOptions): string {
     `ntm --robot-snapshot`,
     "```",
     "",
-    "Install the Cursor CLI (`agent`) if `--agent` panes fail to start. Run `ntm deps -v` to verify agent CLIs.",
+    "Install the Cursor Agent CLI (`agent`) if `--cursor` panes fail to start. Run `ntm deps -v` and `agent --help` to verify agent CLIs.",
     "",
     formatNtmRobotManagementLoopInstructions({ label, agentCount }),
     "",

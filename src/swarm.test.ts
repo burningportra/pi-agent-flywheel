@@ -6,6 +6,7 @@ import {
   formatLaunchInstructions,
   formatNtmRobotManagementLoopInstructions,
   implementationSwarmPrompt,
+  formatWorkerSupervisionGuidance,
 } from "./swarm.js";
 import type { Bead } from "./types.js";
 import type { AgentStatus } from "./tender.js";
@@ -49,13 +50,13 @@ describe("recommendComposition", () => {
     expect(comp.total).toBe(3);
   });
 
-  it("includes diverse pane kinds (agent over gmi)", () => {
+  it("includes diverse pane kinds (cursor over gmi)", () => {
     const comp = recommendComposition(100);
     const models = comp.models.map((m) => m.model);
     expect(models).toContain("anthropic/claude-opus-4-6");
     expect(models).toContain("openai-codex/gpt-5.4");
     expect(models).toContain("cursor-agent");
-    expect(comp.paneSpecs.some((s) => s.kind === "agent")).toBe(true);
+    expect(comp.paneSpecs.some((s) => s.kind === "cursor")).toBe(true);
     expect(comp.paneSpecs.some((s) => s.kind === "gmi")).toBe(false);
   });
 
@@ -111,6 +112,18 @@ describe("generateAgentConfigs", () => {
     const configs = generateAgentConfigs(5, "/tmp", composition);
     const names = configs.map((c) => c.name);
     expect(new Set(names).size).toBe(5);
+  });
+
+  it("falls back to pane specs when the model roster is empty", () => {
+    const configs = generateAgentConfigs(2, "/tmp", {
+      total: 2,
+      paneSpecs: [{ kind: "cursor", count: 2 }],
+      models: [],
+      rationale: "custom launch",
+    });
+
+    expect(configs).toHaveLength(2);
+    expect(configs.every((config) => config.model === "cursor-agent")).toBe(true);
   });
 });
 
@@ -218,7 +231,8 @@ describe("formatLaunchInstructions", () => {
     expect(instructions).toContain("ntm spawn");
     expect(instructions).toContain("--cc=");
     expect(instructions).toContain("--cod=");
-    expect(instructions).toContain("--agent=");
+    expect(instructions).toContain("--cursor=");
+    expect(instructions).not.toContain("--agent=");
     expect(instructions).not.toContain("--gmi=");
     expect(instructions).toContain("--stagger-mode=smart");
     expect(instructions).toContain("Do **not** implement inline");
@@ -266,6 +280,19 @@ describe("formatLaunchInstructions", () => {
     expect(loop).toContain("Stop only when completed beads have commits + verification evidence");
   });
 
+  it("documents non-interactive worker downgrade guidance and interactive caller_ping supervision", () => {
+    const fallback = formatWorkerSupervisionGuidance({ interactiveSubagentsAvailable: false });
+    expect(fallback).toContain("Do not launch hidden/non-interactive multi-agent workers");
+    expect(fallback).toContain("intercom");
+    expect(fallback).toContain("interrupt/resume/caller_ping-capable");
+    expect(fallback).toContain("--cursor");
+
+    const interactive = formatWorkerSupervisionGuidance({ interactiveSubagentsAvailable: true });
+    expect(interactive).toContain("subagent_interrupt");
+    expect(interactive).toContain("subagent_resume");
+    expect(interactive).toContain("caller_ping");
+  });
+
   it("includes the shared NTM tick loop in implementation worker prompts", () => {
     const prompt = implementationSwarmPrompt({
       cwd: "/tmp/repo",
@@ -284,5 +311,7 @@ describe("formatLaunchInstructions", () => {
     expect(prompt).toContain("Score >= 2.0");
     expect(prompt).toContain("Source Research Card");
     expect(prompt).toContain("API contracts found");
+    expect(prompt).toContain("Do not launch hidden/non-interactive multi-agent workers");
+    expect(prompt).toContain("caller_ping");
   });
 });

@@ -68,7 +68,7 @@ export function providerPolicyNoteForModel(model: string | undefined): string | 
     return "Anthropic/Claude models must be launched in managed NTM Claude Code (`cc`) panes; do not use the subagent tool.";
   }
   if (isDirectGoogleModel(model) || isOpenRouterGoogleModel(model)) {
-    return "Google/Gemini models must be launched in managed NTM Cursor (`--agent`) panes, not Gemini (`gmi`) panes or hidden subagents. Prefer OpenRouter model IDs (`openrouter/google/...`) inside Cursor when needed.";
+    return "Google/Gemini models must be launched in managed NTM Cursor (`--cursor`) panes backed by the official Cursor Agent CLI command `agent`, not Gemini (`gmi`) panes or hidden subagents. Prefer OpenRouter model IDs (`openrouter/google/...`) inside Cursor when needed.";
   }
   return undefined;
 }

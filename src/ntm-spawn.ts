@@ -1,5 +1,5 @@
 /**
- * NTM spawn pane mix helpers — cc / cod / agent (Cursor CLI; preferred over gmi).
+ * NTM spawn pane mix helpers — cc / cod / cursor (Cursor Agent CLI `agent`; preferred over gmi).
  */
 
 import {
@@ -9,7 +9,7 @@ import {
   isOpenRouterGoogleModel,
 } from "./model-policy.js";
 
-export type NtmPaneKind = "cc" | "cod" | "agent" | "gmi";
+export type NtmPaneKind = "cc" | "cod" | "cursor" | "agent" | "gmi";
 
 export interface NtmPaneSpec {
   kind: NtmPaneKind;
@@ -23,10 +23,11 @@ export function totalPaneCount(specs: NtmPaneSpec[]): number {
 
 export function ntmSpawnFlagForSpec(spec: NtmPaneSpec): string {
   const count = Math.max(1, Math.floor(spec.count));
+  const flagKind = spec.kind === "agent" ? "cursor" : spec.kind;
   if (spec.model?.trim()) {
-    return `--${spec.kind}=${count}:${spec.model.trim()}`;
+    return `--${flagKind}=${count}:${spec.model.trim()}`;
   }
-  return `--${spec.kind}=${count}`;
+  return `--${flagKind}=${count}`;
 }
 
 export function formatNtmSpawnFlags(specs: NtmPaneSpec[]): string {
@@ -36,26 +37,26 @@ export function formatNtmSpawnFlags(specs: NtmPaneSpec[]): string {
     .join(" ");
 }
 
-/** Base swarm mixes by project scale (agent replaces gmi in the default recipe). */
+/** Base swarm mixes by project scale (Cursor Agent replaces gmi in the default recipe). */
 export function baseSwarmPaneMix(openBeadCount: number): NtmPaneSpec[] {
   if (openBeadCount >= 400) {
     return [
       { kind: "cc", count: 4, model: "opus" },
       { kind: "cod", count: 4 },
-      { kind: "agent", count: 2 },
+      { kind: "cursor", count: 2 },
     ];
   }
   if (openBeadCount >= 100) {
     return [
       { kind: "cc", count: 3, model: "opus" },
       { kind: "cod", count: 3 },
-      { kind: "agent", count: 2 },
+      { kind: "cursor", count: 2 },
     ];
   }
   return [
     { kind: "cc", count: 1 },
     { kind: "cod", count: 1 },
-    { kind: "agent", count: 1 },
+    { kind: "cursor", count: 1 },
   ];
 }
 
@@ -66,7 +67,7 @@ export function scalePaneMixToTotal(specs: NtmPaneSpec[], targetTotal: number): 
   const total = Math.max(1, Math.floor(targetTotal));
   const base = specs.filter((spec) => spec.count > 0);
   if (base.length === 0) {
-    return [{ kind: "agent", count: total }];
+    return [{ kind: "cursor", count: total }];
   }
 
   const current = totalPaneCount(base);
@@ -81,7 +82,7 @@ export function scalePaneMixToTotal(specs: NtmPaneSpec[], targetTotal: number): 
 
   if (current < total) {
     let remaining = total - current;
-    const addOrder: NtmPaneKind[] = ["cc", "cod", "agent"];
+    const addOrder: NtmPaneKind[] = ["cc", "cod", "cursor"];
     let idx = 0;
     while (remaining > 0) {
       const kind = addOrder[idx % addOrder.length];
@@ -98,16 +99,16 @@ export function scalePaneMixToTotal(specs: NtmPaneSpec[], targetTotal: number): 
   }
 
   let remaining = current - total;
-  const removeOrder: NtmPaneKind[] = ["cod", "cc", "agent"];
+  const removeOrder: NtmPaneKind[] = ["cod", "cc", "cursor"];
   while (remaining > 0) {
     let removed = false;
     for (const kind of removeOrder) {
       const entry = scaled.find((spec) => spec.kind === kind);
       if (entry && entry.count > 0) {
-        const canRemove = kind === "agent" && entry.count === 1 && scaled.some((s) => s.kind !== "agent" && s.count > 0)
+        const canRemove = kind === "cursor" && entry.count === 1 && scaled.some((s) => s.kind !== "cursor" && s.count > 0)
           ? 0
           : 1;
-        if (canRemove > 0 && (kind !== "agent" || entry.count > 1 || totalPaneCount(scaled) > 1)) {
+        if (canRemove > 0 && (kind !== "cursor" || entry.count > 1 || totalPaneCount(scaled) > 1)) {
           entry.count -= 1;
           remaining -= 1;
           removed = true;
@@ -128,7 +129,7 @@ export function scalePaneMixToTotal(specs: NtmPaneSpec[], targetTotal: number): 
 
   const filtered = scaled.filter((spec) => spec.count > 0);
   if (totalPaneCount(filtered) === 0) {
-    return [{ kind: "agent", count: total }];
+    return [{ kind: "cursor", count: total }];
   }
   return filtered;
 }
@@ -150,7 +151,7 @@ function anthropicVariant(model?: string): string | undefined {
 }
 
 export interface ResolveSinglePaneOptions {
-  /** When false, Google/Gemini models fall back to `--gmi` instead of `--agent`. */
+  /** When false, Google/Gemini models fall back to `--gmi` instead of NTM Cursor (`--cursor`, using CLI `agent`). */
   agentCliAvailable?: boolean;
 }
 
@@ -167,9 +168,9 @@ export function resolveSinglePaneSpec(
     return { kind: "cod", count: 1 };
   }
   if (isDirectGoogleModel(model) || isOpenRouterGoogleModel(model)) {
-    return agentOk ? { kind: "agent", count: 1 } : { kind: "gmi", count: 1 };
+    return agentOk ? { kind: "cursor", count: 1 } : { kind: "gmi", count: 1 };
   }
-  return agentOk ? { kind: "agent", count: 1 } : { kind: "cc", count: 1 };
+  return agentOk ? { kind: "cursor", count: 1 } : { kind: "cc", count: 1 };
 }
 
 export function paneSpecsForLaunch(options: {
@@ -198,7 +199,8 @@ export function describePaneSpecs(specs: NtmPaneSpec[]): string {
   return specs
     .map((spec) => {
       const variant = spec.model ? `:${spec.model}` : "";
-      return `${spec.kind}${variant}×${spec.count}`;
+      const label = spec.kind === "agent" ? "cursor" : spec.kind;
+      return `${label}${variant}×${spec.count}`;
     })
     .join(", ");
 }

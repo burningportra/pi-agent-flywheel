@@ -42,9 +42,9 @@ Both must pass after every change.
 
 When AgentFlywheel launches implementation or planner work in NTM:
 - If the selected model is Anthropic/Claude (`anthropic/...`), do **not** use the `subagent` tool. Launch a managed NTM Claude Code `cc` pane instead so it is visible, robot-observable, and killable via NTM/tmux if it wedges.
-- If the selected model is Google/Gemini (including `openrouter/google/...`), prefer a managed NTM **Cursor** (`--agent`) pane over Gemini (`--gmi`) panes or hidden subagents. Use OpenRouter model IDs inside Cursor when needed.
-- Default implementation swarms use a mixed pane recipe: `--cc`, `--cod`, and `--agent` (not `--gmi`).
-- The pi orchestrator stays in the current pi session; worker panes are NTM-managed cc/cod/agent workers.
+- If the selected model is Google/Gemini (including `openrouter/google/...`), prefer a managed NTM **Cursor** (`--cursor`) pane backed by the official Cursor Agent CLI command `agent` over Gemini (`--gmi`) panes or hidden subagents. Use OpenRouter model IDs inside Cursor when needed.
+- Default implementation swarms use a mixed pane recipe: `--cc`, `--cod`, and `--cursor` (not `--gmi`).
+- The pi orchestrator stays in the current pi session; worker panes are NTM-managed cc/cod/cursor workers.
 - Use NTM robot docs/status/snapshot commands when supervising panes. This policy exists because a prior Claude `subagent` (`fresh-refine-r7`) could not be reliably killed; NTM panes give durable lifecycle control.
 
 ## MCP Agent Mail Coordination

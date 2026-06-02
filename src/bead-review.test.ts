@@ -150,6 +150,94 @@ describe("verification evidence assessment", () => {
     expect(result.ok).toBe(true);
     expect(result.manualFallbackUsed).toBe(true);
   });
+
+  it("does not treat optional/fallback commands as required checks", () => {
+    const optionalContract: VerificationContract = {
+      body: `- Commands/checks: run npm test -- src/bead-review.test.ts; optional: npm run lint if available; fallback: npm run build if test runner is unavailable.
+- Success looks like: required tests pass.
+- Manual proof fallback: if commands cannot run, capture blockers and inspect manually.`,
+      startLine: 1,
+      endLine: 3,
+    };
+
+    const result = assessVerificationEvidence(optionalContract, "npm test -- src/bead-review.test.ts passed.");
+
+    expect(result.ok).toBe(true);
+    expect(result.requiredCommands).toEqual(["npm test -- src/bead-review.test.ts"]);
+  });
+
+  it("does not treat manual fallback example commands as required checks", () => {
+    const fallbackContract: VerificationContract = {
+      body: `- Commands/checks: run npm test -- src/bead-review.test.ts.
+- Success looks like: tests pass.
+- Manual proof fallback: if commands cannot run, run npm run build if possible, then inspect manually.`,
+      startLine: 1,
+      endLine: 3,
+    };
+
+    expect(extractVerificationCommands(fallbackContract)).toEqual(["npm test -- src/bead-review.test.ts"]);
+  });
+
+  it("accepts Branch A layout verification without requiring the mutually exclusive Branch B cargo command", () => {
+    const branchContract: VerificationContract = {
+      body: `- Commands/checks: run cd dashboard-ui && npm run typecheck; cd dashboard-ui && npm run build; cd dashboard-ui && npm run test:unit -- src-menubar/__tests__/menubar-shell-smoke.test.tsx; Branch A: bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml; Branch B: bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets; br dep cycles.
+- Success looks like: both branches run typecheck/build and only the layout-specific cargo command differs.
+- Manual proof fallback: if commands cannot run, capture blockers and inspect manually.`,
+      startLine: 1,
+      endLine: 3,
+    };
+
+    const result = assessVerificationEvidence(branchContract, `
+Branch A selected and documented.
+cd dashboard-ui && npm run typecheck exit 0
+cd dashboard-ui && npm run build exit 0; produced dist/menubar.html and dist/index.html
+cd dashboard-ui && npm run test:unit -- src-menubar/__tests__/menubar-shell-smoke.test.tsx exit 0
+bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml exit 0
+Branch A required file exists: dashboard-ui/src-tauri/Cargo.toml
+br dep cycles reports no cycles
+Running Branch B command correctly fails: bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets error: package ID specification 'menubar-app' did not match any packages
+`);
+
+    expect(result.ok).toBe(true);
+    expect(result.requiredCommands).not.toContain("bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets");
+    expect(result.missingCommands).toEqual([]);
+  });
+
+  it("accepts Branch B layout verification without requiring the mutually exclusive Branch A cargo command", () => {
+    const branchContract: VerificationContract = {
+      body: `- Commands/checks: run cd dashboard-ui && npm run typecheck; Branch A: bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml; Branch B: bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets; br dep cycles.
+- Success looks like: selected layout cargo check passes.
+- Manual proof fallback: if commands cannot run, capture blockers and inspect manually.`,
+      startLine: 1,
+      endLine: 3,
+    };
+
+    const result = assessVerificationEvidence(branchContract, `
+Branch B selected and documented.
+cd dashboard-ui && npm run typecheck exit 0
+bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets exit 0
+br dep cycles reports no cycles
+`);
+
+    expect(result.ok).toBe(true);
+    expect(result.requiredCommands).not.toContain("bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml");
+    expect(result.missingCommands).toEqual([]);
+  });
+
+  it("keeps selected Branch A layout checks strict", () => {
+    const branchContract: VerificationContract = {
+      body: `- Commands/checks: run Branch A: bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml; Branch B: bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets.
+- Success looks like: selected layout cargo check passes.
+- Manual proof fallback: if commands cannot run, capture blockers and inspect manually.`,
+      startLine: 1,
+      endLine: 3,
+    };
+
+    const result = assessVerificationEvidence(branchContract, `Branch A selected and documented. dashboard-ui/src-tauri/Cargo.toml exists, but cargo check was not run.`);
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCommands).toContain("bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml");
+  });
 });
 
 describe("acceptance criteria evidence assessment", () => {

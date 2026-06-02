@@ -51,7 +51,8 @@ describe("R-003: flywheel_robot_docs handbook", () => {
   it("documents NTM implementation pane mix", () => {
     const docs = buildRobotDocs();
     expect(docs).toContain("## 7. NTM implementation panes");
-    expect(docs).toContain("--agent");
+    expect(docs).toContain("--cursor");
+    expect(docs).toContain("official Cursor Agent CLI command `agent`");
     expect(docs).toContain("preferred over `--gmi`");
   });
 

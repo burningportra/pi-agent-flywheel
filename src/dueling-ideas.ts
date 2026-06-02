@@ -201,7 +201,7 @@ export function buildDuelingIdeaSubagentConfigs(
       launchInstruction: launchMode === "ntm_cc"
         ? "Launch this wizard in a managed NTM Claude Code (`cc`) pane; do not use the subagent tool for Anthropic/Claude models."
         : launchMode === "ntm_agent"
-          ? "Launch this wizard in a managed NTM Cursor (`--agent`) pane; do not use the subagent tool or `--gmi` panes for Google/Gemini models."
+          ? "Launch this wizard in a managed NTM Cursor (`--cursor`) pane backed by the official Cursor Agent CLI command `agent`; do not use the subagent tool or `--gmi` panes for Google/Gemini models."
           : "Launch this wizard with the subagent tool.",
       interactive: false,
       task: withSubagentAutoExitInstruction(

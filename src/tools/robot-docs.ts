@@ -108,8 +108,8 @@ export function buildRobotDocs(): string {
   lines.push("Before implementation or review workers start, AgentFlywheel runs bounded provider/model preflight probes for the selected worker surfaces. Unauthorized evidence such as 401/403, `Unauthorized`, or OAuth 403 means auth is blocked; do not retry endlessly. Check OAuth policy, API keys, account and organization permissions, switch provider/model if needed, retry only after repair, or downgrade worker count/parallelism.");
   lines.push("- Anthropic → `--cc`");
   lines.push("- OpenAI/Codex → `--cod`");
-  lines.push("- Google/Gemini ergonomics → `--agent` (Cursor CLI; preferred over `--gmi`)");
-  lines.push("- Default swarms: mixed `--cc`, `--cod`, and `--agent`");
+  lines.push("- Google/Gemini ergonomics → `--cursor` NTM panes backed by the official Cursor Agent CLI command `agent` (preferred over `--gmi`)");
+  lines.push("- Default swarms: mixed `--cc`, `--cod`, and `--cursor`");
   lines.push("");
   lines.push("## 8. Deprecation policy");
   lines.push("");

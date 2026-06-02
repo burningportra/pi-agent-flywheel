@@ -127,7 +127,7 @@ export function buildMultiModelPlanSubagentConfigs(
       launchInstruction: launchMode === "ntm_cc"
         ? "Launch this planner in a managed NTM Claude Code (`cc`) pane; do not use the subagent tool for Anthropic/Claude models."
         : launchMode === "ntm_agent"
-          ? "Launch this planner in a managed NTM Cursor (`--agent`) pane; do not use the subagent tool or `--gmi` panes for Google/Gemini models."
+          ? "Launch this planner in a managed NTM Cursor (`--cursor`) pane backed by the official Cursor Agent CLI command `agent`; do not use the subagent tool or `--gmi` panes for Google/Gemini models."
           : "Launch this planner with the subagent tool.",
       interactive: false,
       task: withSubagentAutoExitInstruction(
@@ -489,7 +489,7 @@ export function registerPlanTool(oc: OrchestratorContext) {
             text:
               `**NEXT: Launch the pending autonomous planners NOW.**\n\n` +
               `${statusLine}\n\n` +
-              `Launch planners according to each config's \`launchMode\`: use \`subagent\` only for \`subagent\` configs, managed NTM \`cc\` panes for \`ntm_cc\`, and managed NTM \`--agent\` panes for \`ntm_agent\` (preferred over \`gmi\`). ` +
+              `Launch planners according to each config's \`launchMode\`: use \`subagent\` only for \`subagent\` configs, managed NTM \`cc\` panes for \`ntm_cc\`, and managed NTM Cursor \`--cursor\` panes (using CLI command \`agent\`) for \`ntm_agent\` (preferred over \`gmi\`). ` +
               `Never launch Anthropic/Claude models with the subagent tool, and never use direct Google/Gemini provider IDs instead of \`openrouter/google/...\`. ` +
               `Each planner writes its draft to a session artifact, sends one final response, and exits. After all planners complete, call \`agent_flywheel_plan\` with mode \`multi_model\` again to synthesize the final plan.\n\n` +
               `\`\`\`json\n${JSON.stringify(pendingConfigs, null, 2)}\n\`\`\``,

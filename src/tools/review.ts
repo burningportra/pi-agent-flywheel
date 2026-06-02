@@ -190,6 +190,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             content: [{
               type: "text",
               text: `⚠️ Bead ${params.beadId} cannot pass review yet because the submitted evidence does not satisfy its verification contract.\n\n` +
+                `Review gate runtime: pi-agent-flywheel v${oc.version}.\n\n` +
                 `### Command/check evidence\n${verificationContract ? verificationContract.body : "No explicit ### Verification: contract found."}\n\n` +
                 `${evidenceAssessment?.issues.length ? `Command/check issues:\n${evidenceAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` : ""}` +
                 `### Acceptance-criterion evidence\n${formatAcceptanceCriteriaEvidenceMatrix(criteriaAssessment)}\n\n` +
@@ -197,7 +198,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 `Re-run or cite the exact required command/checks, or explain the manual proof fallback with the automation blocker. Then call \`orch_review\` again.`,
             }],
             details: {
-              review: { beadId: params.beadId, passed: false },
+              review: { beadId: params.beadId, passed: false, runtimeVersion: oc.version },
               verificationEvidence: evidenceAssessment,
               acceptanceCriteriaEvidence: criteriaAssessment,
             },
