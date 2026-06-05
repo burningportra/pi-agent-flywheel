@@ -73,6 +73,7 @@ describe("fake seam detector", () => {
     expect(reviewSource).toContain("scanFakeSeamsInFiles");
     expect(reviewSource).toContain("Block completion and fix fake/test seams");
     expect(reviewSource).toContain("Override — references are intentional");
+    expect(reviewSource).toContain("fake\\s+seam\\s+override");
     expect(reviewSource).toContain("fakeSeamBlocked");
   });
 });

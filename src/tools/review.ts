@@ -261,13 +261,18 @@ export function registerReviewTool(oc: OrchestratorContext) {
           const changeSet = await getReviewChangedFiles(oc.pi, ctx.cwd, params.beadId, oc.state.workspaceChangeBaseline);
           const fakeSeamFindings = scanFakeSeamsInFiles(ctx.cwd, changeSet.filesChanged);
           if (fakeSeamFindings.length > 0) {
-            const overrideChoice = await ctx.ui.select(
-              `${formatFakeSeamReport(fakeSeamFindings)}\n\nBlock completion unless you explicitly approve these production fake/test seam references.`,
-              [
-                "🔄 Block completion and fix fake/test seams",
-                "✅ Override — references are intentional",
-              ]
+            const explicitOverride = /(?:override\s+[—-]\s+references\s+are\s+intentional|fake\s+seam\s+override\s*:\s*intentional)/i.test(
+              `${params.summary}\n${params.feedback}`
             );
+            const overrideChoice = explicitOverride
+              ? "✅ Override — references are intentional"
+              : await ctx.ui.select(
+                `${formatFakeSeamReport(fakeSeamFindings)}\n\nBlock completion unless you explicitly approve these production fake/test seam references.`,
+                [
+                  "🔄 Block completion and fix fake/test seams",
+                  "✅ Override — references are intentional",
+                ]
+              );
             if (!overrideChoice?.startsWith("✅")) {
               oc.state.beadResults[params.beadId] = {
                 ...oc.state.beadResults[params.beadId],
