@@ -35,8 +35,9 @@ export interface AcceptanceCriteriaEvidenceAssessment {
   issues: string[];
 }
 
-const COMMAND_VERBS = "cd|bash|npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git|grep|rg";
+const COMMAND_VERBS = "cd|bash|npm|pnpm|yarn|bun|cargo|go|pytest|python|python3|vitest|tsc|br|bv|git|grep|rg|test";
 const COMMAND_START = new RegExp(`\\b(?:${COMMAND_VERBS})\\b[^;\\n]*`, "gi");
+const INLINE_CODE = /`([^`]+)`/g;
 const COMMAND_SPLIT = new RegExp(`\\s+and\\s+(?=(?:${COMMAND_VERBS})\\b)|\\s*,\\s*(?=(?:${COMMAND_VERBS})\\b)`, "i");
 
 function normalizeEvidenceText(text: string): string {
@@ -46,21 +47,36 @@ function normalizeEvidenceText(text: string): string {
 function normalizeCommand(command: string): string {
   return command
     .replace(/^run\s+/i, "")
+    // Verification contracts often use markdown like
+    // `npm test` — must exit 0. Keep only the command side.
+    .split(/\s+[—–]\s+/)[0]
+    .replace(/\s+-\s+must\b.*$/i, "")
     .replace(/\s+and\s*$/i, "")
     .replace(/\s+or\s*$/i, "")
     .replace(/[.)]+$/g, "")
     .trim();
 }
 
+function looksLikeCommand(text: string): boolean {
+  return new RegExp(`^(?:${COMMAND_VERBS})\\b`, "i").test(text.trim());
+}
+
 function verificationCommandSource(body: string): string {
   const lines = body.split("\n");
-  const start = lines.findIndex((line) => /commands\/checks\s*:/i.test(line));
+  const start = lines.findIndex((line) => /commands\/checks(?:\s*\([^)]*\))?\s*:/i.test(line));
   if (start < 0) return body;
 
   const collected: string[] = [];
   for (let i = start; i < lines.length; i += 1) {
     const line = lines[i];
     if (i > start && /(?:success\s+looks\s+like|manual\s+proof\s+fallback)\s*:/i.test(line)) break;
+    if (i === start) {
+      const afterHeading = line
+        .replace(/^.*commands\/checks(?:\s*\([^)]*\))?\s*:/i, "")
+        .trim();
+      if (afterHeading) collected.push(afterHeading);
+      continue;
+    }
     collected.push(line);
   }
   return collected.join("\n");
@@ -78,12 +94,34 @@ interface VerificationCommandCandidate {
 function alternativeFromContext(context: string): Pick<VerificationCommandCandidate, "alternativeGroup" | "alternativeKey" | "alternativeLabel"> {
   const normalized = normalizeEvidenceText(context);
   const match = normalized.match(/\b(branch|layout|path|option|alternative)\s+([a-z0-9_-]+)\b/);
-  if (!match) return {};
-  return {
-    alternativeGroup: match[1],
-    alternativeKey: match[2],
-    alternativeLabel: `${match[1]} ${match[2]}`,
-  };
+  if (match) {
+    return {
+      alternativeGroup: match[1],
+      alternativeKey: match[2],
+      alternativeLabel: `${match[1]} ${match[2]}`,
+    };
+  }
+
+  // Common verification contracts put branch headings on one line and the
+  // concrete command on the next indented bullet. Infer the branch from the
+  // mutually exclusive layout paths so the unchosen cargo command is not
+  // required when Branch A/Branch B is explicitly selected in evidence.
+  if (normalized.includes("src-tauri") && !normalized.includes("menubar-app")) {
+    return {
+      alternativeGroup: "branch",
+      alternativeKey: "a",
+      alternativeLabel: "branch a",
+    };
+  }
+  if (normalized.includes("menubar-app") && !normalized.includes("src-tauri")) {
+    return {
+      alternativeGroup: "branch",
+      alternativeKey: "b",
+      alternativeLabel: "branch b",
+    };
+  }
+
+  return {};
 }
 
 function isOptionalCommandContext(context: string): boolean {
@@ -101,11 +139,14 @@ function extractVerificationCommandCandidates(contract: VerificationContract): V
     .filter(Boolean);
 
   for (const clause of clauses) {
-    const matches = clause.match(COMMAND_START);
+    const inlineCommands = [...clause.matchAll(INLINE_CODE)]
+      .map((match) => normalizeCommand(match[1] ?? ""))
+      .filter((command) => command && looksLikeCommand(command));
+    const matches = inlineCommands.length > 0 ? inlineCommands : clause.match(COMMAND_START);
     if (!matches) continue;
     for (const match of matches) {
       const command = normalizeCommand(match);
-      if (!command) continue;
+      if (!command || !looksLikeCommand(command)) continue;
       const alternative = alternativeFromContext(clause);
       if (!candidates.some((candidate) => candidate.command === command)) {
         candidates.push({
@@ -263,6 +304,19 @@ function criterionMentioned(criterion: string, normalizedEvidence: string): bool
   return hits >= Math.min(2, tokens.length);
 }
 
+function criterionMarkedNotApplicable(criterion: string, evidence: string): boolean {
+  const tokens = criterionTokens(criterion);
+  if (tokens.length === 0) return false;
+  return evidence
+    .split(/\n+/)
+    .some((line) => {
+      if (!/\b(?:not applicable|n\/a)\b/i.test(line)) return false;
+      const normalizedLine = normalizeEvidenceText(line);
+      const hits = tokens.filter((token) => normalizedLine.includes(token)).length;
+      return hits >= Math.min(2, tokens.length);
+    });
+}
+
 export function assessAcceptanceCriteriaEvidence(
   description: string,
   evidence: string
@@ -277,7 +331,7 @@ export function assessAcceptanceCriteriaEvidence(
 
   const matrix = criteria.map((criterion): AcceptanceCriterionEvidence => {
     if (criterionMentioned(criterion, normalizedEvidence)) {
-      if (/\b(?:not applicable|n\/a)\b/i.test(evidence)) {
+      if (criterionMarkedNotApplicable(criterion, evidence)) {
         return { criterion, status: "not_applicable", evidence: "Marked not applicable in review evidence." };
       }
       return { criterion, status: "proven", evidence: "Criterion terms are cited in review evidence." };

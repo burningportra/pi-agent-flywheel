@@ -238,6 +238,60 @@ br dep cycles reports no cycles
     expect(result.ok).toBe(false);
     expect(result.missingCommands).toContain("bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml");
   });
+
+  it("accepts markdown-backticked menubar verification contract evidence", () => {
+    const menubarContract: VerificationContract = {
+      body: `Commands/checks (both branches must run typecheck + build; only the layout-specific cargo command differs):
+  - \`cd dashboard-ui && npm run typecheck\` — must exit 0; the menubar entry is included in tsconfig but does not break the browser dashboard typecheck.
+  - \`cd dashboard-ui && npm run build\` — must exit 0 and produce a separate build output for the menubar entry (the existing browser dashboard build output must remain present and unchanged in shape).
+  - \`cd dashboard-ui && npm run test:unit -- src-menubar/__tests__/menubar-shell-smoke.test.tsx\` — must exit 0 and prove the dedicated menubar entry mounts the placeholder app without live gateway credentials or mutation affordances; native tray/popover journey beyond mount can remain companion-covered by \`topstepx-n3srz\`.
+  - Branch A (default \`dashboard-ui/src-tauri/\` layout):
+    - \`bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml\` — must exit 0.
+    - \`test -f dashboard-ui/src-tauri/Cargo.toml && test -f dashboard-ui/src-tauri/build.rs && test -f dashboard-ui/src-tauri/tauri.conf.json && test -f dashboard-ui/src-tauri/capabilities/default.json && test -f dashboard-ui/src-tauri/src/main.rs && test -f dashboard-ui/src-tauri/README.md\` — must succeed.
+  - Branch B (workspace crate, e.g. \`crates/menubar-app/\`):
+    - \`bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets\` — must exit 0.
+    - The module-local note must record the exact reason the workspace crate split was required.
+  - Tauri 2 API proof recorded: \`grep -nE "tauri[- ]?(plugin)?[- ]?(tray|positioner|window-state)" dashboard-ui/src-tauri/Cargo.toml 2>/dev/null || grep -nE "tauri[- ]?plugin" crates/menubar-app/Cargo.toml 2>/dev/null\` — must show the exact plugin/feature names that match the chosen layout, and the README/note must cite the Tauri 2 docs URL or version used.
+  - Read-only boundary holds at scaffold time: \`grep -nE "place_order|flatten|kill_switch|cancel_order|set_size|update_param|submit_order" dashboard-ui/src-tauri/src dashboard-ui/src-menubar 2>/dev/null\` — must return no matches.
+  - Dual-entry isolation: \`grep -nE "src-menubar|menubar\\.html" dashboard-ui/index.html dashboard-ui/menubar.html dashboard-ui/vite.config.* 2>/dev/null\` — the menubar entry must be wired through a separate Vite input/HTML or a separate Vite config so the browser dashboard entry is not modified.
+  - \`br dep cycles\` — must report "No dependency cycles detected.".
+- Success looks like: typecheck, build, and the lightweight menubar-entry smoke test all pass with both entries coexisting.
+- Manual proof fallback: if Tauri dependencies or macOS build tools cannot run on this machine, capture the exact command and error, then inspect manually.`,
+      startLine: 1,
+      endLine: 20,
+    };
+
+    expect(extractVerificationCommands(menubarContract)).toEqual([
+      "cd dashboard-ui && npm run typecheck",
+      "cd dashboard-ui && npm run build",
+      "cd dashboard-ui && npm run test:unit -- src-menubar/__tests__/menubar-shell-smoke.test.tsx",
+      "bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml",
+      "test -f dashboard-ui/src-tauri/Cargo.toml && test -f dashboard-ui/src-tauri/build.rs && test -f dashboard-ui/src-tauri/tauri.conf.json && test -f dashboard-ui/src-tauri/capabilities/default.json && test -f dashboard-ui/src-tauri/src/main.rs && test -f dashboard-ui/src-tauri/README.md",
+      "bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets",
+      "grep -nE \"tauri[- ]?(plugin)?[- ]?(tray|positioner|window-state)\" dashboard-ui/src-tauri/Cargo.toml 2>/dev/null || grep -nE \"tauri[- ]?plugin\" crates/menubar-app/Cargo.toml 2>/dev/null",
+      "grep -nE \"place_order|flatten|kill_switch|cancel_order|set_size|update_param|submit_order\" dashboard-ui/src-tauri/src dashboard-ui/src-menubar 2>/dev/null",
+      "grep -nE \"src-menubar|menubar\\.html\" dashboard-ui/index.html dashboard-ui/menubar.html dashboard-ui/vite.config.* 2>/dev/null",
+      "br dep cycles",
+    ]);
+
+    const result = assessVerificationEvidence(menubarContract, `
+Branch A selected and documented.
+cd dashboard-ui && npm run typecheck — PASS, exit 0.
+cd dashboard-ui && npm run build — PASS, exit 0; output included dist/menubar.html and dist/index.html.
+cd dashboard-ui && npm run test:unit -- src-menubar/__tests__/menubar-shell-smoke.test.tsx — PASS, exit 0; 1 test passed.
+bash scripts/build-mutex.sh cargo check --manifest-path dashboard-ui/src-tauri/Cargo.toml — PASS, exit 0.
+test -f dashboard-ui/src-tauri/Cargo.toml && test -f dashboard-ui/src-tauri/build.rs && test -f dashboard-ui/src-tauri/tauri.conf.json && test -f dashboard-ui/src-tauri/capabilities/default.json && test -f dashboard-ui/src-tauri/src/main.rs && test -f dashboard-ui/src-tauri/README.md — PASS, exit 0.
+grep -nE "tauri[- ]?(plugin)?[- ]?(tray|positioner|window-state)" dashboard-ui/src-tauri/Cargo.toml 2>/dev/null || grep -nE "tauri[- ]?plugin" crates/menubar-app/Cargo.toml 2>/dev/null — PASS, output showed tauri-plugin-positioner and tauri-plugin-window-state.
+grep -nE "place_order|flatten|kill_switch|cancel_order|set_size|update_param|submit_order" dashboard-ui/src-tauri/src dashboard-ui/src-menubar 2>/dev/null — PASS; no mutation-token matches were emitted.
+grep -nE "src-menubar|menubar\\.html" dashboard-ui/index.html dashboard-ui/menubar.html dashboard-ui/vite.config.* 2>/dev/null — PASS, exit 0.
+br dep cycles — PASS, exit 0; No dependency cycles detected.
+Branch B command is not applicable because Branch A was selected and documented.
+`);
+
+    expect(result.ok).toBe(true);
+    expect(result.requiredCommands).not.toContain("bash scripts/build-mutex.sh cargo check -p menubar-app --all-targets");
+    expect(result.missingCommands).toEqual([]);
+  });
 });
 
 describe("acceptance criteria evidence assessment", () => {
@@ -283,6 +337,25 @@ Acceptance criteria:
 
     expect(result.ok).toBe(true);
     expect(result.criteria.map((criterion) => criterion.status)).toEqual(["blocked", "blocked", "blocked"]);
+  });
+
+  it("does not mark every criterion not-applicable when only an alternate branch is not applicable", () => {
+    const menubarDescription = `Implement menubar shell.
+
+Acceptance criteria:
+- [ ] Verify the exact Tauri 2 tray/status-bar/popover/window APIs before coding against them, and preserve the proof in code comments or the module-local note.
+- [ ] Keep package/workspace changes minimal and explain why they were necessary.
+- [ ] Confirm the scaffold exposes no order placement, flatten, kill-switch, sizing, or strategy-parameter mutation affordances.`;
+
+    const result = assessAcceptanceCriteriaEvidence(menubarDescription, `
+Verified Tauri 2 tray/status-bar/popover/window APIs in the module-local note.
+Kept package/workspace changes minimal by choosing Branch A dashboard-ui/src-tauri; no workspace crate split was necessary.
+Confirmed the scaffold exposes no order placement, flatten, kill-switch, sizing, or strategy-parameter mutation affordances.
+Branch B command is not applicable because Branch A was selected.
+`);
+
+    expect(result.ok).toBe(true);
+    expect(result.criteria.map((criterion) => criterion.status)).toEqual(["proven", "proven", "proven"]);
   });
 
   it("formats a per-criterion proof matrix", () => {
