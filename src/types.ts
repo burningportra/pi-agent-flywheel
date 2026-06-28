@@ -1,4 +1,12 @@
 // ─── Repo Profile ────────────────────────────────────────────
+export interface AgentGuidanceDetection {
+  found: boolean;
+  /** Repository-relative guidance paths that resolve to regular files. */
+  files: string[];
+  /** Repository-relative candidate paths checked, in deterministic order. */
+  checked: string[];
+}
+
 export interface RepoProfile {
   name: string;
   languages: string[];
@@ -15,6 +23,8 @@ export interface RepoProfile {
   keyFiles: Record<string, string>;
   readme?: string;
   packageManager?: string;
+  /** Repository-level agent guidance files detected without loading contents. */
+  agentGuidance?: AgentGuidanceDetection;
   /** Content snippets from best-practices guides found in the project. */
   bestPracticesGuides?: Array<{ name: string; content: string }>;
 }

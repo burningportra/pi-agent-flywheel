@@ -16,6 +16,7 @@ import {
   renewBuildSlot,
   releaseBuildSlot,
   healthCheck,
+  preflightAgentMail,
   type ExecFn,
 } from "./agent-mail.js";
 
@@ -24,6 +25,71 @@ function mockExec(responses: Array<any>): ExecFn {
   responses.forEach((response) => fn.mockResolvedValueOnce(response));
   return fn as unknown as ExecFn;
 }
+
+describe("agent-mail preflight", () => {
+  it("classifies healthy Agent Mail as reservations available", async () => {
+    const exec = mockExec([
+      { code: 0, stdout: JSON.stringify({ status: "ok" }), stderr: "" },
+      { code: 0, stdout: JSON.stringify({ result: { structuredContent: { status: "healthy" } } }), stderr: "" },
+    ]);
+
+    const result = await preflightAgentMail(exec);
+
+    expect(result.status).toBe("available");
+    expect(result.reservationsAvailable).toBe(true);
+    expect(result.repairGuidance).toEqual([]);
+  });
+
+  it("classifies server unreachable without retries or mutation", async () => {
+    const exec = mockExec([
+      { code: 7, stdout: "", stderr: "connection refused" },
+    ]);
+
+    const result = await preflightAgentMail(exec);
+
+    expect(result.status).toBe("server_unreachable");
+    expect(result.reservationsAvailable).toBe(false);
+    expect(result.repairGuidance.join("\n")).toContain("liveness");
+    expect((exec as any).mock.calls).toHaveLength(1);
+  });
+
+  it("classifies unhealthy liveness as repairable", async () => {
+    const exec = mockExec([
+      { code: 0, stdout: JSON.stringify({ status: "degraded" }), stderr: "" },
+    ]);
+
+    const result = await preflightAgentMail(exec);
+
+    expect(result.status).toBe("unhealthy_repairable");
+    expect(result.repairGuidance.join("\n")).toContain("dry-run repair");
+  });
+
+  it("classifies Unauthorized API responses without endless retries", async () => {
+    const exec = mockExec([
+      { code: 0, stdout: JSON.stringify({ status: "ok" }), stderr: "" },
+      { code: 0, stdout: JSON.stringify({ detail: "Unauthorized" }), stderr: "" },
+    ]);
+
+    const result = await preflightAgentMail(exec);
+
+    expect(result.status).toBe("unauthorized");
+    expect(result.reservationsAvailable).toBe(false);
+    expect(result.repairGuidance.join("\n")).toContain("Do not retry endlessly");
+    expect((exec as any).mock.calls).toHaveLength(2);
+  });
+
+  it("classifies malformed API responses as unknown failure", async () => {
+    const exec = mockExec([
+      { code: 0, stdout: JSON.stringify({ status: "ok" }), stderr: "" },
+      { code: 0, stdout: "not json", stderr: "" },
+    ]);
+
+    const result = await preflightAgentMail(exec);
+
+    expect(result.status).toBe("unknown_failure");
+    expect(result.reservationsAvailable).toBe(false);
+  });
+});
 
 describe("agent-mail reservation helpers", () => {
   it("reserves files with the existing file_reservation_paths tool", async () => {

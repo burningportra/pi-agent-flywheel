@@ -30,6 +30,7 @@ import { registerApproveTool } from "./tools/approve.js";
 import { registerReviewTool } from "./tools/review.js";
 import { registerMemoryTool } from "./tools/memory-tool.js";
 import { registerDoctorTool } from "./tools/doctor.js";
+import { registerStatusTool } from "./tools/status.js";
 import { registerVerifyBeadsTool } from "./tools/verify-beads.js";
 import { registerComplianceAuditTool } from "./tools/compliance-audit.js";
 import { registerResearchTool } from "./tools/research.js";
@@ -468,6 +469,7 @@ export default function (pi: ExtensionAPI) {
   registerMemoryTool(oc);
   registerReviewTool(oc);
   registerDoctorTool(oc);
+  registerStatusTool(oc);
   registerVerifyBeadsTool(oc);
   registerComplianceAuditTool(oc);
   registerResearchTool(oc);

@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext, OrchestratorPhase } from "../types.js";
 import { buildWorkflowStatus } from "../workflow-status.js";
+import { providerPreflightRepairGuidance } from "../provider-preflight.js";
 import { canonicalName } from "./shared.js";
 
 /**
@@ -33,6 +34,7 @@ export interface TriageHealth {
     status: "not_checked";
     reason: string;
     launch_time_check: string;
+    repair_guidance: string[];
   };
 }
 
@@ -109,8 +111,12 @@ export function buildTriage(oc: OrchestratorContext): TriageOutput {
     swarm_tender_present: false,
     provider_preflight: {
       status: "not_checked",
-      reason: "flywheel_triage is read-only and does not run provider/model probes.",
-      launch_time_check: "Implementation and review worker launches run bounded provider preflight before starting NTM panes.",
+      reason: "flywheel_triage is read-only; it does not probe providers or auth.",
+      launch_time_check: "Implementation and review launches run bounded provider/model preflight before starting workers.",
+      repair_guidance: [
+        ...providerPreflightRepairGuidance("not_checked"),
+        "If launch reports OAuth 403, 401, or Unauthorized, repair auth, switch provider/model, retry after repair, or reduce worker count.",
+      ],
     },
   };
 

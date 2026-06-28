@@ -16,6 +16,7 @@ const FAMILY_FILES: Record<keyof typeof TOOL_FAMILIES, string> = {
   review: "review.ts",
   memory: "memory-tool.ts",
   doctor: "doctor.ts",
+  status: "status.ts",
   verify_beads: "verify-beads.ts",
   audit_beads: "compliance-audit.ts",
   research: "research.ts",
@@ -32,10 +33,10 @@ describe("R-009: tool contract — canonical names pinned", () => {
     }
   });
 
-  it("the 10 legacy tool families all have exactly 3 names (agent_flywheel_*, orch_*, flywheel_*)", () => {
+  it("the 11 legacy tool families all have exactly 3 names (agent_flywheel_*, orch_*, flywheel_*)", () => {
     const legacyFamilies = [
       "profile", "discover", "select", "plan", "approve_beads",
-      "review", "memory", "doctor", "verify_beads", "audit_beads",
+      "review", "memory", "doctor", "status", "verify_beads", "audit_beads",
     ] as const;
     for (const family of legacyFamilies) {
       const names = TOOL_FAMILIES[family];

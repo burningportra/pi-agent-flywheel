@@ -26,6 +26,7 @@ export const TOOL_FAMILIES = {
   review: ["agent_flywheel_review", "orch_review", "flywheel_review"],
   memory: ["agent_flywheel_memory", "orch_memory", "flywheel_memory"],
   doctor: ["agent_flywheel_doctor", "orch_doctor", "flywheel_doctor"],
+  status: ["agent_flywheel_status", "orch_status", "flywheel_status"],
   verify_beads: ["agent_flywheel_verify_beads", "orch_verify_beads", "flywheel_verify_beads"],
   audit_beads: ["agent_flywheel_audit_beads", "orch_audit_beads", "flywheel_audit_beads"],
   research: ["agent_flywheel_research", "orch_research", "flywheel_research"],

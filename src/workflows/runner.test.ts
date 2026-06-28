@@ -144,16 +144,17 @@ describe("runner — checkPlanningToolOrdering (non-native adapter guardrails)",
     expect(rej!.message).toMatch(/approve.*spec/i);
   });
 
-  it("rejects flywheel_plan during brainstorming and spec generation", () => {
+  it("rejects flywheel_plan during brainstorming but allows spec generation", () => {
     expect(
       checkPlanningToolOrdering("flywheel_plan", stateAt("brainstorming", "superpowers"))?.code,
     ).toBe("OUT_OF_ORDER_TOOL_CALL");
     expect(
-      checkPlanningToolOrdering("flywheel_plan", stateAt("spec", "superpowers"))?.code,
-    ).toBe("OUT_OF_ORDER_TOOL_CALL");
+      checkPlanningToolOrdering("flywheel_plan", stateAt("spec", "superpowers")),
+    ).toBeNull();
   });
 
-  it("allows flywheel_plan at plan/awaiting_plan_approval/idle/handoff for non-native adapter", () => {
+  it("allows flywheel_plan at spec/plan/awaiting_plan_approval/idle/handoff for non-native adapter", () => {
+    expect(checkPlanningToolOrdering("flywheel_plan", stateAt("spec", "superpowers"))).toBeNull();
     expect(checkPlanningToolOrdering("flywheel_plan", stateAt("plan", "superpowers"))).toBeNull();
     expect(checkPlanningToolOrdering("flywheel_plan", stateAt("awaiting_plan_approval", "superpowers"))).toBeNull();
     expect(checkPlanningToolOrdering("flywheel_plan", stateAt("idle", "superpowers"))).toBeNull();
@@ -201,12 +202,12 @@ describe("runner — checkPlanningToolOrdering (non-native adapter guardrails)",
   it("rejections carry both the offending toolName and current stage (machine-readable)", () => {
     const rej = checkPlanningToolOrdering(
       "flywheel_plan",
-      stateAt("spec", "superpowers"),
+      stateAt("brainstorming", "superpowers"),
     );
     expect(rej).toMatchObject({
       code: "OUT_OF_ORDER_TOOL_CALL",
       toolName: "flywheel_plan",
-      stage: "spec",
+      stage: "brainstorming",
     });
   });
 });

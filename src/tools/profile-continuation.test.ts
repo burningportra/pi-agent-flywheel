@@ -44,10 +44,23 @@ describe("buildFoundationGaps", () => {
     }
   });
 
+  it("uses profile-captured guidance evidence when no repo root is supplied", () => {
+    const gaps = buildFoundationGaps(makeProfile({
+      agentGuidance: {
+        found: true,
+        files: ["AGENTS.md"],
+        checked: ["AGENTS.md"],
+      },
+      keyFiles: {},
+    }));
+
+    expect(gaps).not.toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
+  });
+
   it("keeps an actionable missing-guidance warning when the target repo has no guidance file", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "profile-guidance-"));
     try {
-      const gaps = buildFoundationGaps(makeProfile({ keyFiles: { "AGENTS.md": "stale keyfile seam" } }), repoRoot);
+      const gaps = buildFoundationGaps(makeProfile({ keyFiles: { "AGENTS.md": "stale keyFiles fallback" } }), repoRoot);
 
       expect(gaps).toContain("- No AGENTS.md found. Consider creating one for agent guidance.");
     } finally {

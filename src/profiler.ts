@@ -1,14 +1,10 @@
 import { statSync } from "fs";
 import { join, resolve } from "path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { RepoProfile, TodoItem, CommitSummary } from "./types.js";
+import type { AgentGuidanceDetection, RepoProfile, TodoItem, CommitSummary } from "./types.js";
 
-export interface AgentGuidanceDetection {
-  found: boolean;
-  files: string[];
-  checked: string[];
-}
-
+// Central list of guidance files the profiler treats as project-level agent instructions.
+// Keep warning text in buildFoundationGaps aligned if aliases are added here.
 const AGENT_GUIDANCE_CANDIDATE_PATHS = ["AGENTS.md"] as const;
 
 /**
@@ -28,6 +24,7 @@ export async function profileRepo(
   ]);
 
   const bestPracticesGuides = await collectBestPracticesGuides(pi, cwd, fileTree, signal);
+  const agentGuidance = detectAgentGuidanceFiles(cwd);
 
   // Detect languages from extensions
   const extCounts = new Map<string, number>();
@@ -57,6 +54,7 @@ export async function profileRepo(
     keyFiles,
     readme: keyFiles["README.md"] ?? keyFiles["README"] ?? undefined,
     packageManager: detectPackageManager(keyFiles, fileTree),
+    agentGuidance,
     bestPracticesGuides,
   };
 }
@@ -66,9 +64,11 @@ export async function profileRepo(
 /**
  * Detect supported project-level agent guidance files under an explicit repo root.
  *
- * Public evidence paths stay repository-relative so profile output and tests do
- * not leak machine-specific absolute paths. Missing or inaccessible candidates
- * are treated as absent; a directory named like a guidance file does not count.
+ * This records file presence only; guidance contents are not loaded into the
+ * profile. Public evidence paths stay repository-relative so profile output and
+ * tests do not leak machine-specific absolute paths. Missing or inaccessible
+ * candidates are treated as absent; a directory named like a guidance file does
+ * not count.
  */
 export function detectAgentGuidanceFiles(repoRoot: string): AgentGuidanceDetection {
   const root = resolve(repoRoot);

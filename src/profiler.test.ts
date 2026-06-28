@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, relative } from "path";
 import { detectAgentGuidanceFiles } from "./profiler.js";
@@ -50,6 +50,22 @@ describe("detectAgentGuidanceFiles", () => {
     expect(detection.found).toBe(false);
     expect(detection.files).toEqual([]);
     expect(detection.checked).toEqual(["AGENTS.md"]);
+  });
+
+  it("counts an AGENTS.md symlink to a regular file as guidance", () => {
+    const target = join(tmpDir, "GUIDANCE.md");
+    writeFileSync(target, "# Agent guidance\n", "utf8");
+    try {
+      symlinkSync(target, join(tmpDir, "AGENTS.md"));
+    } catch {
+      // Some platforms disallow symlink creation in unprivileged test runs.
+      return;
+    }
+
+    const detection = detectAgentGuidanceFiles(tmpDir);
+
+    expect(detection.found).toBe(true);
+    expect(detection.files).toEqual(["AGENTS.md"]);
   });
 
   it("handles a relative repo root by resolving it before checking candidates", () => {

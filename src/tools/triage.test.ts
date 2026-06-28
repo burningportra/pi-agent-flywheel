@@ -85,6 +85,7 @@ describe("R-004: flywheel_triage mega-command", () => {
     const t = buildTriage(makeOC());
     expect(t.health.provider_preflight.status).toBe("not_checked");
     expect(t.health.provider_preflight.reason).toContain("read-only");
-    expect(t.health.provider_preflight.launch_time_check).toContain("launches run bounded provider preflight");
+    expect(t.health.provider_preflight.launch_time_check).toContain("launches run bounded provider/model preflight");
+    expect(t.health.provider_preflight.repair_guidance.join("\n")).toContain("OAuth 403");
   });
 });

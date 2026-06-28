@@ -40,6 +40,20 @@ export interface BuildSlotInfo {
   [key: string]: unknown;
 }
 
+export type AgentMailPreflightStatus =
+  | "available"
+  | "server_unreachable"
+  | "unhealthy_repairable"
+  | "unauthorized"
+  | "unknown_failure";
+
+export interface AgentMailPreflightResult {
+  status: AgentMailPreflightStatus;
+  reservationsAvailable: boolean;
+  evidence: string[];
+  repairGuidance: string[];
+}
+
 /**
  * Call an agent-mail MCP tool via its JSON-RPC HTTP endpoint.
  * Used by the orchestrator itself (not sub-agents) to manage projects/reservations.
@@ -66,6 +80,129 @@ export async function agentMailRPC(
     return parsed?.result?.structuredContent ?? parsed?.result ?? null;
   } catch {
     return null;
+  }
+}
+
+function containsUnauthorized(result: { code?: number; stdout?: string; stderr?: string } | undefined): boolean {
+  const text = `${result?.stdout ?? ""}\n${result?.stderr ?? ""}`.toLowerCase();
+  return result?.code === 401 || text.includes("unauthorized") || text.includes('"detail":"unauthorized"');
+}
+
+function shortEvidence(label: string, result: { code?: number; stdout?: string; stderr?: string }): string {
+  const stdout = (result.stdout ?? "").trim().slice(0, 180);
+  const stderr = (result.stderr ?? "").trim().slice(0, 180);
+  return `${label}: exit=${result.code ?? "unknown"}${stdout ? ` stdout=${stdout}` : ""}${stderr ? ` stderr=${stderr}` : ""}`;
+}
+
+function guidanceForAgentMailStatus(status: AgentMailPreflightStatus): string[] {
+  switch (status) {
+    case "available":
+      return [];
+    case "server_unreachable":
+      return [
+        `Check Agent Mail liveness: curl -s ${AGENT_MAIL_URL}/health/liveness`,
+        "Run the Agent Mail doctor/health command if installed, or start the local Agent Mail HTTP server.",
+        "If repair is unavailable, downgrade same-checkout parallel work to worktree or sequential mode.",
+      ];
+    case "unhealthy_repairable":
+      return [
+        "Run Agent Mail health_check / doctor diagnostics.",
+        "If supported, run the local Agent Mail dry-run repair before retrying reservations.",
+        "Keep repair attempts bounded; downgrade launch mode if health does not recover quickly.",
+      ];
+    case "unauthorized":
+      return [
+        "Agent Mail API returned Unauthorized; verify auth token/config for the local server.",
+        "Do not retry endlessly on 401/Unauthorized; downgrade launch mode and surface this evidence.",
+      ];
+    case "unknown_failure":
+      return [
+        "Run Agent Mail health/doctor diagnostics and inspect the captured curl output.",
+        "Downgrade launch mode if reservations cannot be proven available.",
+      ];
+  }
+}
+
+/**
+ * Bounded Agent Mail preflight for launch decisions. It intentionally performs
+ * only short, non-destructive HTTP checks and classifies failures so launch code
+ * can safely downgrade instead of entering communication purgatory.
+ */
+export async function preflightAgentMail(exec: ExecFn): Promise<AgentMailPreflightResult> {
+  const evidence: string[] = [];
+  let liveness: { code: number; stdout: string; stderr: string };
+  try {
+    liveness = await exec("curl", ["-s", "--max-time", "2", `${AGENT_MAIL_URL}/health/liveness`], { timeout: 4000 });
+  } catch (error) {
+    const status: AgentMailPreflightStatus = "server_unreachable";
+    evidence.push(`liveness: ${error instanceof Error ? error.message : String(error)}`);
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  }
+
+  evidence.push(shortEvidence("liveness", liveness));
+  if (containsUnauthorized(liveness)) {
+    const status: AgentMailPreflightStatus = "unauthorized";
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  }
+  if (liveness.code !== 0 || liveness.stdout.trim().length === 0) {
+    const status: AgentMailPreflightStatus = "server_unreachable";
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  }
+
+  try {
+    const parsed = JSON.parse(liveness.stdout.trim());
+    const liveStatus = String(parsed?.status ?? "").toLowerCase();
+    if (liveStatus && !["ok", "healthy", "alive"].includes(liveStatus)) {
+      const status: AgentMailPreflightStatus = "unhealthy_repairable";
+      return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+    }
+  } catch {
+    // Non-JSON liveness output is tolerated; the API check below is stronger.
+  }
+
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: Date.now(),
+    method: "tools/call",
+    params: { name: "health_check", arguments: {} },
+  });
+
+  let health: { code: number; stdout: string; stderr: string };
+  try {
+    health = await exec("curl", [
+      "-s", "-X", "POST", `${AGENT_MAIL_URL}/api`,
+      "-H", "Content-Type: application/json",
+      "-d", body,
+      "--max-time", "3",
+    ], { timeout: 5000 });
+  } catch (error) {
+    const status: AgentMailPreflightStatus = "unknown_failure";
+    evidence.push(`health_check: ${error instanceof Error ? error.message : String(error)}`);
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  }
+
+  evidence.push(shortEvidence("health_check", health));
+  if (containsUnauthorized(health)) {
+    const status: AgentMailPreflightStatus = "unauthorized";
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  }
+  if (health.code !== 0 || health.stdout.trim().length === 0) {
+    const status: AgentMailPreflightStatus = "unknown_failure";
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  }
+
+  try {
+    const parsed = JSON.parse(health.stdout.trim());
+    const structured = parsed?.result?.structuredContent ?? parsed?.result ?? parsed;
+    const statusText = String(structured?.status ?? structured?.health ?? "healthy").toLowerCase();
+    if (["ok", "healthy", "alive", "available"].includes(statusText)) {
+      return { status: "available", reservationsAvailable: true, evidence, repairGuidance: [] };
+    }
+    const status: AgentMailPreflightStatus = "unhealthy_repairable";
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
+  } catch {
+    const status: AgentMailPreflightStatus = "unknown_failure";
+    return { status, reservationsAvailable: false, evidence, repairGuidance: guidanceForAgentMailStatus(status) };
   }
 }
 

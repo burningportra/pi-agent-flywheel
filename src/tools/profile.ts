@@ -33,12 +33,13 @@ export interface ProfileContinuation {
  *
  * The profile tool passes the same explicit target repository root (`ctx.cwd`)
  * used by scanRepo/profileRepo so guidance detection does not depend on ambient
- * process.cwd(). When repoRoot is omitted by older tests/callers, fall back to
- * the legacy keyFiles seam rather than doing cwd-based detection.
+ * process.cwd(). When repoRoot is omitted by older tests/callers, prefer the
+ * profile's captured guidance detection, then fall back to the existing
+ * keyFiles-based check rather than doing cwd-based detection.
  */
 export function buildFoundationGaps(profile: RepoProfile, repoRoot?: string): string[] {
   const foundationGaps: string[] = [];
-  const guidance = repoRoot ? detectAgentGuidanceFiles(repoRoot) : undefined;
+  const guidance = repoRoot ? detectAgentGuidanceFiles(repoRoot) : profile.agentGuidance;
   const hasAgentsMd = guidance
     ? guidance.found
     : profile.keyFiles && Object.keys(profile.keyFiles).some(f => f.toLowerCase() === "agents.md");

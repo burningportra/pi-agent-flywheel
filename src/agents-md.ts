@@ -284,7 +284,11 @@ export async function ensureCoreRules(cwd: string): Promise<void> {
   }
 }
 
-export async function ensureAgentMailSection(cwd: string): Promise<void> {
+export interface EnsureAgentMailSectionOptions {
+  onboardMemory?: boolean;
+}
+
+export async function ensureAgentMailSection(cwd: string, options: EnsureAgentMailSectionOptions = {}): Promise<void> {
   const agentsMdPath = join(cwd, "AGENTS.md");
 
   if (!existsSync(agentsMdPath)) {
@@ -299,7 +303,7 @@ export async function ensureAgentMailSection(cwd: string): Promise<void> {
       "utf-8"
     );
     // Best-effort: bootstrap CASS memory for a new project
-    onboardMemory(cwd);
+    if (options.onboardMemory !== false) onboardMemory(cwd);
     return;
   }
 

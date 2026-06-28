@@ -24,6 +24,7 @@ export interface FlywheelCapabilities {
   error_categories: Record<string, ErrorCategory>;
   env_vars: EnvVarDefinition[];
   doctor_ref: string;
+  status_ref: string;
   triage_ref: string;
   robot_docs_ref: string;
   generated_at: string;
@@ -118,12 +119,13 @@ const TOOL_DESCRIPTIONS: Record<string, { description: string; phase_position: n
   review: { description: "Per-bead review + next-bead selection after implementation.", phase_position: 6, prereq: "flywheel_approve_beads", next: null },
   memory: { description: "Search/store/mark long-term flywheel memory entries.", phase_position: null, prereq: null, next: null },
   doctor: { description: "Read-only diagnostic for flywheel prerequisites and session health.", phase_position: null, prereq: null, next: null },
+  status: { description: "Return machine-readable workflow status: phase, goal, bead summary, confidence, and next action.", phase_position: null, prereq: null, next: null },
   verify_beads: { description: "Reconcile a completed implementation wave: verify bead IDs are closed.", phase_position: null, prereq: null, next: null },
   audit_beads: { description: "Audit closed beads for compliance with their stated implementation.", phase_position: null, prereq: null, next: null },
   research: { description: "Study an external repo and synthesize a research-reimagine proposal for this project.", phase_position: null, prereq: null, next: "flywheel_approve_beads" },
   capabilities: { description: "Return the machine-readable tool contract for pi-agent-flywheel.", phase_position: null, prereq: null, next: null },
   robot_docs: { description: "Return a paste-ready agent handbook (canonical phase order, common errors, examples).", phase_position: null, prereq: null, next: null },
-  triage: { description: "Mega-command: quick_ref + recommendations + commands + health in one call.", phase_position: null, prereq: null, next: null },
+  triage: { description: "Mega-command: quick_ref + recommendations + commands + health in one call; use after flywheel_status when resuming or as a fresh-session shortcut.", phase_position: null, prereq: null, next: null },
 };
 
 export function buildCapabilities(version: string): FlywheelCapabilities {
@@ -152,6 +154,7 @@ export function buildCapabilities(version: string): FlywheelCapabilities {
     error_categories: ERROR_CATEGORIES,
     env_vars: ENV_VARS,
     doctor_ref: canonicalName("doctor"),
+    status_ref: canonicalName("status"),
     triage_ref: canonicalName("triage"),
     robot_docs_ref: canonicalName("robot_docs"),
     generated_at: new Date().toISOString(),

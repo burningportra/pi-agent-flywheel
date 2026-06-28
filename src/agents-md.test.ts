@@ -8,6 +8,10 @@ const SECTION_MARKER = "## MCP Agent Mail";
 
 let tmpDir: string;
 
+async function ensureAgentMailSectionForTest(cwd: string): Promise<void> {
+  await ensureAgentMailSection(cwd, { onboardMemory: false });
+}
+
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "agents-md-test-"));
 });
@@ -24,7 +28,7 @@ afterEach(() => {
 
 describe("ensureAgentMailSection", () => {
   it("creates AGENTS.md with header, core rules, and section when file does not exist", async () => {
-    await ensureAgentMailSection(tmpDir);
+    await ensureAgentMailSectionForTest(tmpDir);
 
     const agentsMdPath = join(tmpDir, "AGENTS.md");
     expect(existsSync(agentsMdPath)).toBe(true);
@@ -41,7 +45,7 @@ describe("ensureAgentMailSection", () => {
     const agentsMdPath = join(tmpDir, "AGENTS.md");
     writeFileSync(agentsMdPath, "# AGENTS.md\n\nSome existing content.\n", "utf-8");
 
-    await ensureAgentMailSection(tmpDir);
+    await ensureAgentMailSectionForTest(tmpDir);
 
     const content = readFileSync(agentsMdPath, "utf-8");
     expect(content).toContain("Some existing content.");
@@ -52,8 +56,8 @@ describe("ensureAgentMailSection", () => {
     const agentsMdPath = join(tmpDir, "AGENTS.md");
     writeFileSync(agentsMdPath, `# AGENTS.md\n\n${SECTION_MARKER}\n\nExisting agent mail section.\n`, "utf-8");
 
-    await ensureAgentMailSection(tmpDir);
-    await ensureAgentMailSection(tmpDir); // call twice
+    await ensureAgentMailSectionForTest(tmpDir);
+    await ensureAgentMailSectionForTest(tmpDir); // call twice
 
     const content = readFileSync(agentsMdPath, "utf-8");
     const occurrences = (content.match(new RegExp(SECTION_MARKER, "g")) ?? []).length;
@@ -65,7 +69,7 @@ describe("ensureAgentMailSection", () => {
     const existingContent = "# AGENTS.md\n\n## Some other section\n\nContent here.\n";
     writeFileSync(agentsMdPath, existingContent, "utf-8");
 
-    await ensureAgentMailSection(tmpDir);
+    await ensureAgentMailSectionForTest(tmpDir);
 
     const content = readFileSync(agentsMdPath, "utf-8");
     expect(content).toContain("## Some other section");
@@ -77,7 +81,7 @@ describe("ensureAgentMailSection", () => {
     const agentsMdPath = join(tmpDir, "AGENTS.md");
     writeFileSync(agentsMdPath, `# AGENTS.md\n\n${SECTION_MARKER}\n\nExisting.\n`, "utf-8");
 
-    await ensureAgentMailSection(tmpDir);
+    await ensureAgentMailSectionForTest(tmpDir);
 
     const content = readFileSync(agentsMdPath, "utf-8");
     expect(content).toContain("## Core Rules");
@@ -135,7 +139,7 @@ describe("scoreAgentsMd", () => {
   });
 
   it("returns high score for complete AGENTS.md", async () => {
-    await ensureAgentMailSection(tmpDir);
+    await ensureAgentMailSectionForTest(tmpDir);
 
     const health = scoreAgentsMd(tmpDir);
     expect(health.score).toBeGreaterThanOrEqual(80);

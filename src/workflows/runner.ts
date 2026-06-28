@@ -81,9 +81,11 @@ export function stageToPlanningPhase(state: OrchestratorState): PlanningPhase | 
  *  - The native adapter is permissive — its only ordering constraints live
  *    inside the existing plan/approve tool implementations and predate
  *    this runner.
- *  - Non-native adapters reject `flywheel_plan` during brainstorm/spec/
- *    awaiting-spec-approval and reject `flywheel_approve_beads` while a
- *    plan or spec is still being generated.
+ *  - Non-native adapters reject `flywheel_plan` during brainstorming and
+ *    while awaiting spec approval. They allow the `spec` stage because the
+ *    plan tool is the entry point that emits the first spec-generation prompt.
+ *    They reject `flywheel_approve_beads` while a plan or spec is still being
+ *    generated.
  */
 export function checkPlanningToolOrdering(
   toolName: PlanningToolCall,
@@ -96,15 +98,11 @@ export function checkPlanningToolOrdering(
   const stage = wf.stage;
 
   if (toolName === "flywheel_plan") {
-    if (
-      stage === "brainstorming" ||
-      stage === "spec" ||
-      stage === "awaiting_spec_approval"
-    ) {
+    if (stage === "brainstorming" || stage === "awaiting_spec_approval") {
       const message =
         stage === "awaiting_spec_approval"
           ? `Cannot generate the implementation plan while stage is "awaiting_spec_approval". Approve or refine the spec via flywheel_approve_beads first, then call flywheel_plan.`
-          : `Cannot generate the implementation plan while stage is "${stage}". Wait for the current ${stage} step to complete and the spec to be approved.`;
+          : `Cannot generate the implementation plan while stage is "${stage}". Wait for the current ${stage} step to complete before calling flywheel_plan.`;
       return {
         code: "OUT_OF_ORDER_TOOL_CALL",
         toolName,
