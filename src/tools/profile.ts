@@ -16,6 +16,48 @@ import { brExec, brExecJson } from "../cli-exec.js";
 import { initSuperpowersWorkflow } from "../workflows/superpowers.js";
 
 import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
+
+// ─── Foundation Gap Detection ──────────────────────────────────────
+
+export const MISSING_AGENTS_MD_WARNING = "- No AGENTS.md found. Consider creating one for agent guidance.";
+
+export interface ProfileFoundationFields {
+  keyFiles: Record<string, string>;
+  hasTests: boolean;
+  hasCI: boolean;
+  ciPlatform?: string;
+  recentCommits: Array<{ hash: string; message: string; date: string; author: string }>;
+}
+
+/**
+ * Detect foundation gaps in a repository profile.
+ * Checks keyFiles for AGENTS.md presence, test framework, CI, and git history.
+ */
+export function foundationGapsForProfile(fields: ProfileFoundationFields): string[] {
+  const gaps: string[] = [];
+
+  const hasAgentsMd = fields.keyFiles && Object.keys(fields.keyFiles).some((f) =>
+    f.toLowerCase() === "agents.md"
+  );
+  if (!hasAgentsMd) {
+    gaps.push(MISSING_AGENTS_MD_WARNING);
+  }
+
+  if (!fields.hasTests) {
+    gaps.push("- No test framework detected. Consider adding tests before orchestrating.");
+  }
+
+  if (!fields.hasCI && !fields.ciPlatform) {
+    gaps.push("- No CI/build tooling detected. Consider adding build scripts or CI.");
+  }
+
+  if (fields.recentCommits.length === 0) {
+    gaps.push("- No git history detected. Consider initializing git for version control.");
+  }
+
+  return gaps;
+}
+
 /** Compute weighted score for a candidate idea (for fallback sorting). */
 function weightedScore(idea: import("../types.js").CandidateIdea): number {
   if (!idea.scores) return 0;
@@ -216,7 +258,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
       }
 
       // Foundation validation — non-blocking warnings
-      const foundationGaps = buildFoundationGaps(profile, ctx.cwd);
+      const foundationGaps = buildFoundationGaps(profile);
       const foundationWarning = foundationGaps.length > 0
         ? `\n⚠️ Foundation gaps detected:\n${foundationGaps.join("\n")}\n`
         : "";

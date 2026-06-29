@@ -8,6 +8,30 @@ import type { AgentGuidanceDetection, RepoProfile, TodoItem, CommitSummary } fro
 const AGENT_GUIDANCE_CANDIDATE_PATHS = ["AGENTS.md"] as const;
 
 /**
+ * Resolve the git repository root from the given working directory.
+ * Returns the git root or the input cwd if not in a git repo.
+ */
+async function resolveRepoRoot(
+  pi: ExtensionAPI,
+  cwd: string,
+  signal?: AbortSignal
+): Promise<string> {
+  try {
+    const result = await pi.exec(
+      "git",
+      ["rev-parse", "--show-toplevel"],
+      { signal, timeout: 2000, cwd }
+    );
+    if (result.code === 0 && result.stdout.trim()) {
+      return result.stdout.trim();
+    }
+  } catch {
+    // Non-git directories or exec errors fall back to the caller-provided cwd.
+  }
+  return cwd;
+}
+
+/**
  * Collect raw repo signals using pi.exec for shell commands.
  * Returns a RepoProfile with everything except LLM-generated fields.
  */
@@ -16,15 +40,16 @@ export async function profileRepo(
   cwd: string,
   signal?: AbortSignal
 ): Promise<RepoProfile> {
+  const repoRoot = await resolveRepoRoot(pi, cwd, signal);
   const [fileTree, commits, todos, keyFiles] = await Promise.all([
-    collectFileTree(pi, cwd, signal),
-    collectCommits(pi, cwd, signal),
-    collectTodos(pi, cwd, signal),
-    collectKeyFiles(pi, cwd, signal),
+    collectFileTree(pi, repoRoot, signal),
+    collectCommits(pi, repoRoot, signal),
+    collectTodos(pi, repoRoot, signal),
+    collectKeyFiles(pi, repoRoot, repoRoot, signal),
   ]);
 
-  const bestPracticesGuides = await collectBestPracticesGuides(pi, cwd, fileTree, signal);
-  const agentGuidance = detectAgentGuidanceFiles(cwd);
+  const bestPracticesGuides = await collectBestPracticesGuides(pi, repoRoot, fileTree, signal);
+  const agentGuidance = detectAgentGuidanceFiles(repoRoot);
 
   // Detect languages from extensions
   const extCounts = new Map<string, number>();
@@ -36,7 +61,7 @@ export async function profileRepo(
   const frameworks = detectFrameworks(keyFiles);
 
   return {
-    name: cwd.split("/").pop() ?? "unknown",
+    name: repoRoot.split("/").pop() ?? "unknown",
     languages,
     frameworks,
     structure: fileTree,
@@ -191,6 +216,7 @@ async function collectTodos(
 async function collectKeyFiles(
   pi: ExtensionAPI,
   cwd: string,
+  repoRoot: string,
   signal?: AbortSignal
 ): Promise<Record<string, string>> {
   const paths = [
@@ -205,6 +231,21 @@ async function collectKeyFiles(
   ];
 
   const files: Record<string, string> = {};
+
+  // Check for AGENTS.md at the resolved repo root (not cwd).
+  try {
+    const r = await pi.exec("head", ["-c", "4096", "AGENTS.md"], {
+      signal,
+      timeout: 2000,
+      cwd: repoRoot,
+    });
+    if (r.code === 0 && r.stdout.trim()) {
+      files["AGENTS.md"] = r.stdout.trim();
+    }
+  } catch {
+    // Treat read/permission errors as not found.
+  }
+
   const reads = paths.map(async (p) => {
     try {
       const r = await pi.exec("head", ["-c", "4096", p], {
