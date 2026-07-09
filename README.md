@@ -436,6 +436,30 @@ Compact recovery example:
 }
 ```
 
+#### Compaction-aware recovery
+
+When the installed Pi runtime exposes session compaction lifecycle events, AgentFlywheel records lightweight recovery context from `session_before_compact` and `session_compact`. This context is observation-only: it is persisted for `flywheel_status`, can appear in the JSON status as `compaction.latest` and `compaction.recent`, and does not advance phases, create beads, launch workers, or block the core workflow.
+
+Compaction metadata is best-effort. Older Pi installs, unsupported lifecycle hooks, or compacted sessions without reason fields may omit the `compaction` block or report `reason: "unknown"` and `will_retry` as unreported. Treat that as missing context, not as a hard failure and not as proof that retry is false. Continue from the normal status contract.
+
+Use this recovery order after any reload or compaction:
+
+1. Inspect AgentFlywheel status with `flywheel_status` or `/flywheel-status --json`.
+2. Re-read project instructions such as `AGENTS.md` if the compacted transcript no longer contains the current rules.
+3. Inspect bead status and the worktree before repeating commands that mutate files, tasks, network state, or external systems.
+4. Continue the reported `next_action`, including required phase tools such as approval or review instead of skipping ahead.
+
+Known compaction reasons are surfaced as guidance:
+
+| Reason | Meaning | Recovery note |
+|--------|---------|---------------|
+| `manual` | A user or operator requested compaction. | Resume from status and re-read project instructions if needed. |
+| `threshold` | Pi compacted automatically after reaching a context threshold; aliases such as `auto` may normalize here. | Rehydrate repo rules, bead state, and recent file state before editing. |
+| `overflow_retry` | Pi compacted during overflow recovery and may retry the interrupted request. | Treat duplicate side-effect risk as high until bead status and file state are checked. |
+| `unknown` with `raw_reason` | Pi reported a future or unrecognized reason. | Preserve the raw reason for debugging and recover conservatively from durable workflow state. |
+
+If `will_retry` is `true`, Pi may retry the interrupted request. Do not repeat bead creation, file edits, launches, network calls, or other side effects until you have checked `flywheel_status`, `br show`/`br list`, and `git status --short`. If `will_retry` is absent, do not treat the missing field as `false`; older or partial metadata simply means AgentFlywheel cannot tell whether retry will happen.
+
 ### `/agent-flywheel-doctor`
 
 Run a read-only diagnostic for runtime prerequisites and common failure points.
