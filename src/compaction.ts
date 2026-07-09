@@ -39,7 +39,7 @@ export function normalizeCompactionReason(value: unknown): NormalizedCompactionR
   if (!rawReason) return { reason: "unknown" };
 
   const canonical = canonicalizeReason(rawReason);
-  const known = REASON_ALIASES[canonical] ?? inferReasonFromCanonical(canonical);
+  const known = REASON_ALIASES[canonical];
   if (known) {
     return canonical === known && rawReason === known ? { reason: known } : { reason: known, rawReason };
   }
@@ -165,10 +165,10 @@ function normalizeWorkflowSnapshot(
 ): CompactionWorkflowSnapshot | undefined {
   const nested = firstRecord(source.workflowSnapshot, source.workflow);
   const snapshot = stripUndefined({
-    phase: normalizeString(override?.phase) ?? normalizeString(nested?.phase) ?? normalizeString(source.phase),
-    goal: normalizeString(override?.goal) ?? normalizeString(nested?.goal) ?? normalizeString(nested?.selectedGoal) ?? normalizeString(source.goal) ?? normalizeString(source.selectedGoal),
-    selectedBeadId: normalizeString(override?.selectedBeadId) ?? normalizeString(nested?.selectedBeadId) ?? normalizeString(nested?.currentBeadId) ?? normalizeString(source.selectedBeadId) ?? normalizeString(source.currentBeadId),
-    beadSummary: normalizeString(override?.beadSummary) ?? normalizeString(nested?.beadSummary) ?? normalizeString(nested?.currentBeadSummary) ?? normalizeString(source.beadSummary) ?? normalizeString(source.currentBeadSummary),
+    phase: normalizeString(nested?.phase) ?? normalizeString(source.phase) ?? normalizeString(override?.phase),
+    goal: normalizeString(nested?.goal) ?? normalizeString(nested?.selectedGoal) ?? normalizeString(source.goal) ?? normalizeString(source.selectedGoal) ?? normalizeString(override?.goal),
+    selectedBeadId: normalizeString(nested?.selectedBeadId) ?? normalizeString(nested?.currentBeadId) ?? normalizeString(source.selectedBeadId) ?? normalizeString(source.currentBeadId) ?? normalizeString(override?.selectedBeadId),
+    beadSummary: normalizeString(nested?.beadSummary) ?? normalizeString(nested?.currentBeadSummary) ?? normalizeString(source.beadSummary) ?? normalizeString(source.currentBeadSummary) ?? normalizeString(override?.beadSummary),
   });
 
   return Object.keys(snapshot).length > 0 ? snapshot : undefined;
@@ -176,12 +176,6 @@ function normalizeWorkflowSnapshot(
 
 function canonicalizeReason(value: string): string {
   return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-}
-
-function inferReasonFromCanonical(value: string): CompactionReason | undefined {
-  if (value.includes("overflow") && value.includes("retry")) return "overflow_retry";
-  if (value.includes("threshold")) return "threshold";
-  return undefined;
 }
 
 function normalizeString(value: unknown): string | undefined {

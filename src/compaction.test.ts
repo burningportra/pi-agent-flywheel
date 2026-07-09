@@ -30,6 +30,14 @@ describe("normalizeCompactionReason", () => {
       reason: "unknown",
       rawReason: "planner_rewrite",
     });
+    expect(normalizeCompactionReason("threshold_policy_v2")).toEqual({
+      reason: "unknown",
+      rawReason: "threshold_policy_v2",
+    });
+    expect(normalizeCompactionReason("overflow_retry_after_tool_call")).toEqual({
+      reason: "unknown",
+      rawReason: "overflow_retry_after_tool_call",
+    });
   });
 });
 
@@ -97,6 +105,29 @@ describe("normalizeCompactionEvent", () => {
       workflow: {
         phase: "reviewing",
         selectedBeadId: "pi-next",
+      },
+    });
+  });
+
+  it("does not let fallback workflow options overwrite event snapshot metadata", () => {
+    expect(normalizeCompactionEvent({
+      eventName: "session_compact",
+      reason: "manual",
+      workflowSnapshot: {
+        phase: "implementing",
+        selectedBeadId: "pi-oied",
+      },
+    }, {
+      workflow: {
+        phase: "reviewing",
+        selectedBeadId: "fallback-bead",
+        beadSummary: "fallback summary",
+      },
+    })).toMatchObject({
+      workflow: {
+        phase: "implementing",
+        selectedBeadId: "pi-oied",
+        beadSummary: "fallback summary",
       },
     });
   });
