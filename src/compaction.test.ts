@@ -1,15 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildCompactionResumeGuidance,
   formatCompactionStatus,
   normalizeCompactionEvent,
   normalizeCompactionReason,
   recordCompactionContext,
+  registerCompactionLifecycleHandlers,
 } from "./compaction.js";
+import { createInitialState } from "./types.js";
 import type {
   AgentFlywheelCompactionContext,
   AgentFlywheelCompactionState,
   CompactionResumeGuidance,
+  OrchestratorState,
   RawCompactionEventPayload,
 } from "./types.js";
 
@@ -18,6 +21,7 @@ describe("normalizeCompactionReason", () => {
     expect(normalizeCompactionReason("manual")).toEqual({ reason: "manual" });
     expect(normalizeCompactionReason("auto")).toEqual({ reason: "threshold", rawReason: "auto" });
     expect(normalizeCompactionReason("context-threshold")).toEqual({ reason: "threshold", rawReason: "context-threshold" });
+    expect(normalizeCompactionReason("overflow")).toEqual({ reason: "overflow" });
     expect(normalizeCompactionReason("overflow retry")).toEqual({ reason: "overflow_retry", rawReason: "overflow retry" });
   });
 
@@ -144,16 +148,18 @@ describe("buildCompactionResumeGuidance", () => {
     });
   }
 
-  it("produces distinct manual, threshold, overflow retry, and unknown guidance", () => {
+  it("produces distinct manual, threshold, overflow, overflow retry, and unknown guidance", () => {
     const manual = guidanceFor("manual");
     const threshold = guidanceFor("threshold");
-    const overflow = guidanceFor("overflow_retry");
+    const overflow = guidanceFor("overflow");
+    const overflowRetry = guidanceFor("overflow_retry");
     const unknown = guidanceFor("unknown", { rawReason: "future_reason" });
 
-    expect(new Set([manual.title, threshold.title, overflow.title, unknown.title]).size).toBe(4);
+    expect(new Set([manual.title, threshold.title, overflow.title, overflowRetry.title, unknown.title]).size).toBe(5);
     expect(manual.summary).toContain("requested compaction");
     expect(threshold.summary).toContain("automatic context threshold");
-    expect(overflow.summary).toContain("overflow recovery");
+    expect(overflow.summary).toContain("context overflow handling");
+    expect(overflowRetry.summary).toContain("overflow recovery");
     expect(unknown.summary).toContain("future_reason");
   });
 
@@ -229,5 +235,135 @@ describe("recordCompactionContext", () => {
     expect(second.recent?.map((event) => event.reason)).toEqual(["threshold", "manual"]);
     expect(third.latest.reason).toBe("overflow_retry");
     expect(third.recent?.map((event) => event.reason)).toEqual(["overflow_retry", "threshold"]);
+  });
+});
+
+describe("registerCompactionLifecycleHandlers", () => {
+  function setupState(overrides: Partial<OrchestratorState> = {}) {
+    const handlers = new Map<string, (event: unknown, ctx: { cwd: string }) => void | Promise<void>>();
+    const pi = {
+      on: vi.fn((event: string, handler: (event: unknown, ctx: { cwd: string }) => void | Promise<void>) => {
+        handlers.set(event, handler);
+      }),
+    };
+    const state: OrchestratorState = { ...createInitialState(), ...overrides };
+    const persistState = vi.fn();
+    const onCwd = vi.fn();
+    const onError = vi.fn();
+
+    registerCompactionLifecycleHandlers(pi, {
+      getState: () => state,
+      persistState,
+      onCwd,
+      onError,
+      now: () => "2026-07-09T12:00:00.000Z",
+      recentLimit: 2,
+    });
+
+    return { handlers, pi, state, persistState, onCwd, onError };
+  }
+
+  it("registers the supported Pi compaction lifecycle hooks", () => {
+    const { handlers, pi } = setupState();
+
+    expect(pi.on).toHaveBeenCalledWith("session_before_compact", expect.any(Function));
+    expect(pi.on).toHaveBeenCalledWith("session_compact", expect.any(Function));
+    expect([...handlers.keys()]).toEqual(["session_before_compact", "session_compact"]);
+  });
+
+  it("records supported reason and willRetry payloads with a workflow snapshot without advancing phase", async () => {
+    const { handlers, state, persistState, onCwd, onError } = setupState({
+      phase: "implementing",
+      selectedGoal: "Wire compaction lifecycle events",
+      currentBeadId: "pi-s2k4",
+      beadResults: {
+        "pi-s2k4": {
+          beadId: "pi-s2k4",
+          status: "partial",
+          summary: "Lifecycle handlers are being wired",
+        },
+      },
+    });
+
+    await handlers.get("session_before_compact")?.({
+      type: "session_before_compact",
+      reason: "overflow",
+      willRetry: true,
+    }, { cwd: "/repo" });
+
+    expect(state.phase).toBe("implementing");
+    expect(state.compaction?.latest).toEqual({
+      eventName: "session_before_compact",
+      reason: "overflow",
+      willRetry: true,
+      timestamp: "2026-07-09T12:00:00.000Z",
+      workflow: {
+        phase: "implementing",
+        goal: "Wire compaction lifecycle events",
+        selectedBeadId: "pi-s2k4",
+        beadSummary: "Lifecycle handlers are being wired",
+      },
+    });
+    expect(persistState).toHaveBeenCalledTimes(1);
+    expect(onCwd).toHaveBeenCalledWith("/repo");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("records empty older payloads as observed unknown compactions", async () => {
+    const { handlers, state, persistState } = setupState({
+      phase: "reviewing",
+      currentBeadId: "pi-current",
+    });
+
+    await handlers.get("session_compact")?.({}, { cwd: "/repo" });
+
+    expect(state.phase).toBe("reviewing");
+    expect(state.compaction?.latest).toEqual({
+      eventName: "session_compact",
+      reason: "unknown",
+      timestamp: "2026-07-09T12:00:00.000Z",
+      workflow: {
+        phase: "reviewing",
+        selectedBeadId: "pi-current",
+      },
+    });
+    expect(persistState).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes future payloads and keeps the latest event plus bounded recent history", async () => {
+    const { handlers, state } = setupState({ phase: "implementing" });
+
+    await handlers.get("session_before_compact")?.({ reason: "manual" }, { cwd: "/repo" });
+    await handlers.get("session_compact")?.({ reason: "future_reason", willRetry: false }, { cwd: "/repo" });
+
+    expect(state.compaction?.latest).toMatchObject({
+      eventName: "session_compact",
+      reason: "unknown",
+      rawReason: "future_reason",
+      willRetry: false,
+    });
+    expect(state.compaction?.recent?.map((event) => event.eventName)).toEqual(["session_compact", "session_before_compact"]);
+  });
+
+  it("swallows recording failures so Pi compaction can continue", async () => {
+    const handlers = new Map<string, (event: unknown, ctx: { cwd: string }) => void | Promise<void>>();
+    const state = createInitialState();
+    const onError = vi.fn();
+
+    registerCompactionLifecycleHandlers({
+      on: (event, handler) => {
+        handlers.set(event, handler);
+      },
+    }, {
+      getState: () => state,
+      persistState: () => {
+        throw new Error("session append failed");
+      },
+      onError,
+    });
+
+    expect(() => handlers.get("session_compact")?.({ reason: "manual" }, { cwd: "/repo" })).not.toThrow();
+    expect(onError).toHaveBeenCalledWith("session_compact", expect.any(Error));
+    expect(state.phase).toBe("idle");
   });
 });

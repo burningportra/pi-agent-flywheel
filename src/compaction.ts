@@ -6,6 +6,7 @@ import type {
   CompactionResumeGuidance,
   CompactionWorkflowSnapshot,
   NormalizedCompactionReason,
+  OrchestratorState,
   RawCompactionEventPayload,
 } from "./types.js";
 
@@ -13,6 +14,28 @@ export interface NormalizeCompactionEventOptions {
   eventName?: string;
   timestamp?: string | Date;
   workflow?: Partial<CompactionWorkflowSnapshot>;
+}
+
+export interface RecordCompactionLifecycleEventOptions {
+  state: OrchestratorState;
+  eventName: CompactionEventName;
+  payload?: unknown;
+  timestamp?: string | Date;
+  recentLimit?: number;
+}
+
+export interface CompactionLifecycleRuntime {
+  on(event: "session_before_compact", handler: (event: unknown, ctx: { cwd: string }) => void | Promise<void>): void;
+  on(event: "session_compact", handler: (event: unknown, ctx: { cwd: string }) => void | Promise<void>): void;
+}
+
+export interface RegisterCompactionLifecycleHandlersOptions {
+  getState: () => OrchestratorState;
+  persistState: () => void;
+  onCwd?: (cwd: string) => void;
+  onError?: (eventName: CompactionEventName, error: unknown) => void;
+  now?: () => string | Date;
+  recentLimit?: number;
 }
 
 const DEFAULT_EVENT_NAME = "unknown";
@@ -30,6 +53,7 @@ const REASON_ALIASES: Record<string, CompactionReason> = {
   context_threshold: "threshold",
   threshold_reached: "threshold",
   token_threshold: "threshold",
+  overflow: "overflow",
   overflow_retry: "overflow_retry",
   overflowed_retry: "overflow_retry",
   context_overflow_retry: "overflow_retry",
@@ -60,7 +84,7 @@ export function normalizeCompactionEvent(
   const willRetry = typeof source.willRetry === "boolean" ? source.willRetry : undefined;
 
   return stripUndefined({
-    eventName: normalizeEventName(source.eventName) ?? normalizeEventName(source.event) ?? normalizeEventName(source.name) ?? normalizeEventName(options.eventName) ?? DEFAULT_EVENT_NAME,
+    eventName: normalizeEventName(source.eventName) ?? normalizeEventName(source.event) ?? normalizeEventName(source.name) ?? normalizeEventName(source.type) ?? normalizeEventName(options.eventName) ?? DEFAULT_EVENT_NAME,
     reason: reason.reason,
     rawReason: reason.rawReason,
     willRetry,
@@ -120,6 +144,63 @@ export function recordCompactionContext(
   return state.compaction;
 }
 
+export function buildCompactionWorkflowSnapshot(state: OrchestratorState): CompactionWorkflowSnapshot | undefined {
+  const selectedBeadId = normalizeString(state.currentBeadId);
+  const snapshot = stripUndefined({
+    phase: normalizeString(state.phase),
+    goal: normalizeString(state.selectedGoal),
+    selectedBeadId,
+    beadSummary: selectedBeadId ? normalizeString(state.beadResults?.[selectedBeadId]?.summary) : undefined,
+  });
+
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined;
+}
+
+export function recordCompactionLifecycleEvent(options: RecordCompactionLifecycleEventOptions): AgentFlywheelCompactionContext {
+  const context = normalizeCompactionEvent(options.payload, {
+    eventName: options.eventName,
+    timestamp: options.timestamp,
+    workflow: buildCompactionWorkflowSnapshot(options.state),
+  });
+
+  recordCompactionContext(options.state, context, options.recentLimit);
+  return context;
+}
+
+export function registerCompactionLifecycleHandlers(
+  pi: CompactionLifecycleRuntime,
+  options: RegisterCompactionLifecycleHandlersOptions
+): void {
+  const observe = (eventName: CompactionEventName, payload: unknown, ctx: { cwd: string }) => {
+    try {
+      const cwd = normalizeString(ctx?.cwd);
+      if (cwd) options.onCwd?.(cwd);
+      recordCompactionLifecycleEvent({
+        state: options.getState(),
+        eventName,
+        payload,
+        timestamp: options.now?.() ?? new Date(),
+        recentLimit: options.recentLimit,
+      });
+      options.persistState();
+    } catch (error) {
+      try {
+        options.onError?.(eventName, error);
+      } catch {
+        // Compaction observation must never affect Pi's compaction lifecycle.
+      }
+    }
+  };
+
+  pi.on("session_before_compact", (event, ctx) => {
+    observe("session_before_compact", event, ctx);
+  });
+
+  pi.on("session_compact", (event, ctx) => {
+    observe("session_compact", event, ctx);
+  });
+}
+
 function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<CompactionResumeGuidance, "reason" | "duplicateSideEffectRisk"> {
   switch (context.reason) {
     case "manual":
@@ -143,6 +224,17 @@ function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<Co
           "Keep the next edit narrow until current state is confirmed.",
         ],
         warnings: [],
+      };
+    case "overflow":
+      return {
+        title: "Overflow compaction",
+        summary: "Pi compacted during context overflow handling. Use retry metadata and durable workflow state to decide what can be safely repeated.",
+        nextSteps: [
+          "Check AgentFlywheel status, bead state, and file diffs before continuing.",
+          "Inspect willRetry before repeating commands that can mutate files, tasks, network state, or external systems.",
+          "Continue only after the interrupted action is understood.",
+        ],
+        warnings: ["Overflow compaction can happen near an interrupted request; inspect state before assuming what completed."],
       };
     case "overflow_retry":
       return {

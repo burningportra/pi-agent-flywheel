@@ -460,10 +460,11 @@ export type CoordinationMode = "worktree" | "single-branch";
 
 // ─── Pi session compaction context ──────────────────────────
 export type CompactionEventName = "session_before_compact" | "session_compact" | (string & {});
-export type KnownCompactionReason = "manual" | "threshold" | "overflow_retry";
+export type KnownCompactionReason = "manual" | "threshold" | "overflow" | "overflow_retry";
 export type CompactionReason = KnownCompactionReason | "unknown";
 
 export interface RawCompactionEventPayload {
+  type?: unknown;
   eventName?: unknown;
   event?: unknown;
   name?: unknown;

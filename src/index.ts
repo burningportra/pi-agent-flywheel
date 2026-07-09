@@ -43,6 +43,7 @@ import { goalPreviewText } from "./goal-preview.js";
 import { readBeads } from "./beads.js";
 import { writeCheckpoint, clearCheckpoint, readCheckpoint } from "./checkpoint.js";
 import { brExecJson } from "./cli-exec.js";
+import { registerCompactionLifecycleHandlers } from "./compaction.js";
 
 export default function (pi: ExtensionAPI) {
   // Log version at startup so stale code is immediately obvious
@@ -436,6 +437,18 @@ export default function (pi: ExtensionAPI) {
       writeCheckpoint(currentCwd, state, ORCHESTRATOR_VERSION);
     }
   }
+
+  registerCompactionLifecycleHandlers(pi, {
+    getState: () => state,
+    persistState,
+    onCwd: (cwd) => {
+      currentCwd = cwd;
+    },
+    onError: (eventName, error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[pi-agent-flywheel] failed to record ${eventName}: ${message}`);
+    },
+  });
 
   // ─── Orchestrator Context ──────────────────────────────────
   const oc: OrchestratorContext = {
