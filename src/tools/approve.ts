@@ -1955,6 +1955,7 @@ cd ${ctx.cwd}`;
           readyBeadIds: launchDecision.selectedBeadIds,
           executionModeLabel: `${modeLabel}\n\n${launchDecision.explanation}`,
           completedBeadIds,
+          compactionContext: oc.state.compaction?.latest,
         });
 
         return {
@@ -1980,6 +1981,7 @@ cd ${ctx.cwd}`;
         assignedBeadId: firstBead.id,
         executionModeLabel: `${modeLabel}\n\n${launchDecision.explanation}`,
         completedBeadIds,
+        compactionContext: oc.state.compaction?.latest,
       });
 
       return {

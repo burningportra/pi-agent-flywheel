@@ -115,6 +115,38 @@ export function buildCompactionResumeGuidance(context: AgentFlywheelCompactionCo
   };
 }
 
+export function formatCompactionPromptGuidance(context: AgentFlywheelCompactionContext | undefined): string {
+  if (!context) return "";
+
+  const guidance = buildCompactionResumeGuidance(context);
+  const rawReason = context.rawReason ? ` rawReason=${formatStatusValue(context.rawReason)}` : "";
+  const willRetry = context.willRetry === undefined ? "unreported" : String(context.willRetry);
+  const workflowBits = [
+    context.workflow?.phase ? `phase=${formatStatusValue(context.workflow.phase)}` : undefined,
+    context.workflow?.selectedBeadId ? `bead=${formatStatusValue(context.workflow.selectedBeadId)}` : undefined,
+    context.workflow?.goal ? `goal=${formatStatusValue(context.workflow.goal)}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+  const workflowLine = workflowBits.length > 0
+    ? `- Recorded workflow snapshot: ${workflowBits.join(" ")}`
+    : "- Recorded workflow snapshot: unavailable; recover from live status, beads, and git state.";
+  const duplicateWarning = guidance.duplicateSideEffectRisk
+    ? "- Duplicate side-effect risk: high. Do not repeat bead creation, file edits, launches, network calls, or other external side effects until status, bead state, and the working tree are inspected."
+    : "- Duplicate side-effect risk: normal, but still inspect current state before mutating files or beads.";
+  const warnings = guidance.warnings.length > 0
+    ? ["- Warnings:", ...guidance.warnings.map((warning) => `  - ${warning}`)]
+    : [];
+
+  return `### Post-compaction resume guidance
+- ${guidance.title}: ${guidance.summary}
+- Compaction metadata: event=${formatStatusValue(context.eventName)} reason=${context.reason}${rawReason} willRetry=${willRetry}
+${workflowLine}
+- Required workflow order: call \`agent_flywheel_status\` first (or \`/flywheel-status --json\` from slash commands), then follow its \`next_action\`. If the next action requires \`agent_flywheel_approve_beads\` or \`agent_flywheel_review\`, call that required tool rather than skipping ahead.
+${duplicateWarning}
+- Recovery steps:
+${guidance.nextSteps.map((step, index) => `  ${index + 1}. ${step}`).join("\n")}
+${warnings.join("\n")}`;
+}
+
 export function formatCompactionStatus(context: AgentFlywheelCompactionContext): string {
   const parts = [
     `event=${formatStatusValue(context.eventName)}`,
@@ -221,8 +253,8 @@ function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<Co
         title: "Manual compaction",
         summary: "A user or operator requested compaction. Resume from saved workflow status instead of replaying prior transcript context.",
         nextSteps: [
-          "Re-read repository guidance and the current AgentFlywheel status.",
-          "Continue only the confirmed bead or user task.",
+          "Inspect AgentFlywheel status and continue the next phase or action it reports.",
+          "Re-read repository guidance if the compacted transcript no longer has the current instructions.",
           "Inspect the worktree before making more changes.",
         ],
         warnings: [],
@@ -232,8 +264,9 @@ function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<Co
         title: "Automatic threshold compaction",
         summary: "Pi compacted because the session reached an automatic context threshold. Rehydrate repo rules, bead state, and recent file state before continuing.",
         nextSteps: [
-          "Refresh AGENTS.md, bead status, and the latest worktree diff.",
-          "Prefer the saved next action from AgentFlywheel status over transcript memory.",
+          "Validate saved workflow status, bead status, and the latest worktree diff.",
+          "Re-read project instructions such as AGENTS.md if they are no longer fresh.",
+          "Prefer the status tool's saved next action over transcript memory.",
           "Keep the next edit narrow until current state is confirmed.",
         ],
         warnings: [],
@@ -255,7 +288,7 @@ function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<Co
         summary: "Pi compacted during overflow recovery. Treat the interrupted request as potentially retried until retry metadata and file state are checked.",
         nextSteps: [
           "Check AgentFlywheel status, bead state, and file diffs before continuing.",
-          "Avoid repeating side-effecting commands until the interrupted action is understood.",
+          "Avoid repeating side-effecting commands, bead creation, or file edits until the interrupted action is understood.",
           "Record the resumed state before launching additional agents or tools.",
         ],
         warnings: ["Overflow recovery can leave uncertainty about which side effects completed before compaction."],

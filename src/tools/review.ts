@@ -694,6 +694,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             assignedBeadId: nextBead.id,
             executionModeLabel: modeLabel,
             completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+            compactionContext: oc.state.compaction?.latest,
           });
 
           ctx.ui.notify(`✅ Bead ${params.beadId} passed! Handing off bead ${nextBead.id} (${nextBead.title}) to a pi-subagent.`, "info");
@@ -783,6 +784,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             assignedBeadId: launchDecision.parallel ? undefined : launchDecision.selectedBeadIds[0],
             executionModeLabel: `${modeLabel}\n\n${launchDecision.explanation}`,
             completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+            compactionContext: oc.state.compaction?.latest,
           });
           ctx.ui.notify(`✅ Bead ${params.beadId} passed! ${launchDecision.selectedBeadIds.length} bead(s) selected by launch safety gate.`, "info");
 
@@ -867,6 +869,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 assignedBeadId: nextBead.id,
                 executionModeLabel: modeLabel,
                 completedBeadIds: Object.entries(oc.state.beadResults ?? {}).filter(([, result]) => result.status === "success").map(([id]) => id),
+                compactionContext: oc.state.compaction?.latest,
               });
 
               return {

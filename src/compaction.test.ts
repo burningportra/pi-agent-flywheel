@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCompactionResumeGuidance,
+  formatCompactionPromptGuidance,
   formatCompactionStatus,
   normalizeCompactionEvent,
   normalizeCompactionReason,
@@ -208,6 +209,61 @@ describe("formatCompactionStatus", () => {
     expect(status).toContain("willRetry=unreported");
     expect(status).toContain("bead=pi-oied");
     expect(status).not.toContain("willRetry=false");
+  });
+});
+
+describe("formatCompactionPromptGuidance", () => {
+  it("returns no prompt section when no compaction context exists", () => {
+    expect(formatCompactionPromptGuidance(undefined)).toBe("");
+  });
+
+  it("formats distinct manual, threshold, overflow retry, and unknown prompt guidance", () => {
+    const manual = formatCompactionPromptGuidance({
+      eventName: "session_compact",
+      reason: "manual",
+    });
+    const threshold = formatCompactionPromptGuidance({
+      eventName: "session_compact",
+      reason: "threshold",
+      rawReason: "auto",
+      workflow: { phase: "implementing", selectedBeadId: "pi-next" },
+    });
+    const overflowRetry = formatCompactionPromptGuidance({
+      eventName: "session_before_compact",
+      reason: "overflow_retry",
+      willRetry: true,
+    });
+    const unknown = formatCompactionPromptGuidance({
+      eventName: "session_compact",
+      reason: "unknown",
+      rawReason: "future_reason",
+    });
+
+    expect(manual).toContain("Manual compaction");
+    expect(manual).toContain("continue the next phase or action");
+    expect(threshold).toContain("Automatic threshold compaction");
+    expect(threshold).toContain("Re-read project instructions");
+    expect(threshold).toContain("phase=implementing bead=pi-next");
+    expect(overflowRetry).toContain("Overflow retry compaction");
+    expect(overflowRetry).toContain("Duplicate side-effect risk: high");
+    expect(overflowRetry).toContain("bead creation, file edits");
+    expect(unknown).toContain("Unknown compaction");
+    expect(unknown).toContain("future_reason");
+    expect(new Set([manual, threshold, overflowRetry, unknown]).size).toBe(4);
+  });
+
+  it("preserves required AgentFlywheel phase tools in the resume instructions", () => {
+    const prompt = formatCompactionPromptGuidance({
+      eventName: "session_compact",
+      reason: "overflow_retry",
+      willRetry: true,
+    });
+
+    expect(prompt).toContain("agent_flywheel_status");
+    expect(prompt).toContain("next_action");
+    expect(prompt).toContain("agent_flywheel_approve_beads");
+    expect(prompt).toContain("agent_flywheel_review");
+    expect(prompt).toContain("rather than skipping ahead");
   });
 });
 

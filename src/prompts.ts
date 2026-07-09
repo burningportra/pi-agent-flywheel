@@ -1,6 +1,7 @@
 import type { RepoProfile, Bead, BeadResult, ScanResult, OrchestratorPhase, ImplementationWorkerCoordinationContractOptions } from "./types.js";
 import type { PlanToBeadAudit } from "./beads.js";
 import { formatTemplatesForPrompt } from "./bead-templates.js";
+import { formatCompactionPromptGuidance } from "./compaction.js";
 import { SOURCE_RESEARCH_CARD_TEMPLATE, SOURCE_RESEARCH_WAIVER_TEMPLATE, sourceResearchCardPrompt } from "./plan-quality.js";
 import { withSubagentAutoExitInstruction } from "./model-policy-patch.js";
 
@@ -1249,6 +1250,7 @@ export function implementationWorkerCoordinationContract(
   const completed = options.completedBeadIds?.length
     ? `Already completed in this run: ${options.completedBeadIds.join(", ")}. Do not reopen or duplicate those beads.`
     : "Already completed in this run: none provided.";
+  const compactionGuidance = formatCompactionPromptGuidance(options.compactionContext);
 
   return `## pi-subagents Implementation Coordination Contract
 
@@ -1258,6 +1260,7 @@ Repository: ${options.cwd}
 Ready bead candidates: ${readyBeads}
 ${assigned}
 ${completed}
+${compactionGuidance ? `\n${compactionGuidance}\n` : ""}
 
 ### 1. Context-first onboarding
 - Read ALL of AGENTS.md and README.md carefully before editing, then follow the repo-local instructions they contain.

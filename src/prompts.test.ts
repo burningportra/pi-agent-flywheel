@@ -126,6 +126,75 @@ describe("implementation worker coordination contract", () => {
     expect(prompt).not.toContain("managed NTM worker pane");
   });
 
+  it("omits post-compaction guidance from non-compaction worker prompts", () => {
+    const prompt = implementationWorkerCoordinationContract({
+      cwd: "/repo",
+      assignedBeadId: "pi-zbma",
+      readyBeadIds: ["pi-zbma"],
+    });
+
+    expect(prompt).not.toContain("### Post-compaction resume guidance");
+    expect(prompt).not.toContain("Compaction metadata:");
+  });
+
+  it("adds reason-specific post-compaction guidance without bypassing required workflow tools", () => {
+    const prompt = implementationWorkerPrompt({
+      cwd: "/repo",
+      assignedBeadId: "pi-9rqv",
+      readyBeadIds: ["pi-9rqv"],
+      completedBeadIds: ["pi-done"],
+      compactionContext: {
+        eventName: "session_before_compact",
+        reason: "overflow_retry",
+        willRetry: true,
+        workflow: {
+          phase: "awaiting_bead_approval",
+          selectedBeadId: "pi-9rqv",
+          goal: "Add compaction prompts",
+        },
+      },
+    });
+
+    expect(prompt).toContain("### Post-compaction resume guidance");
+    expect(prompt).toContain("Overflow retry compaction");
+    expect(prompt).toContain("Duplicate side-effect risk: high");
+    expect(prompt).toContain("bead creation, file edits");
+    expect(prompt).toContain("phase=awaiting_bead_approval bead=pi-9rqv");
+    expect(prompt).toContain("agent_flywheel_status");
+    expect(prompt).toContain("agent_flywheel_approve_beads");
+    expect(prompt).toContain("agent_flywheel_review");
+    expect(prompt).toContain("rather than skipping ahead");
+    expect(prompt.indexOf("### Post-compaction resume guidance")).toBeLessThan(
+      prompt.indexOf("### 1. Context-first onboarding")
+    );
+  });
+
+  it("surfaces manual, threshold, and unknown compaction variants in handoffs", () => {
+    const variants = [
+      ["manual", "Manual compaction", "continue the next phase or action", {}],
+      ["threshold", "Automatic threshold compaction", "Re-read project instructions", { rawReason: "auto" }],
+      ["unknown", "Unknown compaction", "future_reason", { rawReason: "future_reason" }],
+    ] as const;
+
+    for (const [reason, title, expectedCopy, overrides] of variants) {
+      const handoff = formatImplementationWorkerHandoff({
+        cwd: "/repo",
+        workerCount: 1,
+        assignedBeadId: "pi-9rqv",
+        readyBeadIds: ["pi-9rqv"],
+        compactionContext: {
+          eventName: "session_compact",
+          reason,
+          ...overrides,
+        },
+      });
+
+      expect(handoff).toContain("### Post-compaction resume guidance");
+      expect(handoff).toContain(title);
+      expect(handoff).toContain(expectedCopy);
+    }
+  });
+
   it("formats implementation handoff for pi-subagents without pane-management commands", () => {
     const handoff = formatImplementationWorkerHandoff({
       cwd: "/repo",

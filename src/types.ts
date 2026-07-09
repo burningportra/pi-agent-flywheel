@@ -532,6 +532,8 @@ export interface ImplementationWorkerCoordinationContractOptions {
   readyBeadIds?: string[];
   /** Beads already completed in the current orchestration. */
   completedBeadIds?: string[];
+  /** Latest observed Pi compaction context, when the worker is being resumed after compaction. */
+  compactionContext?: AgentFlywheelCompactionContext;
 }
 
 export interface OrchestratorState {
