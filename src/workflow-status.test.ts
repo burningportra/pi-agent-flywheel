@@ -40,6 +40,7 @@ describe("buildWorkflowStatus", () => {
     });
     expect(status.resume_prompt).toContain("agent_flywheel_profile");
     expect(status.inferred_from).toEqual(["no persistent signals found"]);
+    expect("compaction" in status).toBe(false);
     expect(status.beads).toEqual({
       total: 0,
       open: 0,
@@ -50,6 +51,64 @@ describe("buildWorkflowStatus", () => {
       current: [],
     });
     expect(JSON.stringify(status)).toContain("contract_version");
+  });
+
+  it("projects latest compaction context with generated guidance when state has compaction data", () => {
+    const status = buildWorkflowStatus(
+      makeState({
+        phase: "implementing",
+        compaction: {
+          latest: {
+            eventName: "session_compact",
+            reason: "threshold",
+            rawReason: "auto",
+            willRetry: true,
+            timestamp: "2026-07-09T12:00:00.000Z",
+            workflow: {
+              phase: "implementing",
+              goal: "Add compaction status",
+              selectedBeadId: "pi-65o2",
+            },
+          },
+          recent: [
+            {
+              eventName: "session_compact",
+              reason: "threshold",
+              rawReason: "auto",
+              willRetry: true,
+              timestamp: "2026-07-09T12:00:00.000Z",
+            },
+            {
+              eventName: "session_before_compact",
+              reason: "manual",
+              timestamp: "2026-07-09T11:55:00.000Z",
+            },
+          ],
+        },
+      }),
+      [makeBead("pi-65o2", "in_progress")]
+    );
+
+    expect(status.compaction?.latest).toMatchObject({
+      event_name: "session_compact",
+      reason: "threshold",
+      raw_reason: "auto",
+      will_retry: true,
+      observed_at: "2026-07-09T12:00:00.000Z",
+      workflow: {
+        phase: "implementing",
+        goal: "Add compaction status",
+        selectedBeadId: "pi-65o2",
+      },
+      guidance: {
+        reason: "threshold",
+        title: "Automatic threshold compaction",
+        duplicate_side_effect_risk: true,
+      },
+    });
+    expect(status.compaction?.latest.guidance.warnings.join("\n")).toContain("avoid duplicate side effects");
+    expect(status.compaction?.latest.guidance.next_steps.join("\n")).toContain("bead status");
+    expect(status.compaction?.recent?.map((entry) => entry.reason)).toEqual(["threshold", "manual"]);
   });
 
   it("reuses session detection to infer implementing from open beads when persisted phase is idle", () => {

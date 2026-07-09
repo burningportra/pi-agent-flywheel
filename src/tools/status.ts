@@ -74,7 +74,10 @@ export function registerStatusTool(oc: OrchestratorContext) {
       renderResult(result, _options, theme) {
         const status = (result.details as any)?.status as WorkflowStatusOutput | undefined;
         if (!status) return new Text("Flywheel status completed", 0, 0);
-        return new Text(theme.fg("success", `flywheel_status: ${status.phase} (${status.confidence})`), 0, 0);
+        const compaction = status.compaction?.latest
+          ? ` | compaction: ${status.compaction.latest.guidance.title}`
+          : "";
+        return new Text(theme.fg("success", `flywheel_status: ${status.phase} (${status.confidence})${compaction}`), 0, 0);
       },
     });
   }

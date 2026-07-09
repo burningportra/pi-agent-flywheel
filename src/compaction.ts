@@ -1,5 +1,6 @@
 import type {
   AgentFlywheelCompactionContext,
+  AgentFlywheelCompactionState,
   CompactionEventName,
   CompactionReason,
   CompactionResumeGuidance,
@@ -15,6 +16,7 @@ export interface NormalizeCompactionEventOptions {
 }
 
 const DEFAULT_EVENT_NAME = "unknown";
+const DEFAULT_RECENT_COMPACTION_LIMIT = 5;
 
 const REASON_ALIASES: Record<string, CompactionReason> = {
   manual: "manual",
@@ -74,8 +76,8 @@ export function buildCompactionResumeGuidance(context: AgentFlywheelCompactionCo
   const duplicateSideEffectRisk = context.willRetry === true || context.reason === "overflow_retry";
 
   if (context.willRetry === true) {
-    warnings.unshift("Pi may retry the interrupted request; agents should avoid duplicate side effects until workflow and file state are inspected.");
-    nextSteps.unshift("Inspect workflow status and the worktree before repeating any command that can mutate files, tasks, network state, or external systems.");
+    warnings.unshift("Pi may retry the interrupted request; agents should avoid duplicate side effects until workflow, bead status, and file state are inspected.");
+    nextSteps.unshift("Inspect AgentFlywheel status, bead status, and the worktree before repeating any command that can mutate files, tasks, network state, or external systems.");
   } else if (context.willRetry === undefined) {
     warnings.push("Pi did not report willRetry; do not treat the missing field as false.");
   }
@@ -104,6 +106,18 @@ export function formatCompactionStatus(context: AgentFlywheelCompactionContext):
   ].filter((part): part is string => Boolean(part));
 
   return `Compaction status: ${parts.join(" ")}`;
+}
+
+export function recordCompactionContext(
+  state: { compaction?: AgentFlywheelCompactionState },
+  context: AgentFlywheelCompactionContext,
+  recentLimit = DEFAULT_RECENT_COMPACTION_LIMIT
+): AgentFlywheelCompactionState {
+  const limit = normalizeRecentLimit(recentLimit);
+  const existingRecent = state.compaction?.recent ?? (state.compaction?.latest ? [state.compaction.latest] : []);
+  const recent = [context, ...existingRecent].slice(0, limit);
+  state.compaction = { latest: context, recent };
+  return state.compaction;
 }
 
 function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<CompactionResumeGuidance, "reason" | "duplicateSideEffectRisk"> {
@@ -208,4 +222,9 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 function formatStatusValue(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return /^[a-zA-Z0-9_.:/-]+$/.test(compact) ? compact : JSON.stringify(compact);
+}
+
+function normalizeRecentLimit(limit: number): number {
+  if (!Number.isFinite(limit)) return DEFAULT_RECENT_COMPACTION_LIMIT;
+  return Math.max(1, Math.floor(limit));
 }

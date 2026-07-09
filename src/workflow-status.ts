@@ -1,5 +1,14 @@
 import { detectSessionStage, type SessionStage } from "./session-state.js";
-import type { Bead, OrchestratorPhase, OrchestratorState } from "./types.js";
+import { buildCompactionResumeGuidance } from "./compaction.js";
+import type {
+  AgentFlywheelCompactionContext,
+  AgentFlywheelCompactionState,
+  Bead,
+  CompactionReason,
+  CompactionWorkflowSnapshot,
+  OrchestratorPhase,
+  OrchestratorState,
+} from "./types.js";
 
 export const WORKFLOW_STATUS_CONTRACT_VERSION = 1 as const;
 
@@ -33,6 +42,30 @@ export interface WorkflowStatusBeads {
   current: WorkflowStatusBead[];
 }
 
+export interface WorkflowStatusCompactionGuidance {
+  reason: CompactionReason;
+  title: string;
+  summary: string;
+  next_steps: string[];
+  warnings: string[];
+  duplicate_side_effect_risk: boolean;
+}
+
+export interface WorkflowStatusCompactionEvent {
+  event_name: string;
+  reason: CompactionReason;
+  raw_reason?: string;
+  will_retry?: boolean;
+  observed_at?: string;
+  workflow?: CompactionWorkflowSnapshot;
+  guidance: WorkflowStatusCompactionGuidance;
+}
+
+export interface WorkflowStatusCompaction {
+  latest: WorkflowStatusCompactionEvent;
+  recent?: WorkflowStatusCompactionEvent[];
+}
+
 export interface WorkflowStatusOutput {
   contract_version: WorkflowStatusContractVersion;
   phase: OrchestratorPhase;
@@ -43,6 +76,7 @@ export interface WorkflowStatusOutput {
   resume_prompt: string;
   confidence: WorkflowStatusConfidence;
   inferred_from: string[];
+  compaction?: WorkflowStatusCompaction;
 }
 
 /**
@@ -59,6 +93,7 @@ export function buildWorkflowStatus(
   const stage = hydrateInferredStagePrompts(state, beads, detectedStage);
   const orderedBeads = orderBeadsForStatus(beads, state.activeBeadIds);
   const currentIds = resolveCurrentBeadIds(stage.currentBeadId, orderedBeads);
+  const compaction = compactionForStatus(state.compaction);
 
   const current = orderedBeads
     .filter((bead) => currentIds.has(bead.id))
@@ -79,7 +114,7 @@ export function buildWorkflowStatus(
     });
   }
 
-  return {
+  const output: WorkflowStatusOutput = {
     contract_version: WORKFLOW_STATUS_CONTRACT_VERSION,
     phase: stage.phase,
     selected_goal: selectedGoalForStatus(state.selectedGoal),
@@ -100,6 +135,9 @@ export function buildWorkflowStatus(
     confidence: stage.confidence,
     inferred_from: [...stage.inferredFrom],
   };
+
+  if (compaction) output.compaction = compaction;
+  return output;
 }
 
 function hydrateInferredStagePrompts(
@@ -178,6 +216,38 @@ function toStatusBead(bead: Bead): WorkflowStatusBead {
   };
 }
 
+function compactionForStatus(compaction: AgentFlywheelCompactionState | undefined): WorkflowStatusCompaction | undefined {
+  if (!compaction?.latest) return undefined;
+
+  const recent = compaction.recent?.map(toStatusCompactionEvent);
+  const statusCompaction: WorkflowStatusCompaction = {
+    latest: toStatusCompactionEvent(compaction.latest),
+  };
+
+  if (recent && recent.length > 0) statusCompaction.recent = recent;
+  return statusCompaction;
+}
+
+function toStatusCompactionEvent(context: AgentFlywheelCompactionContext): WorkflowStatusCompactionEvent {
+  const guidance = buildCompactionResumeGuidance(context);
+  return stripUndefined({
+    event_name: context.eventName,
+    reason: context.reason,
+    raw_reason: context.rawReason,
+    will_retry: context.willRetry,
+    observed_at: context.timestamp,
+    workflow: context.workflow,
+    guidance: {
+      reason: guidance.reason,
+      title: guidance.title,
+      summary: guidance.summary,
+      next_steps: guidance.nextSteps,
+      warnings: guidance.warnings,
+      duplicate_side_effect_risk: guidance.duplicateSideEffectRisk,
+    },
+  });
+}
+
 function orderBeadsForStatus(beads: Bead[], activeBeadIds: readonly string[] | undefined): Bead[] {
   const inputOrder = new Map(beads.map((bead, index) => [bead.id, index]));
   const activeOrder = new Map((activeBeadIds ?? []).map((id, index) => [id, index]));
@@ -193,4 +263,8 @@ function orderBeadsForStatus(beads: Bead[], activeBeadIds: readonly string[] | u
 
     return a.id.localeCompare(b.id);
   });
+}
+
+function stripUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 }

@@ -75,6 +75,36 @@ describe("flywheel_status tool", () => {
     expect(result.details.warnings).toEqual([]);
   });
 
+  it("includes compaction status details when workflow state has recorded context", async () => {
+    const oc = buildOc({
+      phase: "implementing",
+      compaction: {
+        latest: {
+          eventName: "session_compact",
+          reason: "overflow_retry",
+          willRetry: true,
+          timestamp: "2026-07-09T12:00:00.000Z",
+        },
+      },
+    });
+    registerStatusTool(oc);
+
+    const result = await oc._tools.get("flywheel_status").execute("call-1", {}, undefined, () => {}, ctx);
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(parsed.compaction.latest).toMatchObject({
+      event_name: "session_compact",
+      reason: "overflow_retry",
+      will_retry: true,
+      observed_at: "2026-07-09T12:00:00.000Z",
+      guidance: {
+        title: "Overflow retry compaction",
+        duplicate_side_effect_risk: true,
+      },
+    });
+    expect(parsed.compaction.latest.guidance.warnings.join("\n")).toContain("avoid duplicate side effects");
+  });
+
   it("degrades to an empty bead set with warnings when beads cannot be read", async () => {
     const oc = buildOc({ phase: "idle" });
     oc.pi.exec.mockResolvedValueOnce({

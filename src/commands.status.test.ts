@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerCommands } from "./commands.js";
 import { _resetSlashDeprecationCache } from "./tools/shared.js";
-import { createInitialState, type Bead, type OrchestratorContext, type OrchestratorPhase } from "./types.js";
+import { createInitialState, type AgentFlywheelCompactionContext, type Bead, type OrchestratorContext, type OrchestratorPhase } from "./types.js";
 
 const beadFixtures = vi.hoisted(() => ({ beads: [] as Bead[] }));
 
@@ -112,7 +112,46 @@ describe("/flywheel-status slash command", () => {
     expect(message).toContain("- Pending beads: 1 pending: pi-next — Document status recovery (open)");
     expect(message).toContain("- Confidence: high");
     expect(message).toContain("- Next action:");
+    expect(message).not.toContain("### Compaction");
   });
+
+  it.each([
+    ["manual", "Manual compaction", {}],
+    ["threshold", "Automatic threshold compaction", { rawReason: "auto" }],
+    ["overflow_retry", "Overflow retry compaction", { willRetry: true }],
+    ["unknown", "Unknown compaction", { rawReason: "future_reason" }],
+  ] satisfies Array<[AgentFlywheelCompactionContext["reason"], string, Partial<AgentFlywheelCompactionContext>]>)(
+    "prints reason-specific compaction status for %s compaction",
+    async (reason, title, overrides) => {
+      const { oc, commands } = buildOrchestrator();
+      oc.state.phase = "implementing";
+      oc.state.compaction = {
+        latest: {
+          eventName: "session_compact",
+          reason,
+          timestamp: "2026-07-09T12:00:00.000Z",
+          ...overrides,
+        },
+      };
+      const ctx = buildContext();
+
+      await commands.get("flywheel-status").handler("", ctx);
+
+      const [message, level] = ctx.ui.notify.mock.calls[0];
+      const compactionOverrides = overrides as Partial<AgentFlywheelCompactionContext>;
+      expect(level).toBe("info");
+      expect(message).toContain("### Compaction");
+      expect(message).toContain(`- Last compaction: ${title} (reason: ${reason})`);
+      expect(message).toContain("- Event: session_compact");
+      expect(message).toContain("- Safe recovery: inspect AgentFlywheel status, re-read project instructions if needed, then continue the reported next action above.");
+      if (compactionOverrides.rawReason) expect(message).toContain(`- Raw reason: ${compactionOverrides.rawReason}`);
+      if (compactionOverrides.willRetry === true) {
+        expect(message).toContain("- willRetry: true");
+        expect(message).toContain("avoid duplicate external side effects");
+        expect(message).toContain("check bead status and file state");
+      }
+    }
+  );
 
   it("emits parseable JSON for --json without mutating orchestration state or beads", async () => {
     beadFixtures.beads = [makeBead("pi-current", "in_progress"), makeBead("pi-next", "open")];

@@ -4,9 +4,11 @@ import {
   formatCompactionStatus,
   normalizeCompactionEvent,
   normalizeCompactionReason,
+  recordCompactionContext,
 } from "./compaction.js";
 import type {
   AgentFlywheelCompactionContext,
+  AgentFlywheelCompactionState,
   CompactionResumeGuidance,
   RawCompactionEventPayload,
 } from "./types.js";
@@ -200,5 +202,32 @@ describe("formatCompactionStatus", () => {
     expect(status).toContain("willRetry=unreported");
     expect(status).toContain("bead=pi-oied");
     expect(status).not.toContain("willRetry=false");
+  });
+});
+
+describe("recordCompactionContext", () => {
+  it("stores the latest context and keeps a bounded recent history", () => {
+    const state: { compaction?: AgentFlywheelCompactionState } = {};
+
+    recordCompactionContext(state, {
+      eventName: "session_before_compact",
+      reason: "manual",
+      timestamp: "2026-07-09T12:00:00.000Z",
+    }, 2);
+    const second = recordCompactionContext(state, {
+      eventName: "session_compact",
+      reason: "threshold",
+      timestamp: "2026-07-09T12:01:00.000Z",
+    }, 2);
+    const third = recordCompactionContext(state, {
+      eventName: "session_compact",
+      reason: "overflow_retry",
+      willRetry: true,
+      timestamp: "2026-07-09T12:02:00.000Z",
+    }, 2);
+
+    expect(second.recent?.map((event) => event.reason)).toEqual(["threshold", "manual"]);
+    expect(third.latest.reason).toBe("overflow_retry");
+    expect(third.recent?.map((event) => event.reason)).toEqual(["overflow_retry", "threshold"]);
   });
 });

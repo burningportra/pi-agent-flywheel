@@ -83,6 +83,7 @@ function formatWorkflowStatusForSlash(status: WorkflowStatusOutput, warnings: st
     ? "None"
     : `${status.beads.pending.length} pending: ${formatStatusBeadSummary(status.beads.pending)}`;
   const goalLine = status.selected_goal ? [`- Goal: ${status.selected_goal}`] : [];
+  const compactionLines = formatStatusCompactionSummary(status);
   const warningLines = warnings.length > 0
     ? ["", "### Warnings", ...warnings.map((warning) => `- ${warning}`)]
     : [];
@@ -97,8 +98,36 @@ function formatWorkflowStatusForSlash(status: WorkflowStatusOutput, warnings: st
     `- Confidence: ${status.confidence}`,
     `- Next action: ${status.next_action}`,
     `- Resume prompt: ${status.resume_prompt}`,
+    ...compactionLines,
     ...warningLines,
   ].join("\n");
+}
+
+function formatStatusCompactionSummary(status: WorkflowStatusOutput): string[] {
+  const latest = status.compaction?.latest;
+  if (!latest) return [];
+
+  const rawReasonLine = latest.raw_reason ? [`- Raw reason: ${latest.raw_reason}`] : [];
+  const observedLine = latest.observed_at ? [`- Observed at: ${latest.observed_at}`] : [];
+  const willRetry = latest.will_retry === undefined ? "unreported" : String(latest.will_retry);
+  const retryWarning = latest.will_retry === true
+    ? ["- Retry warning: avoid duplicate external side effects; check bead status and file state before continuing."]
+    : [];
+  const warningLines = latest.guidance.warnings.map((warning) => `- Warning: ${warning}`);
+
+  return [
+    "",
+    "### Compaction",
+    `- Last compaction: ${latest.guidance.title} (reason: ${latest.reason})`,
+    `- Event: ${latest.event_name}`,
+    ...rawReasonLine,
+    `- willRetry: ${willRetry}`,
+    ...observedLine,
+    `- Guidance: ${latest.guidance.summary}`,
+    "- Safe recovery: inspect AgentFlywheel status, re-read project instructions if needed, then continue the reported next action above.",
+    ...retryWarning,
+    ...warningLines,
+  ];
 }
 
 function formatStatusBeadSummary(beads: WorkflowStatusOutput["beads"]["current"]): string {

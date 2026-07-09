@@ -503,6 +503,11 @@ export interface AgentFlywheelCompactionContext {
   workflow?: CompactionWorkflowSnapshot;
 }
 
+export interface AgentFlywheelCompactionState {
+  latest: AgentFlywheelCompactionContext;
+  recent?: AgentFlywheelCompactionContext[];
+}
+
 export interface CompactionResumeGuidance {
   reason: CompactionReason;
   title: string;
@@ -559,6 +564,10 @@ export interface OrchestratorState {
 
   /** Serializable implementation-time fresh-eyes monitor state. */
   freshEyesReviewMonitor?: FreshEyesMonitorState;
+
+  // ─── Pi session compaction state ───────────────────────────
+  /** Latest normalized Pi compaction context and bounded recent history. */
+  compaction?: AgentFlywheelCompactionState;
 
   // ─── Bead-centric state (new) ──────────────────────────────
   /** Bead IDs created for this orchestration (ordered). */
