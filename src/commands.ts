@@ -110,10 +110,14 @@ function formatStatusCompactionSummary(status: WorkflowStatusOutput): string[] {
   const rawReasonLine = latest.raw_reason ? [`- Raw reason: ${latest.raw_reason}`] : [];
   const observedLine = latest.observed_at ? [`- Observed at: ${latest.observed_at}`] : [];
   const willRetry = latest.will_retry === undefined ? "unreported" : String(latest.will_retry);
+  const duplicateRisk = latest.guidance.duplicate_side_effect_risk ? "yes" : "no";
   const retryWarning = latest.will_retry === true
-    ? ["- Retry warning: avoid duplicate external side effects; check bead status and file state before continuing."]
+    ? ["- Retry warning: Pi may retry the interrupted request; inspect workflow, bead, and file state before repeating side-effecting work."]
     : [];
-  const warningLines = latest.guidance.warnings.map((warning) => `- Warning: ${warning}`);
+  const warningLines = latest.guidance.warnings.length > 0
+    ? ["- Warnings:", ...latest.guidance.warnings.map((warning) => `  - ${warning}`)]
+    : [];
+  const safeRecoverySteps = latest.guidance.next_steps.map((step, index) => `  ${index + 1}. ${step}`);
 
   return [
     "",
@@ -124,8 +128,10 @@ function formatStatusCompactionSummary(status: WorkflowStatusOutput): string[] {
     `- willRetry: ${willRetry}`,
     ...observedLine,
     `- Guidance: ${latest.guidance.summary}`,
-    "- Safe recovery: inspect AgentFlywheel status, re-read project instructions if needed, then continue the reported next action above.",
+    `- Duplicate side-effect risk: ${duplicateRisk}`,
     ...retryWarning,
+    "- Safe recovery sequence:",
+    ...safeRecoverySteps,
     ...warningLines,
   ];
 }

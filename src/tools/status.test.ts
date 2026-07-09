@@ -72,6 +72,7 @@ describe("flywheel_status tool", () => {
     expect(parsed.beads.current).toMatchObject([
       { id: "pi-a", status: "in_progress", type: "feature" },
     ]);
+    expect("compaction" in parsed).toBe(false);
     expect(result.details.warnings).toEqual([]);
   });
 

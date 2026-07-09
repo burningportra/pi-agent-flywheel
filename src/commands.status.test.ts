@@ -143,12 +143,14 @@ describe("/flywheel-status slash command", () => {
       expect(message).toContain("### Compaction");
       expect(message).toContain(`- Last compaction: ${title} (reason: ${reason})`);
       expect(message).toContain("- Event: session_compact");
-      expect(message).toContain("- Safe recovery: inspect AgentFlywheel status, re-read project instructions if needed, then continue the reported next action above.");
+      expect(message).toContain("- Safe recovery sequence:");
+      expect(message).toMatch(/  1\. .+/);
       if (compactionOverrides.rawReason) expect(message).toContain(`- Raw reason: ${compactionOverrides.rawReason}`);
       if (compactionOverrides.willRetry === true) {
         expect(message).toContain("- willRetry: true");
-        expect(message).toContain("avoid duplicate external side effects");
-        expect(message).toContain("check bead status and file state");
+        expect(message).toContain("- Duplicate side-effect risk: yes");
+        expect(message).toContain("Pi may retry the interrupted request");
+        expect(message).toContain("before repeating side-effecting work");
       }
     }
   );
