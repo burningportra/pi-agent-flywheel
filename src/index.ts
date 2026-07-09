@@ -438,6 +438,8 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // Pi lifecycle compaction hooks are observation-only: record recovery context,
+  // persist it for flywheel_status, and never advance phases or launch workers.
   registerCompactionLifecycleHandlers(pi, {
     getState: () => state,
     persistState,

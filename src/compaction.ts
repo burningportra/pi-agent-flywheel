@@ -25,8 +25,7 @@ export interface RecordCompactionLifecycleEventOptions {
 }
 
 export interface CompactionLifecycleRuntime {
-  on(event: "session_before_compact", handler: (event: unknown, ctx: { cwd: string }) => void | Promise<void>): void;
-  on(event: "session_compact", handler: (event: unknown, ctx: { cwd: string }) => void | Promise<void>): void;
+  on?: unknown;
 }
 
 export interface RegisterCompactionLifecycleHandlersOptions {
@@ -171,7 +170,7 @@ export function registerCompactionLifecycleHandlers(
   pi: CompactionLifecycleRuntime,
   options: RegisterCompactionLifecycleHandlersOptions
 ): void {
-  const observe = (eventName: CompactionEventName, payload: unknown, ctx: { cwd: string }) => {
+  const observe = (eventName: CompactionEventName, payload: unknown, ctx?: { cwd?: string }) => {
     try {
       const cwd = normalizeString(ctx?.cwd);
       if (cwd) options.onCwd?.(cwd);
@@ -192,13 +191,27 @@ export function registerCompactionLifecycleHandlers(
     }
   };
 
-  pi.on("session_before_compact", (event, ctx) => {
-    observe("session_before_compact", event, ctx);
-  });
+  const on = typeof pi.on === "function"
+    ? (pi.on.bind(pi) as (event: CompactionEventName, handler: (event: unknown, ctx?: { cwd?: string }) => void | Promise<void>) => void)
+    : undefined;
+  if (!on) return;
 
-  pi.on("session_compact", (event, ctx) => {
-    observe("session_compact", event, ctx);
-  });
+  const register = (eventName: CompactionEventName) => {
+    try {
+      on(eventName, (event, ctx) => {
+        observe(eventName, event, ctx);
+      });
+    } catch (error) {
+      try {
+        options.onError?.(eventName, error);
+      } catch {
+        // Registration fallback must never prevent AgentFlywheel startup.
+      }
+    }
+  };
+
+  register("session_before_compact");
+  register("session_compact");
 }
 
 function baseGuidanceForReason(context: AgentFlywheelCompactionContext): Omit<CompactionResumeGuidance, "reason" | "duplicateSideEffectRisk"> {

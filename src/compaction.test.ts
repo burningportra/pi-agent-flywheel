@@ -271,6 +271,40 @@ describe("registerCompactionLifecycleHandlers", () => {
     expect([...handlers.keys()]).toEqual(["session_before_compact", "session_compact"]);
   });
 
+  it("no-ops when the installed Pi runtime does not expose lifecycle subscriptions", () => {
+    const persistState = vi.fn();
+    const onError = vi.fn();
+
+    expect(() => registerCompactionLifecycleHandlers({}, {
+      getState: () => createInitialState(),
+      persistState,
+      onError,
+    })).not.toThrow();
+
+    expect(persistState).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("keeps startup non-fatal if an older Pi runtime rejects compaction lifecycle events", () => {
+    const persistState = vi.fn();
+    const onError = vi.fn();
+    const unsupported = new Error("unknown event");
+
+    expect(() => registerCompactionLifecycleHandlers({
+      on: () => {
+        throw unsupported;
+      },
+    }, {
+      getState: () => createInitialState(),
+      persistState,
+      onError,
+    })).not.toThrow();
+
+    expect(persistState).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith("session_before_compact", unsupported);
+    expect(onError).toHaveBeenCalledWith("session_compact", unsupported);
+  });
+
   it("records supported reason and willRetry payloads with a workflow snapshot without advancing phase", async () => {
     const { handlers, state, persistState, onCwd, onError } = setupState({
       phase: "implementing",
@@ -351,7 +385,7 @@ describe("registerCompactionLifecycleHandlers", () => {
     const onError = vi.fn();
 
     registerCompactionLifecycleHandlers({
-      on: (event, handler) => {
+      on: (event: string, handler: (event: unknown, ctx: { cwd: string }) => void | Promise<void>) => {
         handlers.set(event, handler);
       },
     }, {
