@@ -458,6 +458,59 @@ export type OrchestratorPhase =
 
 export type CoordinationMode = "worktree" | "single-branch";
 
+// ─── Pi session compaction context ──────────────────────────
+export type CompactionEventName = "session_before_compact" | "session_compact" | (string & {});
+export type CompactionReason = "manual" | "threshold" | "overflow_retry" | "unknown";
+
+export interface RawCompactionEventPayload {
+  eventName?: unknown;
+  event?: unknown;
+  name?: unknown;
+  reason?: unknown;
+  willRetry?: unknown;
+  timestamp?: unknown;
+  observedAt?: unknown;
+  workflow?: unknown;
+  workflowSnapshot?: unknown;
+  phase?: unknown;
+  goal?: unknown;
+  selectedGoal?: unknown;
+  selectedBeadId?: unknown;
+  currentBeadId?: unknown;
+  beadSummary?: unknown;
+  currentBeadSummary?: unknown;
+}
+
+export interface NormalizedCompactionReason {
+  reason: CompactionReason;
+  rawReason?: string;
+}
+
+export interface CompactionWorkflowSnapshot {
+  phase?: string;
+  goal?: string;
+  selectedBeadId?: string;
+  beadSummary?: string;
+}
+
+export interface AgentFlywheelCompactionContext {
+  eventName: CompactionEventName;
+  reason: CompactionReason;
+  rawReason?: string;
+  willRetry?: boolean;
+  timestamp?: string;
+  workflow?: CompactionWorkflowSnapshot;
+}
+
+export interface CompactionResumeGuidance {
+  reason: CompactionReason;
+  title: string;
+  summary: string;
+  nextSteps: string[];
+  warnings: string[];
+  duplicateSideEffectRisk: boolean;
+}
+
 /**
  * Inputs for the shared pi-subagents implementation-worker coordination contract.
  * This contract is intentionally independent of any pane supervisor so it can be
