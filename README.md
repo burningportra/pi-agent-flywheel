@@ -440,7 +440,7 @@ Compact recovery example:
 
 When the installed Pi runtime exposes session compaction lifecycle events, AgentFlywheel records lightweight recovery context from `session_before_compact` and `session_compact`. This context is observation-only: it is persisted for `flywheel_status`, can appear in the JSON status as `compaction.latest` and `compaction.recent`, and does not advance phases, create beads, launch workers, or block the core workflow.
 
-Compaction metadata is best-effort. Older Pi installs, unsupported lifecycle hooks, or compacted sessions without reason fields may omit the `compaction` block or report `reason: "unknown"` and `will_retry` as unreported. Treat that as missing context, not as a hard failure and not as proof that retry is false. Continue from the normal status contract.
+Compaction metadata is best-effort. Older Pi installs, unsupported lifecycle hooks, or compacted sessions without reason fields may omit the `compaction` block, report `reason: "unknown"`, or omit `will_retry` in JSON output. Human-readable guidance may describe that missing retry metadata as unreported. Treat missing metadata as context absence, not as a hard failure and not as proof that retry is false. Continue from the normal status contract.
 
 Use this recovery order after any reload or compaction:
 
