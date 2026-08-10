@@ -393,6 +393,8 @@ export interface BeadTemplate {
   filePatterns: string[];
   dependencyHints?: string;
   examples: BeadTemplateExample[];
+  /** Skill names recommended for beads created from this template. */
+  recommendedSkills?: string[];
 }
 
 export type ExpandTemplateResult =

@@ -840,7 +840,8 @@ export function implementerInstructions(
   profile: RepoProfile,
   previousResults: BeadResult[],
   cassMemory?: string,
-  episodicContext?: string
+  episodicContext?: string,
+  skillRecommendations?: string
 ): string {
   const prevContext =
     previousResults.length > 0
@@ -862,8 +863,9 @@ export function implementerInstructions(
   const memorySection = normalizePromptSection(cassMemory, "## Memory from Prior Orchestrations");
   const episodicSection = normalizePromptSection(episodicContext, "## Past Session Examples");
   const sourceResearchSection = sourceResearchCardPrompt(bead);
+  const skillSection = skillRecommendations ? `\n${skillRecommendations}\n` : "";
 
-  return `## Implement Bead ${bead.id}: ${bead.title}${memorySection}${episodicSection}
+  return `## Implement Bead ${bead.id}: ${bead.title}${memorySection}${episodicSection}${skillSection}
 
 ### Description
 ${bead.description}

@@ -21,9 +21,15 @@ Acceptance criteria:
 - Success looks like: endpoint tests cover the happy path and at least one invalid-input path, and build/type-check finishes without errors.
 - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect {{implementationFile}} and {{testFile}} for validation, success responses, error responses, and assertions.
 
+### Recommended Skills:
+- \`tdd\` — Write tests first, then implement. Ensures each acceptance criterion has a failing test before the code passes.
+- \`harden\` — Add error handling, input validation, and edge-case coverage for production readiness.
+- \`logging-best-practices\` — Add canonical log lines for debugging and observability.
+
 ### Files:
 - {{implementationFile}}
 - {{testFile}}`,
+    recommendedSkills: ["tdd", "harden", "logging-best-practices"],
     placeholders: [
       { name: "endpointPath", description: "Route or RPC path to implement", example: "/users", required: true },
       { name: "moduleName", description: "Owning module or feature area", example: "user-management", required: true },
@@ -57,6 +63,11 @@ Acceptance criteria:
 - Success looks like: endpoint tests cover the happy path and at least one invalid-input path, and build/type-check finishes without errors.
 - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/api/users.ts and src/api/users.test.ts for validation, success responses, error responses, and assertions.
 
+### Recommended Skills:
+- \`tdd\` — Write tests first, then implement. Ensures each acceptance criterion has a failing test before the code passes.
+- \`harden\` — Add error handling, input validation, and edge-case coverage for production readiness.
+- \`logging-best-practices\` — Add canonical log lines for debugging and observability.
+
 ### Files:
 - src/api/users.ts
 - src/api/users.test.ts`,
@@ -83,9 +94,15 @@ Acceptance criteria:
 - Success looks like: regression tests pass, build/type-check finishes without errors, and preserved behavior remains covered by assertions.
 - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect {{moduleFile}} and {{testFile}} for preserved behavior, updated imports, and regression assertions.
 
+### Recommended Skills:
+- \`simplify-and-refactor-code-isomorphically\` — Shrink and unify code without changing behavior. Preserves API, performance, and compilation.
+- \`extract\` — Extract repeated patterns into reusable components and design tokens.
+- \`tdd\` — Run existing tests before and after to confirm behavioral preservation.
+
 ### Files:
 - {{moduleFile}}
 - {{testFile}}`,
+    recommendedSkills: ["simplify-and-refactor-code-isomorphically", "extract", "tdd"],
     placeholders: [
       { name: "moduleName", description: "Module or subsystem being refactored", example: "scan pipeline", required: true },
       { name: "refactorGoal", description: "Desired improvement from the refactor", example: "separation of parsing from UI formatting", required: true },
@@ -118,6 +135,11 @@ Acceptance criteria:
 - Success looks like: regression tests pass, build/type-check finishes without errors, and preserved behavior remains covered by assertions.
 - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/scan.ts and src/scan.test.ts for preserved behavior, updated imports, and regression assertions.
 
+### Recommended Skills:
+- \`simplify-and-refactor-code-isomorphically\` — Shrink and unify code without changing behavior. Preserves API, performance, and compilation.
+- \`extract\` — Extract repeated patterns into reusable components and design tokens.
+- \`tdd\` — Run existing tests before and after to confirm behavioral preservation.
+
 ### Files:
 - src/scan.ts
 - src/scan.test.ts`,
@@ -144,9 +166,15 @@ Acceptance criteria:
 - Success looks like: the focused test file passes, build/type-check finishes without errors, and assertions cover the primary behavior plus at least one edge or failure path.
 - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect {{implementationFile}} and {{testFile}} for meaningful assertions tied to {{featureName}} and {{riskArea}}.
 
+### Recommended Skills:
+- \`tdd\` — Write tests that document expected behavior. Each test should fail before the covered code passes.
+- \`testing-fuzzing\` — Add fuzzing harnesses for crash discovery and edge-case verification (when applicable).
+- \`testing-metamorphic\` — Add metamorphic tests for systems without simple oracle assertions (when applicable).
+
 ### Files:
 - {{implementationFile}}
 - {{testFile}}`,
+    recommendedSkills: ["tdd", "testing-fuzzing", "testing-metamorphic"],
     placeholders: [
       { name: "featureName", description: "Feature or function needing coverage", example: "plan-to-bead audit warnings", required: true },
       { name: "riskArea", description: "High-risk behavior or regression area", example: "empty sections and weak mappings", required: true },
@@ -177,6 +205,11 @@ Acceptance criteria:
 - Commands/checks: run npm test -- src/flywheel.test.ts and npm run build.
 - Success looks like: the focused test file passes, build/type-check finishes without errors, and assertions cover the primary behavior plus at least one edge or failure path.
 - Manual proof fallback: if commands cannot run, capture the exact blocker and manually inspect src/prompts.ts and src/flywheel.test.ts for meaningful assertions tied to plan-to-bead audit warnings and empty sections and weak mappings.
+
+### Recommended Skills:
+- \`tdd\` — Write tests that document expected behavior. Each test should fail before the covered code passes.
+- \`testing-fuzzing\` — Add fuzzing harnesses for crash discovery and edge-case verification (when applicable).
+- \`testing-metamorphic\` — Add metamorphic tests for systems without simple oracle assertions (when applicable).
 
 ### Files:
 - src/prompts.ts

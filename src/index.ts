@@ -52,6 +52,22 @@ export default function (pi: ExtensionAPI) {
   ).version as string;
   console.log(`[pi-agent-flywheel] v${ORCHESTRATOR_VERSION} loaded`);
 
+  // Scan installed skills for phase-aware recommendations
+  import("./skill-awareness.js").then(({ getSkillStats }) => {
+    try {
+      const stats = getSkillStats();
+      console.log(`[pi-agent-flywheel] ${stats.total} skills discovered across ${Object.keys(stats.bySource).length} sources`);
+      const phaseBreakdown = Object.entries(stats.byPhase)
+        .sort(([, a], [, b]) => b - a)
+        .map(([phase, count]) => `${phase}:${count}`)
+        .join(" ");
+      console.log(`[pi-agent-flywheel] Skills by phase: ${phaseBreakdown}`);
+    } catch (err) {
+      // Non-fatal — skill scanning is advisory only
+      console.warn(`[pi-agent-flywheel] Skill scan failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
   let state: OrchestratorState = createInitialState();
   let orchestratorActive = false;
 

@@ -1987,10 +1987,12 @@ ${description}
 
       const { implementerInstructions } = await import("./prompts.js");
       const { readMemory } = await import("./memory.js");
+      const { formatBeadSkillRecommendations } = await import("./skill-awareness.js");
       const profile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], keyFiles: {} as Record<string,string>, testFramework: undefined, ciSystem: undefined, packageManager: undefined, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false };
       const bead = { id: beadId, title: `Fix: ${title}`, description: beadDesc, status: "in_progress" as const, priority: 1, parent: undefined, children: [], type: "task" as const, labels: [] };
       const cassMemory = readMemory(ctx.cwd, title);
-      const instructions = implementerInstructions(bead, profile, [], cassMemory || undefined);
+      const skillRecs = formatBeadSkillRecommendations(beadDesc, [], ctx.cwd);
+      const instructions = implementerInstructions(bead, profile, [], cassMemory || undefined, skillRecs || undefined);
 
       ctx.ui.notify(`✅ Created bead **${beadId}**: Fix: ${title}\n\nStarting implementation...`, "info");
       pi.sendUserMessage(instructions, { deliverAs: "followUp" });

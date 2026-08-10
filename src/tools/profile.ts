@@ -836,6 +836,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         oc.persistState();
         const { implementerInstructions } = await import("../prompts.js");
         const { readMemory } = await import("../memory.js");
+        const { formatBeadSkillRecommendations } = await import("../skill-awareness.js");
         const { readyBeads } = await import("../beads.js");
         const memRules = readMemory(ctx.cwd);
         const ready = await readyBeads(oc.pi, ctx.cwd);
@@ -848,10 +849,11 @@ export function registerProfileTool(oc: OrchestratorContext) {
         }
         const beadProfile = oc.state.repoProfile ?? profile;
         const prevResults = Object.values(oc.state.beadResults ?? {});
+        const skillRecs1 = formatBeadSkillRecommendations(nextBead.description, [], ctx.cwd);
         return {
           content: [{
             type: "text",
-            text: implementerInstructions(nextBead, beadProfile, prevResults, memRules),
+            text: implementerInstructions(nextBead, beadProfile, prevResults, memRules, skillRecs1 || undefined),
           }],
           details: { profile, scanResult, implementingBead: nextBead.id },
         };
@@ -864,6 +866,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         oc.persistState();
         const { implementerInstructions } = await import("../prompts.js");
         const { readMemory } = await import("../memory.js");
+        const { formatBeadSkillRecommendations } = await import("../skill-awareness.js");
         const { readyBeads } = await import("../beads.js");
         const memRules = readMemory(ctx.cwd);
         // Pick the first ready (unblocked) bead
@@ -877,10 +880,11 @@ export function registerProfileTool(oc: OrchestratorContext) {
         }
         const beadProfile = oc.state.repoProfile ?? profile;
         const prevResults = Object.values(oc.state.beadResults ?? {});
+        const skillRecs2 = formatBeadSkillRecommendations(nextBead.description, [], ctx.cwd);
         return {
           content: [{
             type: "text",
-            text: implementerInstructions(nextBead, beadProfile, prevResults, memRules),
+            text: implementerInstructions(nextBead, beadProfile, prevResults, memRules, skillRecs2 || undefined),
           }],
           details: { profile, scanResult, implementingBead: nextBead.id },
         };
