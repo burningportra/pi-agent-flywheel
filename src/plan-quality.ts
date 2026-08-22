@@ -43,7 +43,12 @@ const INTEGRATION_HEAVY_KEYWORDS = [
   "sdk",
 ] as const;
 
-const PACKAGE_NAME_PATTERN = /(?:^|[\s`"'(])(?:@[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+(?:-sdk|\.js|js-sdk|_sdk))(?:$|[\s`"',).])/i;
+// Matches a strong package/integration signal: a scoped `@scope/pkg`, or an SDK/file-suffix
+// token (`foo-sdk`, `foo.js`, `foo_sdk`). Deliberately excludes the bare `pkg/pkg` form,
+// which overmatched arbitrary slash-separated prose (`auto-approve/refinement`) and file
+// paths (`src/foo.ts`), causing false positives like a plain in-repo refactor being flagged
+// integration-heavy.
+const PACKAGE_NAME_PATTERN = /(?:^|[\s`"'(])(?:@[a-z0-9_.-]+\/[a-z0-9_.-]+|[a-z0-9_.-]+(?:-sdk|\.js|js-sdk|_sdk))(?:$|[\s`"',).])/i;
 const LOCAL_ONLY_INTEGRATION_PATTERN = /\b(?:local|internal|in-repo|repo-local|test-only)\s+(?:\w+\s+){0,3}(?:adapter|database|migration|migrations)\b/i;
 
 export const SOURCE_RESEARCH_CARD_TEMPLATE = `### Source Research Card

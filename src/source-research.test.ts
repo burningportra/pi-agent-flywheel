@@ -27,6 +27,32 @@ describe("source research gate", () => {
     })).toBe(false);
   });
 
+  it("does not flag prose phrases, file paths, or doc-only package references as integration-heavy", () => {
+    // 'auto-approve/refinement' is a prose phrase and src/tools/approve.ts is a file path:
+    // neither is a package reference. Before the fix, the bare `pkg/pkg` alternative in
+    // PACKAGE_NAME_PATTERN matched both and wrongly flagged this as integration-heavy.
+    expect(isIntegrationHeavyBead({
+      title: "Paginate the approval-menu bead list",
+      description: "Bound the bead list and add page nav; no change to the auto-approve/refinement paths or the Start/Refine/Advanced/Reject dispatch.",
+      files: ["src/tools/approve.ts", "src/tools/approve.test.ts"],
+    })).toBe(false);
+
+    // A scoped package that appears only as a type-contract doc reference (preceded by '/'
+    // as in `node_modules/@scope/pkg/...`), not as an integration target.
+    expect(isIntegrationHeavyBead({
+      title: "Bounded approval-menu bead list",
+      description: "Fix the list overflow. IMPORTANT CONTEXT (types): `ExtensionUIContext.select(title, options, opts)` is declared in `node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts`; the title is a Markdown block and does NOT scroll.",
+      files: ["src/tools/approve.ts"],
+    })).toBe(false);
+
+    // A bare repo file path must not read as a package.
+    expect(isIntegrationHeavyBead({
+      title: "Refactor local formatter",
+      description: "Move pure string helpers into a smaller module.",
+      files: ["src/format.ts"],
+    })).toBe(false);
+  });
+
   it("generates the required Source Research Card fields only for integration-heavy beads", () => {
     const prompt = sourceResearchCardPrompt({
       title: "Add SDK auth middleware",
