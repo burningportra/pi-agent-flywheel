@@ -16,6 +16,7 @@ import {
   MIN_REFINEMENT_ROUNDS,
   superpowersSpecApprovalOptions,
   verificationContractFailureLines,
+  computeBeadPageWindow,
   type DiffSummary,
 } from "./approve.js";
 import { computeConvergenceScore } from "../prompts.js";
@@ -722,5 +723,44 @@ describe("Superpowers spec approval — early branch wiring in approve.ts source
     const specBranchSlice = approveSource.slice(specBranchStart, specBranchEnd);
     expect(specBranchSlice).toContain("resetSuperpowersWorkflowAfterSpecRejection");
     expect(specBranchSlice).toContain("oc.state.planDocument = undefined");
+  });
+});
+
+// ─── Bead list pagination window math ─────────────────────────
+describe("computeBeadPageWindow", () => {
+  const PAGE = 8;
+
+  it("single page when at or below page size: no next option, header shows 1 of 1", () => {
+    const w = computeBeadPageWindow(8, PAGE, 0);
+    expect(w).toEqual({ start: 0, end: 8, maxPage: 0, page: 0 });
+  });
+
+  it("clamps to exactly ceiling pages for an exact multiple (16 → 2 pages, no empty third)", () => {
+    const w0 = computeBeadPageWindow(16, PAGE, 0);
+    expect(w0).toEqual({ start: 0, end: 8, maxPage: 1, page: 0 });
+    const w1 = computeBeadPageWindow(16, PAGE, 1);
+    expect(w1).toEqual({ start: 8, end: 16, maxPage: 1, page: 1 });
+    // Requesting an out-of-range page clamps to the last page, never an empty one.
+    const w3 = computeBeadPageWindow(16, PAGE, 4);
+    expect(w3).toEqual({ start: 8, end: 16, maxPage: 1, page: 1 });
+  });
+
+  it("renders 17 beads as three pages: 1-8, 9-16, clamped 17-17", () => {
+    const w0 = computeBeadPageWindow(17, PAGE, 0);
+    expect(w0).toEqual({ start: 0, end: 8, maxPage: 2, page: 0 });
+    const w1 = computeBeadPageWindow(17, PAGE, 1);
+    expect(w1).toEqual({ start: 8, end: 16, maxPage: 2, page: 1 });
+    const w2 = computeBeadPageWindow(17, PAGE, 2);
+    expect(w2).toEqual({ start: 16, end: 17, maxPage: 2, page: 2 });
+  });
+
+  it("negative page request clamps to first page", () => {
+    const w = computeBeadPageWindow(17, PAGE, -1);
+    expect(w).toEqual({ start: 0, end: 8, maxPage: 2, page: 0 });
+  });
+
+  it("zero top-level beads yields a single empty page window (no negative page count)", () => {
+    const w = computeBeadPageWindow(0, PAGE, 0);
+    expect(w).toEqual({ start: 0, end: 0, maxPage: 0, page: 0 });
   });
 });

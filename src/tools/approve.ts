@@ -40,6 +40,33 @@ function snapshotBeads(beads: Bead[]): BeadSnapshot {
   return snap;
 }
 
+/**
+ * Compute the bead window to render on a given page of the approval menu.
+ *
+ * The menu `title` is a Markdown block that grows to fit its text (it does not
+ * scroll), so the bead list is paged to keep the title bounded. This helper is
+ * pure so the pagination math (page clamping, no empty trailing page, header
+ * range) is unit-testable independently of the UI flow.
+ */
+export interface BeadPageWindow {
+  /** 0-based index of the first bead on this page. */
+  start: number;
+  /** Exclusive end index of the last bead on this page. */
+  end: number;
+  /** Highest valid page index (0-based). */
+  maxPage: number;
+  /** The clamped current page index (0-based). */
+  page: number;
+}
+
+export function computeBeadPageWindow(totalTopLevel: number, pageSize: number, page: number): BeadPageWindow {
+  const maxPage = Math.max(0, Math.ceil(totalTopLevel / pageSize) - 1);
+  const current = Math.min(Math.max(0, page), maxPage);
+  const start = current * pageSize;
+  const end = Math.min(start + pageSize, totalTopLevel);
+  return { start, end, maxPage, page: current };
+}
+
 function countChanges(prev: BeadSnapshot, curr: BeadSnapshot): number {
   let changes = 0;
   // Added beads
@@ -903,38 +930,41 @@ export function registerApproveTool(oc: OrchestratorContext) {
         ? formatDiffSummary(diffBeadSnapshots(_lastBeadSnapshotFull, currentSnapshotFull))
         : undefined;
 
-      const beadListParts: string[] = [];
-      if (diffText) {
-        // Compact mode: diff summary + abbreviated bead list
-        beadListParts.push(diffText);
-        beadListParts.push("");
-        beadListParts.push("**All beads:**");
-        for (const b of beads) {
-          if (childIds.has(b.id)) continue;
-          beadListParts.push(`• ${b.id}: ${b.title}`);
-          const children = childrenByParent.get(b.id);
-          if (children) {
-            for (const child of children) {
-              beadListParts.push(`  ↳ ${child.id}: ${child.title}`);
-            }
+      // Paginate the approval menu's bead list so the title stays bounded and the
+      // user can arrow/click through pages when many beads are open. The menu
+      // `title` is a Markdown block that grows to fit its text (it does not
+      // scroll), so bounding the bead window here is what keeps the chat on screen.
+      const BEADS_PAGE_SIZE = 8;
+      let beadPage = 0;
+
+      const topLevelBeads = beads.filter((b) => !childIds.has(b.id));
+      const beadBlocks = topLevelBeads.map((b) => {
+        const block: string[] = [];
+        if (diffText) {
+          block.push(`• ${b.id}: ${b.title}`);
+        } else {
+          block.push(formatBead(b));
+        }
+        const children = childrenByParent.get(b.id);
+        if (children) {
+          for (const child of children) {
+            block.push(diffText ? `  ↳ ${child.id}: ${child.title}` : `   ↳ ${formatBead(child, "   ")}`);
           }
         }
-      } else {
-        // Round 0: full detailed format
-        for (const b of beads) {
-          if (childIds.has(b.id)) continue;
-          beadListParts.push(formatBead(b));
-          const children = childrenByParent.get(b.id);
-          if (children) {
-            for (const child of children) {
-              beadListParts.push(`   ↳ ${formatBead(child, "   ")}`);
-            }
-          }
+        return block;
+      });
+      const totalTopLevel = beadBlocks.length;
+      const maxBeadPage = computeBeadPageWindow(totalTopLevel, BEADS_PAGE_SIZE, 0).maxPage;
+
+      const beadListTextForPage = (): string => {
+        if (totalTopLevel === 0) {
+          return diffText ? `${diffText}\n\n### Beads (none)` : "### Beads (none)";
         }
-      }
-      const beadListText = diffText
-        ? beadListParts.join("\n")
-        : beadListParts.join("\n\n");
+        const w = computeBeadPageWindow(totalTopLevel, BEADS_PAGE_SIZE, beadPage);
+        const body = beadBlocks.slice(w.start, w.end).flat().join(diffText ? "\n" : "\n\n");
+        const header = `### Beads (showing ${w.start + 1}-${w.end} of ${totalTopLevel}, page ${w.page + 1} of ${w.maxPage + 1})`;
+        return diffText ? `${diffText}\n\n${header}\n${body}` : `${header}\n\n${body}`;
+      };
 
       // Compact one-liner list for LLM context (avoids repeating full bead dump on every refinement call)
       const compactBeadList = beads.map((b) => `• ${b.id}: ${b.title}`).join("\n");
@@ -1206,35 +1236,6 @@ export function registerApproveTool(oc: OrchestratorContext) {
       // ── Simplified options: progressive disclosure ──
       // Main menu: Start / Polish (or Refine) / Advanced / Reject
       // Advanced sub-menu: all specialist options for power users
-      const options: string[] = [];
-      if (verificationGateBlocked) {
-        if (round >= 1) {
-          options.push(`🔍 Refine further (round ${round + 1})`);
-        } else {
-          options.push(`🔍 Polish beads (round ${round + 1})`);
-        }
-        options.push("⚙️ Advanced options...");
-        options.push("❌ Reject");
-      } else if (needsCrossModelReviewGate) {
-        options.push(`🔀 Cross-model review (${crossModelReviewModel})`);
-        options.push("⏭️  Continue without cross-model review");
-        options.push(`🔍 Refine further (round ${round + 1})`);
-        options.push("⚙️ Advanced options...");
-        options.push("❌ Reject");
-      } else if (maxReached) {
-        options.push(startLabel, "❌ Reject");
-      } else {
-        options.push(startLabel);
-        if (round >= 1) {
-          // After round 1, default refinement action is fresh-agent (reduces anchoring bias)
-          options.push(`🔍 Refine further (round ${round + 1})`);
-        } else {
-          options.push(`🔍 Polish beads (round ${round + 1})`);
-        }
-        options.push("⚙️ Advanced options...");
-        options.push("❌ Reject");
-      }
-
       const convergenceTip = round >= 1 && convergenceScore !== undefined && convergenceScore < 0.5
         ? "\n💡 Tip: Fresh-agent refinement recommended — reduces anchoring bias."
         : "";
@@ -1270,7 +1271,50 @@ export function registerApproveTool(oc: OrchestratorContext) {
         // If quality gate failed, fall through to manual select
       }
 
-      const approvalPrompt = `${beads.length} beads ready for: ${oc.state.selectedGoal}${roundHeader}${qualitySummary}${beadsWorkflowChecklist}${simulationWarning}${graphHealthSummary}${executionPlanSummary}${bottleneckWarning}${planAuditWarning}${foregoneInfo}${crossModelReviewInfo}\n\n${beadListText}${validationWarning}${convergenceTip}`;
+      // Build the page-aware approval menu (actions + prompt) for the current
+      // beadPage. Called once per menu iteration so the bead list stays bounded
+      // and the user can page through many beads without the title overflowing.
+      const buildMenu = (): { options: string[]; approvalPrompt: string } => {
+        const options: string[] = [];
+        if (verificationGateBlocked) {
+          if (round >= 1) {
+            options.push(`🔍 Refine further (round ${round + 1})`);
+          } else {
+            options.push(`🔍 Polish beads (round ${round + 1})`);
+          }
+          options.push("⚙️ Advanced options...");
+          options.push("❌ Reject");
+        } else if (needsCrossModelReviewGate) {
+          options.push(`🔀 Cross-model review (${crossModelReviewModel})`);
+          options.push("⏭️  Continue without cross-model review");
+          options.push(`🔍 Refine further (round ${round + 1})`);
+          options.push("⚙️ Advanced options...");
+          options.push("❌ Reject");
+        } else if (maxReached) {
+          options.push(startLabel, "❌ Reject");
+        } else {
+          options.push(startLabel);
+          if (round >= 1) {
+            // After round 1, default refinement action is fresh-agent (reduces anchoring bias)
+            options.push(`🔍 Refine further (round ${round + 1})`);
+          } else {
+            options.push(`🔍 Polish beads (round ${round + 1})`);
+          }
+          options.push("⚙️ Advanced options...");
+          options.push("❌ Reject");
+        }
+        // Page navigation only appears when there is more than one page. Insert it
+        // before Advanced/Reject so it is easy to reach with the arrow keys.
+        const navOptions: string[] = [];
+        if (beadPage < maxBeadPage) navOptions.push("⬇️ Next beads");
+        if (beadPage > 0) navOptions.push("⬆️ Previous beads");
+        if (navOptions.length > 0) {
+          const navIdx = options.findIndex((o) => o.startsWith("⚙️ Advanced") || o === "❌ Reject");
+          options.splice(navIdx === -1 ? options.length : navIdx, 0, ...navOptions);
+        }
+        const approvalPrompt = `${beads.length} beads ready for: ${oc.state.selectedGoal}${roundHeader}${qualitySummary}${beadsWorkflowChecklist}${simulationWarning}${graphHealthSummary}${executionPlanSummary}${bottleneckWarning}${planAuditWarning}${foregoneInfo}${crossModelReviewInfo}\n\n${beadListTextForPage()}${validationWarning}${convergenceTip}`;
+        return { options, approvalPrompt };
+      };
 
       const selectAdvancedChoice = async (): Promise<string | undefined> => {
         const advancedOptions: string[] = [
@@ -1301,9 +1345,20 @@ export function registerApproveTool(oc: OrchestratorContext) {
       // immediately, not emit a follow-up instruction that kicks the user out of
       // the current UI flow.
       while (true) {
+        const { options, approvalPrompt } = buildMenu();
         if (choice === undefined) {
           choice = await ctx.ui.select(approvalPrompt, options);
           if (choice === undefined) break;
+        }
+        if (choice === "⬇️ Next beads") {
+          beadPage = Math.min(beadPage + 1, maxBeadPage);
+          choice = undefined;
+          continue;
+        }
+        if (choice === "⬆️ Previous beads") {
+          beadPage = Math.max(beadPage - 1, 0);
+          choice = undefined;
+          continue;
         }
         if (!choice.startsWith("⚙️")) break;
 
