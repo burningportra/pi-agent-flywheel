@@ -1,4 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { existsSync } from "fs";
+import { delimiter, join } from "path";
 import { enforceGoogleOpenRouterModel } from "./model-policy.js";
 
 /**
@@ -23,6 +25,8 @@ export interface DetectedModels {
   hasOpenCode: boolean;
   hasOpenRouter: boolean;
   hasGroq: boolean;
+  /** Whether the local Claude Code CLI (`claude`) is available. */
+  claudeCodeAvailable: boolean;
   /** Best available model for correctness planning */
   correctnessModel: string;
   /** Best available model for robustness planning */
@@ -41,10 +45,12 @@ export interface DetectedModels {
  */
 const PROVIDER_BEST_MODELS: Record<string, string[]> = {
   anthropic: [
+    "claude-opus-5",
+    "claude-sonnet-5",
     "claude-opus-4-6",
+    "claude-sonnet-4-6",
     "claude-opus-4-5",
     "claude-opus-4-1",
-    "claude-sonnet-4-6",
     "claude-sonnet-4-5",
   ],
   "openai-codex": [
@@ -66,17 +72,61 @@ const PROVIDER_BEST_MODELS: Record<string, string[]> = {
   opencode: [
     "gpt-5.4",
     "gpt-5.3-codex",
-    "claude-opus-4-6",
+    "claude-opus-5",
     "gemini-3.1-pro",
-    "claude-sonnet-4-6",
+    "claude-sonnet-5",
   ],
+  // OpenRouter preference for the Gemini "ergonomics" role: keep Gemini first so
+  // the plugin's "route Google via OpenRouter" intent is preserved. DeepSeek V4 /
+  // GLM 5.3 are available below as complementary open-weight options.
   openrouter: [
     "google/gemini-3.1-pro-preview",
+    "deepseek/deepseek-v4-pro-0813",
+    "z-ai/glm-5.3",
+    "anthropic/claude-opus-5",
     "google/gemini-2.5-pro",
-    "anthropic/claude-opus-4-6",
   ],
   groq: [], // Groq models are typically smaller/faster, not for planning
 };
+
+/**
+ * OpenRouter preference for frontier open-weight models — the fallback when the
+ * local Claude Code CLI is absent. Lead with DeepSeek V4 Pro and GLM 5.3, then
+ * fall through to Gemini/Claude-over-OpenRouter.
+ */
+const OPENWEIGHT_BEST_MODELS: Record<string, string[]> = {
+  openrouter: [
+    "deepseek/deepseek-v4-pro-0813",
+    "z-ai/glm-5.3",
+    "google/gemini-3.1-pro-preview",
+    "anthropic/claude-opus-5",
+    "google/gemini-2.5-pro",
+  ],
+};
+
+
+/**
+ * Whether the local Claude Code CLI is installed. Checked for the `claude`
+ * binary (NOT `cc`, which on macOS is the C compiler). `FLYWHEEL_CLAUDE_CODE`
+ * overrides the PATH probe for deterministic test/CI behavior.
+ */
+export function isClaudeCodeAvailable(): boolean {
+  const override = process.env.FLYWHEEL_CLAUDE_CODE;
+  if (override === "0" || override?.toLowerCase() === "false") return false;
+  if (override === "1" || override?.toLowerCase() === "true") return true;
+
+  const pathEnv = process.env.PATH ?? "";
+  const names = process.platform === "win32"
+    ? ["claude.exe", "claude.cmd", "claude.bat", "claude.ps1"]
+    : ["claude"];
+  for (const dir of pathEnv.split(delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      if (existsSync(join(dir, name))) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Detect available model providers and their models from pi's model registry.
@@ -104,6 +154,7 @@ export function detectAvailableModels(ctx: ExtensionContext): DetectedModels {
   const hasOpenCode = providerMap.has("opencode");
   const hasOpenRouter = providerMap.has("openrouter");
   const hasGroq = providerMap.has("groq");
+  const claudeCodeAvailable = isClaudeCodeAvailable();
 
   // Build provider list
   const providers: ModelProvider[] = [];
@@ -121,8 +172,15 @@ export function detectAvailableModels(ctx: ExtensionContext): DetectedModels {
     ?? selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS)
     ?? "anthropic/claude-opus-4-6";
 
-  const robustnessModel = selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS)
-    ?? "anthropic/claude-opus-4-6";
+  const anthropicBest = selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS);
+  const openWeightBest = selectBestModel(providerMap, ["openrouter"], OPENWEIGHT_BEST_MODELS);
+
+  // When Claude Code is installed, prefer Claude for reasoning-heavy roles; else
+  // fall back to the frontier open-weight models (DeepSeek V4 / GLM 5.3) that
+  // route through OpenRouter.
+  const robustnessModel = claudeCodeAvailable
+    ? (anthropicBest ?? openWeightBest ?? "anthropic/claude-opus-4-6")
+    : (openWeightBest ?? anthropicBest ?? "anthropic/claude-opus-4-6");
 
   const ergonomicsModel = selectBestModel(providerMap, ["openrouter"], PROVIDER_BEST_MODELS)
     ?? selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS)
@@ -134,7 +192,7 @@ export function detectAvailableModels(ctx: ExtensionContext): DetectedModels {
     ?? "anthropic/claude-opus-4-6";
 
   // Build refinement rotation from available providers
-  const refinementModels = buildRefinementRotation(providerMap);
+  const refinementModels = buildRefinementRotation(providerMap, claudeCodeAvailable);
 
   return {
     providers,
@@ -144,6 +202,7 @@ export function detectAvailableModels(ctx: ExtensionContext): DetectedModels {
     hasOpenCode,
     hasOpenRouter,
     hasGroq,
+    claudeCodeAvailable,
     correctnessModel,
     robustnessModel,
     ergonomicsModel,
@@ -182,24 +241,30 @@ function hasOpenRouterGoogle(providerMap: Map<string, Set<string>>): boolean {
 /**
  * Build a rotation of models from different providers for refinement rounds.
  * Using different providers helps avoid anchoring bias.
+ *
+ * When the local Claude Code CLI is present we lead with Claude (Anthropic);
+ * otherwise we lead with the frontier open-weight model via OpenRouter (DeepSeek
+ * V4 / GLM 5.3) so rounds stay on a strong, launchable surface.
  */
-function buildRefinementRotation(providerMap: Map<string, Set<string>>): string[] {
+function buildRefinementRotation(providerMap: Map<string, Set<string>>, claudeCodeAvailable: boolean): string[] {
   const rotation: string[] = [];
 
-  // Prefer Anthropic for reasoning
   const anthropicBest = selectBestModel(providerMap, ["anthropic"], PROVIDER_BEST_MODELS);
-  if (anthropicBest) rotation.push(anthropicBest);
-
-  // Add OpenAI/Codex for different perspective
+  const openWeightBest = selectBestModel(providerMap, ["openrouter"], OPENWEIGHT_BEST_MODELS);
   const openaiBest = selectBestModel(providerMap, ["openai-codex", "opencode", "openai"], PROVIDER_BEST_MODELS);
-  if (openaiBest && openaiBest !== rotation[0]) rotation.push(openaiBest);
 
-  // Add Gemini for third perspective. Prefer OpenRouter when available so
-  // Gemini rounds use the provider path that is easiest to route and monitor.
-  const googleBest = selectBestModel(providerMap, ["openrouter"], PROVIDER_BEST_MODELS);
-  if (googleBest && !rotation.includes(googleBest)) rotation.push(googleBest);
+  // Lead with Claude when it's installed; otherwise with the open-weight
+  // frontier via OpenRouter (falling back to Claude if available).
+  const lead = claudeCodeAvailable ? anthropicBest : (openWeightBest ?? anthropicBest);
+  if (lead) rotation.push(lead);
 
-  // Fallback if we don't have enough diversity
+  // Add the other perspectives for diversity, deduped against the lead.
+  const rest = [openaiBest, claudeCodeAvailable ? openWeightBest : anthropicBest].filter((m): m is string => Boolean(m));
+  for (const candidate of rest) {
+    if (!rotation.includes(candidate)) rotation.push(candidate);
+  }
+
+  // Fallbacks to guarantee a usable rotation.
   if (rotation.length === 0) {
     rotation.push("anthropic/claude-opus-4-6");
   }

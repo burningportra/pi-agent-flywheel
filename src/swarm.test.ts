@@ -53,7 +53,7 @@ describe("recommendComposition", () => {
   it("includes diverse pane kinds (cursor over gmi)", () => {
     const comp = recommendComposition(100);
     const models = comp.models.map((m) => m.model);
-    expect(models).toContain("anthropic/claude-opus-4-6");
+    expect(models).toContain("anthropic/claude-opus-5");
     expect(models).toContain("openai-codex/gpt-5.4");
     expect(models).toContain("cursor-agent");
     expect(comp.paneSpecs.some((s) => s.kind === "cursor")).toBe(true);

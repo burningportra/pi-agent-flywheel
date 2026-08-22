@@ -1415,14 +1415,14 @@ export const SWARM_STAGGER_DELAY_MS = 30_000; // 30 seconds between agent starts
 /** Default models used by the multi-model deep planning agents (fallbacks). */
 export const DEEP_PLAN_MODELS = {
   correctness: "openai-codex/gpt-5.4",
-  robustness: "anthropic/claude-opus-4-6",
-  ergonomics: "google-antigravity/gemini-3.1-pro-high",
+  robustness: "anthropic/claude-opus-5",
+  ergonomics: "openrouter/google/gemini-3.1-pro-preview",
   synthesis: "openai-codex/gpt-5.4",
 } as const;
 
 /** Models used by the swarm launcher. */
 export const SWARM_MODELS = {
-  opus: "anthropic/claude-opus-4-6",
+  opus: "anthropic/claude-opus-5",
   gpt: "openai-codex/gpt-5.4",
   haiku: "anthropic/claude-haiku-4-5",
 } as const;
@@ -1431,14 +1431,14 @@ export const SWARM_MODELS = {
 export const MODEL_ROUTING_TIERS = {
   simple: {
     implementation: "anthropic/claude-haiku-4-5",
-    review: "anthropic/claude-opus-4-6",
+    review: "anthropic/claude-opus-5",
   },
   medium: {
-    implementation: "anthropic/claude-opus-4-6",
+    implementation: "anthropic/claude-opus-5",
     review: "openai-codex/gpt-5.4",
   },
   complex: {
-    implementation: "anthropic/claude-opus-4-6",
+    implementation: "anthropic/claude-opus-5",
     review: "openai-codex/gpt-5.4",
   },
 } as const;
@@ -1448,9 +1448,9 @@ export const MODEL_ROUTING_TIERS = {
  * Different models have different blind spots; rotating prevents anchoring.
  */
 export const REFINEMENT_MODELS = [
-  "anthropic/claude-opus-4-6",
+  "anthropic/claude-opus-5",
   "openai-codex/gpt-5.4",
-  "google-antigravity/gemini-3.1-pro-high",
+  "openrouter/google/gemini-3.1-pro-preview",
 ] as const;
 
 /** Pick a refinement model based on round number (rotates through available models). */

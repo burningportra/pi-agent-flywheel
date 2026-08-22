@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { detectAvailableModels, getDeepPlanModels, getRefinementModel, formatDetectedModels } from "./model-detection.js";
+import { describe, it, expect, afterEach } from "vitest";
+import { detectAvailableModels, isClaudeCodeAvailable, getDeepPlanModels, getRefinementModel, formatDetectedModels } from "./model-detection.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // Mock ExtensionContext with modelRegistry
@@ -223,6 +223,62 @@ describe("model-detection", () => {
       expect(formatted).toContain("Planning Model Selection");
       expect(formatted).toContain("Correctness");
       expect(formatted).toContain("Refinement Rotation");
+    });
+  });
+
+  describe("claude code / open-weight selection", () => {
+    const saved = process.env.FLYWHEEL_CLAUDE_CODE;
+
+    afterEach(() => {
+      if (saved === undefined) delete process.env.FLYWHEEL_CLAUDE_CODE;
+      else process.env.FLYWHEEL_CLAUDE_CODE = saved;
+    });
+
+    it("prefers Claude (Anthropic) for robustness when Claude Code is installed", () => {
+      process.env.FLYWHEEL_CLAUDE_CODE = "1";
+      const ctx = mockContext([
+        { provider: "anthropic", id: "claude-opus-5" },
+        { provider: "openrouter", id: "deepseek/deepseek-v4-pro-0813" },
+        { provider: "openai-codex", id: "gpt-5.4" },
+      ]);
+
+      const detected = detectAvailableModels(ctx);
+
+      expect(detected.claudeCodeAvailable).toBe(true);
+      expect(detected.robustnessModel).toBe("anthropic/claude-opus-5");
+    });
+
+    it("prefers open-weight via OpenRouter for robustness when Claude Code is absent", () => {
+      process.env.FLYWHEEL_CLAUDE_CODE = "0";
+      const ctx = mockContext([
+        { provider: "anthropic", id: "claude-opus-5" },
+        { provider: "openrouter", id: "deepseek/deepseek-v4-pro-0813" },
+        { provider: "openai-codex", id: "gpt-5.4" },
+      ]);
+
+      const detected = detectAvailableModels(ctx);
+
+      expect(detected.claudeCodeAvailable).toBe(false);
+      expect(detected.robustnessModel).toBe("openrouter/deepseek/deepseek-v4-pro-0813");
+    });
+
+    it("keeps Gemini via OpenRouter for ergonomics even when open-weight is preferred for robustness", () => {
+      process.env.FLYWHEEL_CLAUDE_CODE = "0";
+      const ctx = mockContext([
+        { provider: "openrouter", id: "google/gemini-3.1-pro-preview" },
+        { provider: "openrouter", id: "deepseek/deepseek-v4-pro-0813" },
+      ]);
+
+      const detected = detectAvailableModels(ctx);
+
+      expect(detected.ergonomicsModel).toBe("openrouter/google/gemini-3.1-pro-preview");
+    });
+
+    it("reads the FLYWHEEL_CLAUDE_CODE override for isClaudeCodeAvailable", () => {
+      process.env.FLYWHEEL_CLAUDE_CODE = "1";
+      expect(isClaudeCodeAvailable()).toBe(true);
+      process.env.FLYWHEEL_CLAUDE_CODE = "0";
+      expect(isClaudeCodeAvailable()).toBe(false);
     });
   });
 });

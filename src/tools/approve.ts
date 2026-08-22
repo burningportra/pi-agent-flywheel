@@ -1,6 +1,8 @@
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { OrchestratorContext, Bead, BvInsights, OrchestratorState, VerificationContractIssue } from "../types.js";
 import { freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, superpowersSpecRefinementPrompt, type BeadQualityAuditResult } from "../prompts.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
@@ -19,6 +21,32 @@ import {
   resetSuperpowersWorkflowAfterSpecRejection,
   SUPERPOWERS_ADAPTER_ID,
 } from "../workflows/superpowers.js";
+/**
+ * Read the approved plan document body, resolving across the locations where
+ * the planner may have written it: the direct session-artifact path, sibling
+ * sub-agent artifact roots, or a repo-relative path (e.g. `plans/...`).
+ *
+ * The planner writes to `sessionArtifactPath`, but on the single-model path the
+ * artifact has historically landed in the repo `plans/` dir, and a sub-agent
+ * session that produced the plan writes under its own artifact root. Resolving
+ * all of these avoids the ENOENT that otherwise aborts plan approval mid-menu.
+ */
+function readPlanDocumentArtifact(ctx: ExtensionContext, planDocument: string): string | undefined {
+  const artifact = findSessionArtifactPath(ctx, planDocument);
+  if (artifact) {
+    try {
+      return readFileSync(artifact, "utf8");
+    } catch { /* fall through to repo path */ }
+  }
+  const repoPath = join(ctx.cwd, planDocument);
+  if (existsSync(repoPath)) {
+    try {
+      return readFileSync(repoPath, "utf8");
+    } catch { /* give up */ }
+  }
+  return undefined;
+}
+
 // ─── Module-level bead snapshots for change detection ────────
 // These live at module scope so they persist across multiple calls to
 // orch_approve_beads within the same orchestration session. Each call
@@ -599,8 +627,13 @@ export function registerApproveTool(oc: OrchestratorContext) {
           throw new FlywheelError("NO_PLAN");
         }
 
-        const planPath = sessionArtifactPath(ctx, oc.state.planDocument);
-        const plan = readFileSync(planPath, "utf8");
+        const plan = readPlanDocumentArtifact(ctx, oc.state.planDocument);
+        if (plan === undefined) {
+          throw new FlywheelError(
+            "NO_PLAN",
+            `The approved plan document \`${oc.state.planDocument}\` could not be read from the session artifacts or repo \`plans/\`. Rerun \`flywheel_plan\`, or place the plan where it resolves.`,
+          );
+        }
         const currentPlanSnapshot = snapshotPlan(plan);
         const returningFromRefinement = oc.state.phase === "planning" && !!_lastPlanSnapshot;
 
@@ -808,9 +841,11 @@ export function registerApproveTool(oc: OrchestratorContext) {
         // Save final plan to docs/plans/ at approval
         if (oc.state.planDocument) {
           try {
-            const finalPlan = readFileSync(sessionArtifactPath(ctx, oc.state.planDocument), "utf8");
-            const { saveDocsPlan } = await import("./plan.js");
-            saveDocsPlan(ctx.cwd, oc.state.selectedGoal!, "final", finalPlan);
+            const finalPlan = readPlanDocumentArtifact(ctx, oc.state.planDocument);
+            if (finalPlan !== undefined) {
+              const { saveDocsPlan } = await import("./plan.js");
+              saveDocsPlan(ctx.cwd, oc.state.selectedGoal!, "final", finalPlan);
+            }
           } catch { /* best-effort */ }
         }
         oc.setPhase("creating_beads", ctx);
@@ -1943,7 +1978,7 @@ cd ${ctx.cwd}`;
         : undefined;
       const providerChecks: ProviderPreflightCheck[] = [
         { id: "impl:ntm", label: "NTM visible panes", surface: "ntm", required: true, probe: { command: "ntm", args: ["--help"] } },
-        { id: "impl:claude-code", label: "Claude Code", provider: "anthropic", surface: "claude-code", required: false, probe: { command: "cc", args: ["--help"] } },
+        { id: "impl:claude-code", label: "Claude Code", provider: "anthropic", surface: "claude-code", required: false, probe: { command: "claude", args: ["--help"] } },
         { id: "impl:cursor-agent", label: "Cursor Agent CLI", provider: "google/openrouter", surface: "cursor-agent", required: false, probe: { command: "agent", args: ["--help"] } },
         { id: "impl:codex", label: "Codex", surface: "codex", required: false, probe: { command: "codex", args: ["--help"] } },
       ];

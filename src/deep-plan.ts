@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { basename, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { isAnthropicModel } from "./model-policy.js";
+import { enforceGoogleOpenRouterModel, isAnthropicModel, isDirectGoogleModel, isOpenRouterGoogleModel } from "./model-policy.js";
 
 export interface DeepPlanAgent {
   name: string;
@@ -128,6 +128,92 @@ async function runAnthropicAgentViaNtmCc(
 }
 
 /**
+ * Launch a planner in a managed NTM Cursor (`agent`) pane.
+ *
+ * Google/Gemini models must run in a visible Cursor pane (per AGENTS.md), never
+ * a hidden `pi --print` subprocess or `--gmi` pane. The model ID is routed
+ * through OpenRouter (`openrouter/google/...`) before it reaches the pane, so a
+ * configured Gemini model like `google/gemini-3.1-pro-preview` runs against the
+ * OpenRouter endpoint the plugin already assumes for Google work.
+ */
+async function runGoogleAgentViaNtmCursor(
+  pi: ExtensionAPI,
+  cwd: string,
+  agent: DeepPlanAgent,
+  taskFile: string,
+  outputFile: string,
+  index: number,
+  signal?: AbortSignal,
+): Promise<{ plan: string; exitCode: number; error?: string }> {
+  const project = basename(cwd);
+  const label = ntmLabelForAgent(agent.name, index);
+  const session = `${project}--${label}`;
+  const prompt = `Read the complete task file at ${taskFile}, follow it exactly, write the final answer to the FINAL_ANSWER_PATH specified inside it, then stop.`;
+  const model = agent.model ? enforceGoogleOpenRouterModel(agent.model) : "gemini-3.1-pro-preview";
+
+  let spawnError: string | undefined;
+  try {
+    const spawn = await pi.exec("ntm", [
+      "spawn",
+      project,
+      "--label", label,
+      "--no-user",
+      `--cursor=1:${model}`,
+      "--prompt", prompt,
+    ], {
+      timeout: 60000,
+      cwd,
+      signal,
+    });
+    if (spawn.code !== 0) {
+      spawnError = `ntm spawn exited ${spawn.code}${spawn.stderr?.trim() ? `: ${spawn.stderr.trim()}` : ""}`;
+    }
+  } catch (err) {
+    spawnError = err instanceof Error ? err.message : String(err);
+  }
+
+  if (!spawnError) {
+    try {
+      await pi.exec("ntm", [
+        `--robot-wait=${session}`,
+        "--wait-until=idle",
+        "--timeout=10m",
+      ], {
+        timeout: 660000,
+        cwd,
+        signal,
+      });
+    } catch {
+      // A wait timeout is not necessarily fatal; the cursor pane may have already
+      // written the contracted output file. Read it before reporting failure.
+    }
+  }
+
+  const plan = existsSync(outputFile) ? readFileSync(outputFile, "utf8").trim() : "";
+  if (plan.length > 0) {
+    return { plan, exitCode: 0 };
+  }
+
+  let tail = "";
+  if (!spawnError) {
+    try {
+      const tailResult = await pi.exec("ntm", [`--robot-tail=${session}`, "--lines=120"], {
+        timeout: 30000,
+        cwd,
+        signal,
+      });
+      tail = tailResult.stdout?.trim() || tailResult.stderr?.trim() || "";
+    } catch (err) {
+      tail = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const error = spawnError
+    ?? `NTM cursor pane did not write ${outputFile}${tail ? `; tail: ${tail.slice(-1000)}` : ""}`;
+  return { plan: "", exitCode: 1, error };
+}
+
+/**
  * Optional runner-level inputs that apply to every agent in the call.
  *
  * `approvedSpec` is injected into each agent's task as a labeled "Approved
@@ -182,12 +268,25 @@ export async function runDeepPlanAgents(
     const taskFile = join(outputDir, `${agent.name}-task.md`);
     const outputFile = join(outputDir, `${agent.name}-output.md`);
     const runViaNtmCc = isAnthropicModel(agent.model);
+    const runViaNtmCursor = isDirectGoogleModel(agent.model) || isOpenRouterGoogleModel(agent.model);
     const effectiveTask = withApprovedSpecContext(agent.task, options?.approvedSpec);
-    writeFileSync(taskFile, runViaNtmCc ? taskWithFileOutputContract(effectiveTask, outputFile) : effectiveTask, "utf8");
+    writeFileSync(taskFile, (runViaNtmCc || runViaNtmCursor) ? taskWithFileOutputContract(effectiveTask, outputFile) : effectiveTask, "utf8");
 
     try {
       if (runViaNtmCc) {
         const result = await runAnthropicAgentViaNtmCc(pi, cwd, agent, taskFile, outputFile, i, signal);
+        return {
+          name: agent.name,
+          model: agent.model ?? "default",
+          plan: result.plan,
+          exitCode: result.exitCode,
+          elapsed: Math.floor((Date.now() - startTime) / 1000),
+          error: result.error,
+        } as DeepPlanResult;
+      }
+
+      if (runViaNtmCursor) {
+        const result = await runGoogleAgentViaNtmCursor(pi, cwd, agent, taskFile, outputFile, i, signal);
         return {
           name: agent.name,
           model: agent.model ?? "default",

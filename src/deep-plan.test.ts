@@ -66,6 +66,47 @@ describe("runDeepPlanAgents provider routing", () => {
     expect(pi.exec).toHaveBeenCalledWith("pi", expect.arrayContaining(["--print", "--model", "openai-codex/gpt-5.4"]), expect.anything());
     expect(pi.exec).not.toHaveBeenCalledWith("ntm", expect.arrayContaining(["spawn"]), expect.anything());
   });
+
+  it("routes Google/Gemini planners through managed NTM Cursor panes via OpenRouter", async () => {
+    const pi = makePiExecMock();
+
+    const results = await runDeepPlanAgents(pi, "/tmp/pi-agent-flywheel", [{
+      name: "research-google",
+      model: "google/gemini-3.1-pro-preview",
+      task: "Investigate this repo",
+    }]);
+
+    expect(results[0].plan).toBe("proposal from ntm cc");
+    expect(results[0].exitCode).toBe(0);
+    expect(pi.exec).not.toHaveBeenCalledWith("pi", expect.anything(), expect.anything());
+
+    const spawnCall = pi.exec.mock.calls.find(([cmd, args]: [string, string[]]) => cmd === "ntm" && args[0] === "spawn");
+    expect(spawnCall).toBeDefined();
+    expect(spawnCall![1]).toContain("--no-user");
+    // Gemini is routed through OpenRouter and launched in a visible Cursor pane.
+    expect(spawnCall![1]).toContain("--cursor=1:openrouter/google/gemini-3.1-pro-preview");
+
+    const promptArg = spawnCall![1][spawnCall![1].indexOf("--prompt") + 1];
+    const taskFile = promptArg.match(/at (\/[^,]+), follow/)?.[1];
+    expect(taskFile).toBeTruthy();
+    expect(existsSync(taskFile!)).toBe(true);
+    expect(readFileSync(taskFile!, "utf8")).toContain("FINAL_ANSWER_PATH=");
+  });
+
+  it("keeps an already-OpenRouter Google model on the Cursor pane (no double-routing)", async () => {
+    const pi = makePiExecMock();
+
+    const results = await runDeepPlanAgents(pi, "/tmp/pi-agent-flywheel", [{
+      name: "research-google-openrouter",
+      model: "openrouter/google/gemini-3.1-pro-preview",
+      task: "Investigate this repo",
+    }]);
+
+    expect(results[0].plan).toBe("proposal from ntm cc");
+    const spawnCall = pi.exec.mock.calls.find(([cmd, args]: [string, string[]]) => cmd === "ntm" && args[0] === "spawn");
+    expect(spawnCall).toBeDefined();
+    expect(spawnCall![1]).toContain("--cursor=1:openrouter/google/gemini-3.1-pro-preview");
+  });
 });
 
 describe("runDeepPlanAgents — approved spec ingestion", () => {
