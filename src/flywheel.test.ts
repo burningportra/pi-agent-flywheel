@@ -7,6 +7,7 @@ import {
   deSlopifyInstructions,
   landingChecklistInstructions,
   swarmMarchingOrders,
+  SWARM_MODELS,
   beadQualityScoringPrompt,
   beadRefinementPrompt,
   freshContextRefinementPrompt,
@@ -209,6 +210,33 @@ describe("swarmMarchingOrders", () => {
     expect(prompt).toContain("degraded_sources");
     expect(prompt).toContain("Evidence × Impact × Reversibility / BlastRadius");
     expect(prompt).toContain("Score >= 2.0");
+  });
+
+  it("instructs agents to register with Agent Mail and introduce themselves", () => {
+    const prompt = swarmMarchingOrders("/tmp");
+    expect(prompt).toContain("Register with MCP Agent Mail");
+    expect(prompt).toContain("Introduce yourself");
+    expect(prompt).toContain("file_reservation_paths");
+    expect(prompt).toContain("fetch_inbox");
+    expect(prompt).toContain("acknowledge_message");
+    expect(prompt).toContain("bv --robot-triage");
+    expect(prompt).toContain("bv --robot-next");
+    expect(prompt).toContain("communication purgatory");
+    expect(prompt).toContain("evidence-based");
+    expect(prompt).toContain("br sync --flush-only");
+  });
+
+  it("adds the operator cadence for idle panes, stalled beads, and anti-slop", () => {
+    const prompt = swarmMarchingOrders("/tmp");
+    expect(prompt).toContain("Instruct idle panes every ~4 minutes");
+    expect(prompt).toContain("Reopen clearly stalled beads");
+    expect(prompt).toContain("Anti-slop every 6 commits");
+  });
+});
+
+describe("SWARM_MODELS", () => {
+  it("defaults the swarm to the open-weight DeepSeek model", () => {
+    expect(SWARM_MODELS.deepseek).toBe("openrouter/deepseek/deepseek-v4-flash-vision-exp");
   });
 });
 

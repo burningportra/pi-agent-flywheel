@@ -1592,74 +1592,98 @@ export function registerCommands(oc: OrchestratorContext) {
   });
 
   // ─── Command: /orchestrate-swarm ─────────────────────────
+  const launchSwarm = async (_args: string, ctx: any) => {
+    if (!oc.state.selectedGoal) {
+      ctx.ui.notify("No active orchestration with a goal. Run /flywheel-start first.", "warning");
+      return;
+    }
+
+    const { readBeads, readyBeads } = await import("./beads.js");
+    const beads = await readBeads(pi, ctx.cwd);
+    const ready = await readyBeads(pi, ctx.cwd);
+    const openBeads = beads.filter((b) => b.status === "open" || b.status === "in_progress");
+
+    if (ready.length === 0 && openBeads.length === 0) {
+      ctx.ui.notify("No open or ready beads. All beads are either blocked or completed.", "info");
+      return;
+    }
+
+    const { recommendComposition, generateAgentConfigs, formatLaunchInstructions } = await import("./swarm.js");
+    const { SWARM_MODELS } = await import("./prompts.js");
+    const { ensureCoreRules } = await import("./agents-md.js");
+
+    // Ensure AGENTS.md has core rules before launching agents
+    await ensureCoreRules(ctx.cwd);
+
+    const composition = recommendComposition(openBeads.length);
+
+    // Let user adjust count
+    const countInput = await ctx.ui.input(
+      `How many agents? (suggested: ${composition.total} — ${composition.rationale})`,
+      `${composition.total}`
+    );
+    const count = Math.max(1, Math.min(20, parseInt(countInput || `${composition.total}`, 10)));
+
+    // Let the user pick the worker model, defaulting to the swarm's open-weight default.
+    const defaultModel = SWARM_MODELS.deepseek;
+    const modelInput = await ctx.ui.input(
+      `Swarm agent model? (default: ${defaultModel}; type "auto" to use per-pane-kind defaults)`,
+      defaultModel
+    );
+    const modelOverride = modelInput.trim() === "auto" || modelInput.trim() === ""
+      ? undefined
+      : modelInput.trim();
+    composition.modelOverride = modelOverride;
+
+    const configs = generateAgentConfigs(count, ctx.cwd, composition);
+    const instructions = formatLaunchInstructions(configs, composition);
+
+    // Start SwarmTender for monitoring
+    const { SwarmTender } = await import("./tender.js");
+    const worktrees = configs.map((c, i) => ({ path: ctx.cwd, stepIndex: i }));
+    oc.swarmTender = new SwarmTender(pi, ctx.cwd, worktrees, {
+      config: {
+        pollInterval: 60_000,
+        stuckThreshold: 300_000,
+        idleThreshold: 120_000,
+      },
+      onStuck: (agent) => {
+        ctx.ui.notify(
+          `⚠️ Agent #${agent.stepIndex} appears stuck (no changes for 5 min). ` +
+            `Consider sending: "Reread AGENTS.md and check your current bead status."`,
+          "warning"
+        );
+      },
+      onConflict: (conflict) => {
+        ctx.ui.notify(
+          `🔴 File conflict: ${conflict.file} being edited by agents #${conflict.worktrees.join(", #")}`,
+          "error"
+        );
+      },
+    });
+    oc.swarmTender.start();
+
+    pi.sendUserMessage(
+      `${instructions}\n\n` +
+        `**NEXT: Run the NTM launch command above. Do not implement inline in the current chat.**\n\n` +
+        `SwarmTender is monitoring. Use \`/flywheel-swarm-status\` to check health.`,
+      { deliverAs: "followUp" }
+    );
+  };
+
+  pi.registerCommand("flywheel-swarm", {
+    description: "Launch a persistent agent swarm for parallel bead execution",
+    handler: launchSwarm,
+  });
+
   pi.registerCommand("orchestrate-swarm", {
     description: "Launch a persistent agent swarm for parallel bead execution",
-    handler: async (args, ctx) => {
-      if (!oc.state.selectedGoal) {
-        ctx.ui.notify("No active orchestration with a goal. Run /orchestrate first.", "warning");
-        return;
-      }
+    handler: launchSwarm,
+  });
 
-      const { readBeads, readyBeads } = await import("./beads.js");
-      const beads = await readBeads(pi, ctx.cwd);
-      const ready = await readyBeads(pi, ctx.cwd);
-      const openBeads = beads.filter((b) => b.status === "open" || b.status === "in_progress");
-
-      if (ready.length === 0 && openBeads.length === 0) {
-        ctx.ui.notify("No open or ready beads. All beads are either blocked or completed.", "info");
-        return;
-      }
-
-      const { recommendComposition, generateAgentConfigs, formatLaunchInstructions } = await import("./swarm.js");
-      const { ensureCoreRules } = await import("./agents-md.js");
-
-      // Ensure AGENTS.md has core rules before launching agents
-      await ensureCoreRules(ctx.cwd);
-
-      const composition = recommendComposition(openBeads.length);
-
-      // Let user adjust count
-      const countInput = await ctx.ui.input(
-        `How many agents? (suggested: ${composition.total} — ${composition.rationale})`,
-        `${composition.total}`
-      );
-      const count = Math.max(1, Math.min(20, parseInt(countInput || `${composition.total}`, 10)));
-
-      const configs = generateAgentConfigs(count, ctx.cwd, composition);
-      const instructions = formatLaunchInstructions(configs, composition);
-
-      // Start SwarmTender for monitoring
-      const { SwarmTender } = await import("./tender.js");
-      const worktrees = configs.map((c, i) => ({ path: ctx.cwd, stepIndex: i }));
-      oc.swarmTender = new SwarmTender(pi, ctx.cwd, worktrees, {
-        config: {
-          pollInterval: 60_000,
-          stuckThreshold: 300_000,
-          idleThreshold: 120_000,
-        },
-        onStuck: (agent) => {
-          ctx.ui.notify(
-            `⚠️ Agent #${agent.stepIndex} appears stuck (no changes for 5 min). ` +
-            `Consider sending: "Reread AGENTS.md and check your current bead status."`,
-            "warning"
-          );
-        },
-        onConflict: (conflict) => {
-          ctx.ui.notify(
-            `🔴 File conflict: ${conflict.file} being edited by agents #${conflict.worktrees.join(", #")}`,
-            "error"
-          );
-        },
-      });
-      oc.swarmTender.start();
-
-      pi.sendUserMessage(
-        `${instructions}\n\n` +
-        `**NEXT: Run the NTM launch command above. Do not implement inline in the current chat.**\n\n` +
-        `SwarmTender is monitoring. Use \`/orchestrate-swarm-status\` to check health.`,
-        { deliverAs: "followUp" }
-      );
-    },
+  pi.registerCommand("agent-flywheel-swarm", {
+    description: "Launch a persistent agent swarm for parallel bead execution",
+    handler: launchSwarm,
   });
 
   // ─── Command: /orchestrate-swarm-status ───────────────────
@@ -1667,7 +1691,7 @@ export function registerCommands(oc: OrchestratorContext) {
     description: "Show swarm health: active/idle/stuck agents, bead progress, conflicts",
     handler: async (_args, ctx) => {
       if (!oc.swarmTender) {
-        ctx.ui.notify("No swarm active. Launch one with /orchestrate-swarm.", "info");
+        ctx.ui.notify("No swarm active. Launch one with /flywheel-swarm.", "info");
         return;
       }
 
@@ -2493,7 +2517,7 @@ ${description}
     description: "Show AgentFlywheel swarm health: active/idle/stuck agents, bead progress, conflicts",
     handler: async (_args, ctx) => {
       if (!oc.swarmTender) {
-        ctx.ui.notify("No swarm active. Launch one with /orchestrate-swarm.", "info");
+        ctx.ui.notify("No swarm active. Launch one with /flywheel-swarm.", "info");
         return;
       }
       const { formatSwarmStatus } = await import("./swarm.js");
@@ -2506,7 +2530,7 @@ ${description}
     description: "Show swarm health: active/idle/stuck agents, bead progress, conflicts",
     handler: async (_args, ctx) => {
       if (!oc.swarmTender) {
-        ctx.ui.notify("No swarm active. Launch one with /orchestrate-swarm.", "info");
+        ctx.ui.notify("No swarm active. Launch one with /flywheel-swarm.", "info");
         return;
       }
       const { formatSwarmStatus } = await import("./swarm.js");

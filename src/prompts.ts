@@ -1378,18 +1378,50 @@ Score = Evidence × Impact × Reversibility / BlastRadius
 - **Reversibility**: 0.5 hard to undo, 1.0 recoverable, 2.0 trivially reversible.
 - **BlastRadius**: 0.5 one pane/message, 1.0 one bead, 2.0 multiple panes/shared files, 4.0 repo-wide or destructive.
 
-Interventions need **Score >= 2.0**. If the score is lower, gather more evidence with \`ntm --robot-snapshot\`, \`ntm --robot-attention\`, tail output, mail, or tests instead of acting.`;
+Interventions need **Score >= 2.0**. If the score is lower, gather more evidence with \`ntm --robot-snapshot\`, \`ntm --robot-attention\`, tail output, mail, or tests instead of acting.
+
+### Operator cadence (every pass)
+- **Instruct idle panes every ~4 minutes.** For each idle pane, read \`bv --robot-next\` / \`bv --robot-triage\` and send fresh marching orders (a specific ready bead) via \`ntm send\`. Do not let a pane sit idle while the graph has ready work.
+- **Reopen clearly stalled beads.** Look for beads marked \`in_progress\` by long-dead agents with no recent commits, Agent Mail activity, or file reservations; after confirming stale evidence, reopen them with \`br update <id> --status open\` and \`br sync --flush-only\`, then route them as ready work.
+- **Anti-slop every 6 commits.** After every 6 agent commits, run the anti-slop skill on the accumulated diff and re-check the work with fresh eyes for blunders, oversights, logic bugs, and misconceptions. Add follow-up beads for anything found.
+
+While a pane is idle, look for clearly-stalled \`in_progress\` beads and reopen them so they re-enter the ready pool instead of hanging.`;
 }
 
 // ─── Swarm Marching Orders ──────────────────────────────────
 export function swarmMarchingOrders(cwd: string, beadId?: string): string {
-  return `## Swarm Marching Orders
+  return `## Swarm Marching Orders — AgentFlywheel Implementation Worker
 
-Read AGENTS.md and README.md thoroughly. Then investigate the codebase to understand the technical architecture and project purpose.${beadId ? `\n\nYour assigned bead: ${beadId}` : ""}
+You are one agent in an AgentFlywheel implementation swarm running in a managed NTM worker pane. You coordinate through beads and MCP Agent Mail, and you drive work forward with shared progress and prompt communication.
 
-Be sure to check your agent mail and promptly respond to any messages. Then proceed meticulously with your assigned bead, working systematically and tracking progress via beads and agent mail messages.
+Read AGENTS.md and README.md thoroughly, then investigate the codebase to understand the technical architecture and project purpose.${beadId ? `\n\nYour assigned bead: ${beadId}` : ""}
 
-Don't stall on coordination. Start work promptly, but inform fellow agents via messages and mark beads appropriately.
+### 1. Register and introduce yourself
+- Register with MCP Agent Mail at the start of the session using a fresh callsign.
+- Introduce yourself on the general coordination thread (or your assigned bead thread): say who you are, which bead you are starting, and which files you are reserving.
+- Reserve your bead's file scope with \`file_reservation_paths(project_key, callsign, [...], ttl_seconds=3600, exclusive=true)\` before editing.
+
+### 2. Stay responsive — do not fall into communication purgatory
+- Check your inbox (\`fetch_inbox\`) before starting work and before finishing. Acknowledge (\`acknowledge_message\`) anything that asks for it and reply promptly when another active agent needs coordination.
+- Broadcast a concise start and completion message on your bead thread so fellow agents know what is being worked on.
+- Coordinate promptly, then do the work. Do not wait for perfect consensus when the bead contract and file reservations give enough to proceed safely. Bound retries: check inbox once, send a targeted message, wait briefly, then either proceed on non-conflicting work or report the blocker with evidence.
+- Release your file reservations when you finish.
+
+### 3. Pick and track beads
+- If a bead is assigned, inspect \`br show <id>\`, keep changes within its \`### Files:\` scope, and claim it with \`br update <id> --status in_progress\` before editing.
+- If no bead is assigned, prefer \`bv --robot-next\` for solo work or \`bv --robot-triage\` for swarm-safe selection before falling back to \`br ready --json\`.
+- Run \`bv --robot-insights\` when the graph seems stuck or ready-work selection is ambiguous.
+- Track progress in beads and Agent Mail. Close a bead only after its verification contract passes, then run \`br sync --flush-only\`.
+
+### 4. Stalled in-progress beads (evidence-based)
+- Do not disrupt active work. Treat a bead as active if there is recent Agent Mail activity, unexpired file reservations, recent commits, current workspace edits, or a responsive owner.
+- Reopen or take over an \`in_progress\` bead only with concrete stale evidence: old \`updated_at\`, expired or absent reservations, no recent owner messages/commits, no relevant dirty files, and preferably one unanswered targeted check-in.
+- Record the evidence in Agent Mail or the bead before changing status. If evidence is incomplete, leave it alone and pick different ready work.
+
+### 5. Work and verify
+- Make focused edits only for your selected bead; add or adjust focused tests when needed to prove the acceptance criteria.
+- Run the bead's verification command(s) exactly and report truthful output. Do not claim success if a command failed or was not run.
+- Commit only your bead changes with a bead-scoped message, close the bead, sync beads, and report bead id, commit hash, changed files, verification output, Agent Mail status, and blockers.
 
 ${ntmOperatorTickLoopInstructions()}
 
@@ -1425,6 +1457,7 @@ export const SWARM_MODELS = {
   opus: "anthropic/claude-opus-5",
   gpt: "openai-codex/gpt-5.4",
   haiku: "anthropic/claude-haiku-4-5",
+  deepseek: "openrouter/deepseek/deepseek-v4-flash-vision-exp",
 } as const;
 
 /** Models used by cost-aware model routing tiers. */

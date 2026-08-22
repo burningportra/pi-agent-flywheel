@@ -64,6 +64,8 @@ export const SLASH_CANONICAL: Record<string, string> = {
   "agent-flywheel-swarm-status": "flywheel-swarm-status",
   "orchestrate-swarm-stop": "flywheel-swarm-stop",
   "agent-flywheel-swarm-stop": "flywheel-swarm-stop",
+  "orchestrate-swarm": "flywheel-swarm",
+  "agent-flywheel-swarm": "flywheel-swarm",
   "orchestrate-audit-beads": "flywheel-audit-beads",
   "agent-flywheel-audit-beads": "flywheel-audit-beads",
 };

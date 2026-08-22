@@ -152,6 +152,8 @@ export interface SwarmComposition {
   paneSpecs: NtmPaneSpec[];
   /** Recommended model distribution (roster display). */
   models: Array<{ model: string; count: number }>;
+  /** When set, every agent uses this model instead of the pane-kind default roster. */
+  modelOverride?: string;
   /** Reasoning for the recommendation. */
   rationale: string;
 }
@@ -255,7 +257,7 @@ export function generateAgentConfigs(
   }
 
   for (let i = 0; i < count; i++) {
-    const model = modelQueue[i % modelQueue.length];
+    const model = composition.modelOverride ?? modelQueue[i % modelQueue.length];
     const modelShort = model.split("/").pop()?.slice(0, 12) ?? `agent-${i}`;
 
     configs.push({
@@ -380,6 +382,7 @@ export function formatLaunchInstructions(
     label: "swarm",
     agentCount: configs.length,
     paneSpecs: composition?.paneSpecs,
+    model: composition?.modelOverride,
     prompt,
     title: "🐝 Swarm Launch Configuration",
   });
