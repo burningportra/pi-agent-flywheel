@@ -220,7 +220,8 @@ export function registerReviewTool(oc: OrchestratorContext) {
       }
 
       const sourceResearchDetails = assessSourceResearchEvidence(bead, params.beadId, reviewEvidenceText);
-      if (sourceResearchDetails.sourceResearchMissingMessage && params.verdict === "pass") {
+      const suppressSourceResearchWarning = !!process.env.FLYWHEEL_SUPPRESS_SOURCE_RESEARCH;
+      if (sourceResearchDetails.sourceResearchMissingMessage && params.verdict === "pass" && !suppressSourceResearchWarning) {
         ctx.ui.notify(sourceResearchDetails.sourceResearchMissingMessage, "warning");
       }
       const {

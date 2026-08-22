@@ -106,8 +106,7 @@ export function extractSourceResearchWaiver(text: string): string | undefined {
 
 export function missingSourceResearchCardMessage(beadId: string): string {
   return `⚠️ Bead ${beadId} looks integration-heavy but review evidence did not include a Source Research Card.\n\n` +
-    `To resolve, rerun review with either this heading and fields:\n\n${SOURCE_RESEARCH_CARD_TEMPLATE}\n\n` +
-    `Or, if this is a false positive, include this waiver line in review feedback:\n${SOURCE_RESEARCH_WAIVER_TEMPLATE}`;
+    `To resolve, rerun review with either a Source Research Card (\`### Source Research Card\` with fields Sources read, API contracts found, Alternatives considered, Selected approach, Open unknowns, Evidence links/paths) or, if this is a false positive, add this waiver line: Source Research Card: not required because <brief rationale showing only local/internal code is involved>.`;
 }
 
 export interface SourceResearchReviewDetails {

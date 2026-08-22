@@ -108,6 +108,7 @@ export const ERROR_CATEGORIES: Record<string, ErrorCategory> = {
 export const ENV_VARS: EnvVarDefinition[] = [
   { name: "FLYWHEEL_SUPPRESS_DEPRECATION", effect: "If set, suppresses deprecation warnings emitted when calling agent_flywheel_*/orch_* legacy tool names. Use in CI to reduce log noise." },
   { name: "FLYWHEEL_CHECKPOINT_TTL_DAYS", effect: "Override stale-checkpoint threshold (default: 7). Used by R-012 doctor recovery menu." },
+  { name: "FLYWHEEL_SUPPRESS_SOURCE_RESEARCH", effect: "If set, suppresses the Source Research Card completion warning emitted during review for integration-heavy beads. Set when you want to quiet false-positive notices on local-only work." },
 ];
 
 const TOOL_DESCRIPTIONS: Record<string, { description: string; phase_position: number | null; prereq: string | null; next: string | null }> = {
