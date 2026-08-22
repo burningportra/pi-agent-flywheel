@@ -1456,14 +1456,14 @@ export const DEEP_PLAN_MODELS = {
 export const SWARM_MODELS = {
   opus: "anthropic/claude-opus-5",
   gpt: "openai-codex/gpt-5.4",
-  haiku: "anthropic/claude-haiku-4-5",
+  haiku: "anthropic/claude-haiku-4.5",
   deepseek: "openrouter/deepseek/deepseek-v4-flash-vision-exp",
 } as const;
 
 /** Models used by cost-aware model routing tiers. */
 export const MODEL_ROUTING_TIERS = {
   simple: {
-    implementation: "anthropic/claude-haiku-4-5",
+    implementation: "anthropic/claude-haiku-4.5",
     review: "anthropic/claude-opus-5",
   },
   medium: {
