@@ -380,6 +380,11 @@ export class SwarmTender {
       if (due) {
         this.lastAntiSlopCommitCount = count;
         this.onAntiSlopDue?.(since);
+      } else if (this.lastAntiSlopCommitCount === 0) {
+        // First observation: establish the baseline without firing. Without this,
+        // lastAntiSlopCommitCount stays 0 forever and antiSlopDue always returns
+        // due:false, so onAntiSlopDue never fires (dead code).
+        this.lastAntiSlopCommitCount = count;
       }
     } catch { /* git may be unavailable */ }
   }

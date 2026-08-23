@@ -76,4 +76,26 @@ describe("antiSlopDue", () => {
   it("is not due before the cadence", () => {
     expect(antiSlopDue(8, 6, 6)).toEqual({ due: false, since: 2 });
   });
+
+  // Regression: the SwarmTender state machine must establish a baseline on its first
+  // observation (lastCount=0) and only then fire on subsequent crossings. Without
+  // establishing the baseline, lastCount stays 0 forever and onAntiSlopDue never fires.
+  it("establishes a baseline on first run, then fires on the next crossing", () => {
+    let lastCount = 0;
+    const fired: number[] = [];
+    // simulate two auto-tick observations: count at first run, then +6 later
+    const observe = (count: number) => {
+      const { due, since } = antiSlopDue(count, lastCount, 6);
+      if (due) {
+        lastCount = count;
+        fired.push(since);
+      } else if (lastCount === 0) {
+        lastCount = count; // baseline established on first observation
+      }
+    };
+    observe(30); // first run: baseline = 30, no fire
+    expect(fired).toEqual([]);
+    observe(36); // +6: due
+    expect(fired).toEqual([6]);
+  });
 });
