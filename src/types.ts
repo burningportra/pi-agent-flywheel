@@ -712,6 +712,10 @@ export function createInitialState(): OrchestratorState {
 export interface HitMeResult {
   text: string;
   diff: string;
+  /** Count of reviewers that produced at least one non-whitespace line of output. */
+  hadOutputCount: number;
+  /** Count of reviewers that launched OK (exit 0) but produced no output. */
+  emptyOutputCount: number;
 }
 
 /**

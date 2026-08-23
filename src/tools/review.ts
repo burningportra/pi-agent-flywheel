@@ -15,6 +15,16 @@ import { FlywheelError } from "../errors.js";
 import { decideImplementationLaunchSafety, detectInteractiveSubagentToolSurface } from "../coordination.js";
 import { preflightAgentMail } from "../agent-mail.js";
 import { decideReviewWorkerLaunchSafety, formatReviewWorkerLaunchSafety, preflightWorkerProviders, type ProviderPreflightCheck } from "../provider-preflight.js";
+
+/**
+ * Anti-rubber-stamp decision: a batch of peer-review agents is unverifiable when
+ * none of them produced any non-empty output. Callers must treat this as a
+ * degraded/blocked pass, never as a clean "pass with no findings".
+ */
+export function isPeerReviewOutputEmpty(reviewerCount: number, hadOutputCount: number): boolean {
+  return reviewerCount > 0 && hadOutputCount === 0;
+}
+
 export function registerReviewTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_review", "orch_review", "flywheel_review"] as const) {
   oc.pi.registerTool({
@@ -528,14 +538,45 @@ export function registerReviewTool(oc: OrchestratorContext) {
 
           const launchableReviewerIds = new Set(reviewLaunchSafety.launchableReviewerIds);
           const launchableAgentConfigs = agentConfigs.filter((config) => launchableReviewerIds.has(config.name));
+          const peerReviewCount = launchableAgentConfigs.length;
           const hitMeResults = await oc.runHitMeAgents(launchableAgentConfigs, ctx.cwd, ctx);
 
           oc.state.beadHitMeCompleted[params.beadId] = true;
           oc.persistState();
 
+          // Anti-rubber-stamp gate: if NO peer reviewer produced any output, a
+          // "clean pass" is unverifiable. Surface the degradation and require the
+          // orchestrator to run the verification contract manually instead of
+          // auto-passing/auto-advancing on empty reviewer output.
+          const allReviewersEmpty = isPeerReviewOutputEmpty(peerReviewCount, hitMeResults.hadOutputCount);
           const degradedReviewText = reviewLaunchSafety.degradedReviewerIds.length > 0
             ? `\n\n## ⚠️ Degraded Review Capacity\n\n${reviewLaunchSafetyText}\n\nCompleted reviewers: ${reviewLaunchSafety.launchableReviewerIds.join(", ") || "none"}\nSkipped reviewers: ${reviewLaunchSafety.degradedReviewerIds.join(", ")}`
             : "";
+
+          if (allReviewersEmpty) {
+            oc.state.beadResults[params.beadId] = {
+              ...oc.state.beadResults[params.beadId],
+              status: "partial",
+              summary: `${params.summary}\n\nPeer review produced no findings — all ${peerReviewCount} reviewer(s) returned empty output. Automatically closing on empty reviewer output is blocked; run the verification contract manually and re-submit.`,
+            };
+            oc.persistState();
+
+            const emptyText = `## ⚠️ Review Pass Blocked — No Peer-Review Findings\n\nBead ${params.beadId} (${bead.title}) passed self-review, but all ${peerReviewCount} peer-review agent(s) returned empty output (${hitMeResults.emptyOutputCount} empty). This is NOT a clean pass — peer review produced no findings, so auto-advancing/auto-closing is blocked.\n\n### What to do\n- Run the verification contract commands and cite exact output in \`orch_review\`.\n- If peer reviewers cannot produce output in this environment (e.g. no mux / agent-mail), state the expected-command evidence explicitly (\`npm run build\`, \`npm test\`, focused tests) and confirm they ran with exit 0.${degradedReviewText}`;
+
+            return {
+              content: [{ type: "text", text: emptyText }],
+              details: {
+                review: { beadId: params.beadId, passed: false },
+                hitMe: true,
+                round,
+                bead: params.beadId,
+                providerPreflight: reviewProviderPreflight,
+                reviewLaunchSafety,
+                peerReview: { hadOutputCount: hitMeResults.hadOutputCount, emptyOutputCount: hitMeResults.emptyOutputCount, reviewerCount: peerReviewCount },
+                ...sourceResearchDetails,
+              },
+            };
+          }
 
           return {
             content: [
@@ -544,7 +585,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}${degradedReviewText}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
               },
             ],
-            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, providerPreflight: reviewProviderPreflight, reviewLaunchSafety, ...sourceResearchDetails },
+            details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, providerPreflight: reviewProviderPreflight, reviewLaunchSafety, peerReview: { hadOutputCount: hitMeResults.hadOutputCount, emptyOutputCount: hitMeResults.emptyOutputCount, reviewerCount: peerReviewCount }, ...sourceResearchDetails },
           };
         }
 

@@ -148,7 +148,7 @@ function buildOrchestrator(events: StartupEvent[], scenario: string, startedAt: 
     },
     persistState: () => recordEvent(events, scenario, startedAt, "persist", "state persisted"),
     updateWidget: vi.fn(),
-    runHitMeAgents: vi.fn(async () => ({ text: "", diff: "" })),
+    runHitMeAgents: vi.fn(async () => ({ text: "", diff: "", hadOutputCount: 0, emptyOutputCount: 0 })),
     agentMailRPC: vi.fn(async () => ({})),
     ensureAgentMailProject: vi.fn(async () => undefined),
   } as unknown as OrchestratorContext;

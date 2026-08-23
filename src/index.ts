@@ -91,6 +91,10 @@ export default function (pi: ExtensionAPI) {
   interface HitMeResult {
     text: string;
     diff: string;
+    /** Count of reviewers that produced at least one non-whitespace line of output. */
+    hadOutputCount: number;
+    /** Count of reviewers that launched OK (exit 0) but produced no output. */
+    emptyOutputCount: number;
   }
 
   async function runHitMeAgents(
@@ -121,9 +125,14 @@ export default function (pi: ExtensionAPI) {
           timeout: 120000,
           cwd,
         });
-        return { name: agent.name, output: result.stdout.trim(), ok: result.code === 0 };
+        return {
+          name: agent.name,
+          output: result.stdout.trim(),
+          ok: result.code === 0,
+          hadOutput: result.stdout.trim().length > 0,
+        };
       } catch (err: any) {
-        return { name: agent.name, output: `ERROR: ${err.message ?? err}`, ok: false };
+        return { name: agent.name, output: `ERROR: ${err.message ?? err}`, ok: false, hadOutput: false };
       }
     });
 
@@ -135,6 +144,9 @@ export default function (pi: ExtensionAPI) {
       return `### ${status} ${r.name}\n\n${r.output || "(no output)"}\n`;
     });
     const text = sections.join("\n---\n\n");
+
+    const hadOutputCount = results.filter((r) => r.hadOutput).length;
+    const emptyOutputCount = results.filter((r) => r.ok && !r.hadOutput).length;
 
     // Capture git diff — agents' edits persist to disk in --print mode
     let diff = "";
@@ -152,7 +164,7 @@ export default function (pi: ExtensionAPI) {
       "info"
     );
 
-    return { text, diff };
+    return { text, diff, hadOutputCount, emptyOutputCount };
   }
 
   // ─── Agent Mail helpers (imported from ./agent-mail.ts) ─────

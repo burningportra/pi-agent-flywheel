@@ -65,7 +65,7 @@ function buildOrchestrator(): { oc: OrchestratorContext; commands: Map<string, a
     }),
     persistState: vi.fn(),
     updateWidget: vi.fn(),
-    runHitMeAgents: vi.fn(async () => ({ text: "", diff: "" })),
+    runHitMeAgents: vi.fn(async () => ({ text: "", diff: "", hadOutputCount: 0, emptyOutputCount: 0 })),
     agentMailRPC: vi.fn(async () => ({})),
     ensureAgentMailProject: vi.fn(async () => undefined),
   } as unknown as OrchestratorContext;
