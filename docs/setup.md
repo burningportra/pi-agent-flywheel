@@ -18,7 +18,7 @@ Verify it loaded:
 
 ```bash
 pi
-# Then type: /orchestrate-status
+# Then type: /flywheel-status
 # Expected output: "Phase: idle" (no active session)
 ```
 
@@ -48,7 +48,7 @@ ccc index
 
 ### What if I skip ccc?
 
-Nothing breaks. `/orchestrate` still works — it just uses the built-in profiler instead of ccc-backed codebase analysis.
+Nothing breaks. `/flywheel-start` still works — it just uses the built-in profiler instead of ccc-backed codebase analysis.
 
 ## Subscription Setup (Multi-Model Features)
 

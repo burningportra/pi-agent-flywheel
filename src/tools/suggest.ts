@@ -63,7 +63,7 @@ export function findClosestToolName(wrong: string): SuggestResult {
           is_legacy_alias: wrong !== canonical,
           hint: wrong === canonical
             ? `'${wrong}' is the canonical name and is registered.`
-            : `'${wrong}' is a legacy alias of '${canonical}'. The legacy alias still works but emits a deprecation warning. Use '${canonical}' instead.`,
+            : `'${wrong}' is an alias of '${canonical}' and still works. Use '${canonical}' instead.`,
         };
       }
     }

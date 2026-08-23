@@ -7,7 +7,7 @@ import type { OrchestratorContext, Bead, BvInsights, OrchestratorState, Verifica
 import { freshContextRefinementPrompt, computeConvergenceScore, blunderHuntInstructions, beadCreationPrompt, freshPlanRefinementPrompt, planToBeadsPrompt, formatPlanToBeadAuditWarnings, pickRefinementModel, beadQualityScoringPrompt, parseBeadQualityScore, formatBeadQualityAudit, superpowersSpecRefinementPrompt, type BeadQualityAuditResult } from "../prompts.js";
 import { planQualityScoringPrompt, parsePlanQualityScore, formatPlanQualityScore, type PlanQualityScore } from "../plan-quality.js";
 import { sessionArtifactPath, findSessionArtifactPath } from "../session-artifacts.js";
-import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { resolveExecutionMode } from "./shared.js";
 import { brExec, brExecJson, resilientExec } from "../cli-exec.js";
 import { pickAlternativeBeadReviewModel } from "../bead-review.js";
 import { decideImplementationLaunchSafety, detectInteractiveSubagentToolSurface } from "../coordination.js";
@@ -438,7 +438,6 @@ export function registerApproveTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("approve_beads"));
       if (!oc.state.selectedGoal) {
         throw new FlywheelError("NO_GOAL");
       }

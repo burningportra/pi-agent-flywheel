@@ -667,7 +667,7 @@ export interface OrchestratorState {
 
   // ─── Review clean-round tracking ──────────────────────────
   /**
-   * Number of consecutive review rounds where orch_review was called
+   * Number of consecutive review rounds where flywheel_review was called
    * with verdict=“pass” and no revision instructions (guide §08 stop condition).
    * Reset to 0 on any fail or revision-instructions round.
    */

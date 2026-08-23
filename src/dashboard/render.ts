@@ -372,9 +372,9 @@ function renderStatusFooter(
 ): string {
   const refresh = `↻ ${new Date(snapshot.lastRefreshMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
   const hint = snapshot.phase === "implementing" || snapshot.phase === "reviewing"
-    ? "/orchestrate-drift-check to check goal alignment"
+    ? "/flywheel-status to check goal alignment"
     : snapshot.phase === "awaiting_bead_approval" || snapshot.phase === "refining_beads"
-    ? "orch_approve_beads to review"
+    ? "flywheel_approve_beads to review"
     : "";
   const staleNote = renderStaleFooterNote(snapshot, theme);
   const left = [hint ? styled(theme, "muted", hint) : "", staleNote].filter(Boolean).join("  ");

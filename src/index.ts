@@ -347,7 +347,7 @@ export default function (pi: ExtensionAPI) {
         // Use stage detection for a richer, phase-aware session-restore notification.
         // We don't have live bead data here (async read would be needed), so we
         // derive counts from the persisted state for now — the full live read
-        // happens when the user runs /orchestrate.
+        // happens when the user runs /flywheel-start.
         const { detectSessionStage, formatSessionContext } = await import("./session-state.js");
         // Build a lightweight bead array from persisted ids + results for stage detection
         const persistedBeads = (state.activeBeadIds ?? []).map(id => ({
@@ -372,10 +372,10 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify(
             (isActivePhase ? "⚠️ Session interrupted" : "🔄 Previous session detected") +
             `\n\n${stageCtx}\n\n` +
-            `Run \`/orchestrate\` to resume or \`/orchestrate-stop\` to reset.`,
+            `Run \`/flywheel-start\` to resume or \`/flywheel-stop\` to reset.`,
             isActivePhase ? "warning" : "info"
           );
-          // Don't auto-activate — let the user decide via /orchestrate
+          // Don't auto-activate — let the user decide via /flywheel-start
           orchestratorActive = false;
         } else {
           orchestratorActive = state.phase !== "idle" && state.phase !== "complete";
@@ -399,7 +399,7 @@ export default function (pi: ExtensionAPI) {
         if (state.activeBeadIds && state.activeBeadIds.length > 0) {
           const done = Object.values(state.beadResults ?? {}).filter(r => r.status === "success").length;
           ctx.ui.notify(
-            `Restored bead orchestration: ${done}/${state.activeBeadIds.length} beads complete. Run /orchestrate-status for details.`,
+            `Restored bead orchestration: ${done}/${state.activeBeadIds.length} beads complete. Run /flywheel-status for details.`,
             "info"
           );
         }
@@ -427,7 +427,7 @@ export default function (pi: ExtensionAPI) {
         const dirtyCount = orphans.filter(o => o.isDirty).length;
         const dirtyNote = dirtyCount > 0 ? ` (${dirtyCount} with uncommitted changes)` : "";
         ctx.ui.notify(
-          `🧹 Found ${orphans.length} orphaned worktree${orphans.length > 1 ? "s" : ""} from a previous session${dirtyNote}. Run \`/orchestrate-cleanup\` to remove them.`,
+          `🧹 Found ${orphans.length} orphaned worktree${orphans.length > 1 ? "s" : ""} from a previous session${dirtyNote}. Run \`/flywheel-cleanup\` to remove them.`,
           "warning"
         );
       }

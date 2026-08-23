@@ -15,7 +15,6 @@ import { detectCoordinationBackend, selectMode, selectStrategy } from "../coordi
 import { brExec, brExecJson } from "../cli-exec.js";
 import { initSuperpowersWorkflow } from "../workflows/superpowers.js";
 
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 
 // ─── Foundation Gap Detection ──────────────────────────────────────
 
@@ -213,7 +212,6 @@ export function registerProfileTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("profile"));
       const continuation = activeWorkflowContinuation(oc.state);
       if (continuation) {
         return {
@@ -277,7 +275,7 @@ export function registerProfileTool(oc: OrchestratorContext) {
         : "🤝 Coordination: bare worktrees (no beads/agent-mail detected)";
       
       const upgradeHint = missingTools.length > 0 && coordParts.length < 2
-        ? `\n💡 **Upgrade available:** Install ${missingTools.join(", ")} for enhanced coordination. Run \`/orchestrate-setup\` for guided install.`
+        ? `\n💡 **Upgrade available:** Install ${missingTools.join(", ")} for enhanced coordination.`
         : "";
 
       // Read CASS memory context for this repo/goal
@@ -811,18 +809,18 @@ export function registerProfileTool(oc: OrchestratorContext) {
           oc.setPhase("profiling", ctx);
           oc.persistState();
           return {
-            content: [{ type: "text", text: "Discarded. Call `orch_profile` to start the discovery funnel again." }],
+            content: [{ type: "text", text: "Discarded. Call `flywheel_profile` to start the discovery funnel again." }],
             details: { profile, scanResult, funnel: true, discarded: true },
           };
         } else if (reviewChoice.startsWith("🔄")) {
-          // User wants to refine further — re-run orch_profile with deep discovery
+          // User wants to refine further — re-run flywheel_profile with deep discovery
           oc.state.funnelRawIdeas = undefined;
           oc.state.funnelWinnowedIds = undefined;
           oc.state.candidateIdeas = undefined;
           oc.setPhase("profiling", ctx);
           oc.persistState();
           return {
-            content: [{ type: "text", text: "Resetting for another round. Call `orch_profile` and choose deep discovery again to refine further." }],
+            content: [{ type: "text", text: "Resetting for another round. Call `flywheel_profile` and choose deep discovery again to refine further." }],
             details: { profile, scanResult, funnel: true, refined: true },
           };
         } else if (reviewChoice.startsWith("🔍")) {

@@ -61,7 +61,7 @@ Based on the [Agentic Coding Flywheel](https://agent-flywheel.com/).
 
 ## Beads Compliance Audit
 
-The guided gate loop now includes an automatic **Beads compliance audit** gate after all beads are done and before commit/ship. `/agent-flywheel-audit-beads` and the `agent_flywheel_audit_beads` tool expose the same audit kickoff manually. Legacy `/orchestrate-audit-beads`, `orch_audit_beads`, and `flywheel_audit_beads` aliases remain available.
+The guided gate loop now includes an automatic **Beads compliance audit** gate after all beads are done and before commit/ship. `/agent-flywheel-audit-beads` and the `agent_flywheel_audit_beads` tool expose the same audit kickoff manually. `orch_audit_beads` and `flywheel_audit_beads` aliases remain available.
 
 The audit entrypoint is deliberately a preflight + kickoff step, not a silent auto-fixer:
 
@@ -352,7 +352,7 @@ src/
 ├── bead-templates.ts  # Built-in bead template library and placeholder expansion
 ├── beads.ts           # br CLI wrapper: list, ready, done, create beads + quality/template checks
 ├── bead-review.ts     # Cross-model bead review via alternative AI model
-├── commands.ts        # Command registration (/orchestrate, /orchestrate-status, /orchestrate-reset)
+├── commands.ts        # Command registration (/agent-flywheel, /flywheel-status, /flywheel-stop)
 ├── coordination.ts    # Coordination backend detection (beads, agent-mail)
 ├── agent-mail.ts      # Agent-mail integration for multi-agent coordination
 ├── agents-md.ts       # AGENTS.md generation for sub-agent context

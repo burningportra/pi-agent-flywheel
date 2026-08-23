@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerCommands } from "./commands.js";
-import { _resetSlashDeprecationCache } from "./tools/shared.js";
 import { createInitialState, type AgentFlywheelCompactionContext, type Bead, type OrchestratorContext, type OrchestratorPhase } from "./types.js";
 
 const beadFixtures = vi.hoisted(() => ({ beads: [] as Bead[] }));
@@ -77,7 +76,6 @@ function buildOrchestrator(): { oc: OrchestratorContext; commands: Map<string, a
 describe("/flywheel-status slash command", () => {
   beforeEach(() => {
     beadFixtures.beads = [];
-    _resetSlashDeprecationCache();
     vi.restoreAllMocks();
   });
 
@@ -86,9 +84,7 @@ describe("/flywheel-status slash command", () => {
 
     expect(commands.get("flywheel-status")?.handler).toBeTypeOf("function");
     expect(commands.get("agent-flywheel-status")?.handler).toBeTypeOf("function");
-    expect(commands.get("orchestrate-status")?.handler).toBeTypeOf("function");
     expect(commands.get("agent-flywheel-status")?.description).toContain("Legacy alias");
-    expect(commands.get("orchestrate-status")?.description).toContain("Legacy alias");
   });
 
   it("prints human-readable status from the workflow status builder", async () => {
@@ -184,25 +180,5 @@ describe("/flywheel-status slash command", () => {
     expect(oc.persistState).not.toHaveBeenCalled();
     expect(oc.updateWidget).not.toHaveBeenCalled();
     expect(piExec).not.toHaveBeenCalled();
-  });
-
-  it("keeps legacy aliases working through slash deprecation handling", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { commands } = buildOrchestrator();
-    const ctx = buildContext();
-
-    await commands.get("agent-flywheel-status").handler("--json", ctx);
-    await commands.get("orchestrate-status").handler("--json", ctx);
-    await commands.get("flywheel-status").handler("--json", ctx);
-
-    expect(ctx.ui.notify).toHaveBeenCalledTimes(3);
-    expect(() => JSON.parse(ctx.ui.notify.mock.calls[0][0])).not.toThrow();
-    expect(() => JSON.parse(ctx.ui.notify.mock.calls[1][0])).not.toThrow();
-    expect(() => JSON.parse(ctx.ui.notify.mock.calls[2][0])).not.toThrow();
-    expect(warn).toHaveBeenCalledTimes(2);
-    expect(warn.mock.calls[0][0]).toContain("/agent-flywheel-status");
-    expect(warn.mock.calls[0][0]).toContain("/flywheel-status");
-    expect(warn.mock.calls[1][0]).toContain("/orchestrate-status");
-    expect(warn.mock.calls[1][0]).toContain("/flywheel-status");
   });
 });

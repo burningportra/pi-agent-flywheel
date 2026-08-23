@@ -236,7 +236,7 @@ export async function agentMailReadResource(exec: ExecFn, uri: string): Promise<
 }
 
 /**
- * Ensure project exists in agent-mail. Called once during orch_profile.
+ * Ensure project exists in agent-mail. Called once during flywheel_profile.
  */
 export async function ensureAgentMailProject(exec: ExecFn, cwd: string): Promise<void> {
   await agentMailRPC(exec, "ensure_project", { human_key: cwd });

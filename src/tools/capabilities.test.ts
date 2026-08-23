@@ -28,13 +28,10 @@ describe("R-002: flywheel_capabilities contract", () => {
     }
   });
 
-  it("legacy families have exactly 2 deprecated_aliases each", () => {
+  it("no tool has any deprecated_aliases (legacy prefixes removed)", () => {
     const caps = buildCapabilities("9.9.9");
-    const legacyFamilies = ["profile", "discover", "select", "plan", "approve_beads", "review", "memory", "doctor", "verify_beads", "audit_beads"];
     for (const t of caps.tools) {
-      if (legacyFamilies.includes(t.family)) {
-        expect(t.deprecated_aliases.length, `family ${t.family}`).toBe(2);
-      }
+      expect(t.deprecated_aliases.length, `family ${t.family}`).toBe(0);
     }
   });
 
@@ -59,10 +56,10 @@ describe("R-002: flywheel_capabilities contract", () => {
     }
   });
 
-  it("env_vars listed include FLYWHEEL_SUPPRESS_DEPRECATION", () => {
+  it("env_vars no longer include the removed FLYWHEEL_SUPPRESS_DEPRECATION", () => {
     const caps = buildCapabilities("9.9.9");
     const names = caps.env_vars.map((e) => e.name);
-    expect(names).toContain("FLYWHEEL_SUPPRESS_DEPRECATION");
+    expect(names).not.toContain("FLYWHEEL_SUPPRESS_DEPRECATION");
   });
 
   it("doctor_ref / triage_ref / robot_docs_ref all point at canonical names", () => {

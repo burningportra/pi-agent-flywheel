@@ -80,7 +80,7 @@ export function generateHandoffMarkdown(input: HandoffInput): string {
     bulletList(input.openQuestions, "No open questions recorded."),
     "",
     "## Next Steps",
-    bulletList(input.nextSteps, "Resume with `bv --robot-next`, inspect the active bead, and continue through `orch_review`."),
+    bulletList(input.nextSteps, "Resume with `bv --robot-next`, inspect the active bead, and continue through `flywheel_review`."),
     "",
     "## Suggested Skills",
     bulletList(input.suggestedSkills, "Use codebase-archaeology for orientation; use beads-workflow for bead repair."),

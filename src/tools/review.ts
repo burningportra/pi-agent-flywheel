@@ -6,7 +6,7 @@ import { realityCheckInstructions, randomExplorationInstructions } from "../prom
 import { getEpisodicContext, sanitiseSlug } from "../episodic-memory.js";
 import { agentMailTaskPreamble } from "../agent-mail.js";
 import { runGuidedGates } from "../gates.js";
-import { resolveExecutionMode , emitToolDeprecationWarning, canonicalName } from "./shared.js";
+import { resolveExecutionMode } from "./shared.js";
 import { brExec, resilientExec } from "../cli-exec.js";
 import { assessAcceptanceCriteriaEvidence, assessVerificationEvidence, formatAcceptanceCriteriaEvidenceMatrix } from "../bead-review.js";
 import { assessSourceResearchEvidence } from "../plan-quality.js";
@@ -50,7 +50,6 @@ export function registerReviewTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("review"));
       const { getBeadById, readyBeads, updateBeadStatus, updateBeadDescription, syncBeads, readBeads, extractArtifacts: extractBeadArtifacts, bvNext, extractVerificationContract } = await import("../beads.js");
 
       // Sentinel: beadId === "__gates__" while iterating = show next gate
@@ -205,7 +204,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 `${evidenceAssessment?.issues.length ? `Command/check issues:\n${evidenceAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` : ""}` +
                 `### Acceptance-criterion evidence\n${formatAcceptanceCriteriaEvidenceMatrix(criteriaAssessment)}\n\n` +
                 `${criteriaAssessment.issues.length ? `Criterion issues:\n${criteriaAssessment.issues.map((issue) => `- ${issue}`).join("\n")}\n\n` : ""}` +
-                `Re-run or cite the exact required command/checks, or explain the manual proof fallback with the automation blocker. Then call \`orch_review\` again.`,
+                `Re-run or cite the exact required command/checks, or explain the manual proof fallback with the automation blocker. Then call \`flywheel_review\` again.`,
             }],
             details: {
               review: { beadId: params.beadId, passed: false, runtimeVersion: oc.version },
@@ -294,7 +293,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
               return {
                 content: [{
                   type: "text",
-                  text: `${formatFakeSeamReport(fakeSeamFindings)}\n\nFix these production fake/test seams, then call \`orch_review\` again. If they are intentional production seams, explicitly choose the override when prompted.`,
+                  text: `${formatFakeSeamReport(fakeSeamFindings)}\n\nFix these production fake/test seams, then call \`flywheel_review\` again. If they are intentional production seams, explicitly choose the override when prompted.`,
                 }],
                 details: { review: { beadId: params.beadId, passed: false }, fakeSeamBlocked: true, findings: fakeSeamFindings },
               };
@@ -371,7 +370,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 return {
                   content: [{
                     type: "text",
-                    text: `⚠️ Space violation detected during bead ${params.beadId}. Regressing to bead creation.\n\n${violationText}\n\nCreate new beads to cover the unexpected scope, then call \`orch_approve_beads\` to return to the workflow menus.`,
+                    text: `⚠️ Space violation detected during bead ${params.beadId}. Regressing to bead creation.\n\n${violationText}\n\nCreate new beads to cover the unexpected scope, then call \`flywheel_approve_beads\` to return to the workflow menus.`,
                   }],
                   details: { review: { beadId: params.beadId, passed: true }, spaceViolation: true, regression: "creating_beads" },
                 };
@@ -384,7 +383,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
                 return {
                   content: [{
                     type: "text",
-                    text: `⚠️ Space violation detected during bead ${params.beadId}. Regressing to plan revision.\n\n${violationText}\n\nRevise the plan at \`${oc.state.planDocument ?? "(no plan artifact)"}\`, then call \`orch_approve_beads\` to return to the workflow menus.`,
+                    text: `⚠️ Space violation detected during bead ${params.beadId}. Regressing to plan revision.\n\n${violationText}\n\nRevise the plan at \`${oc.state.planDocument ?? "(no plan artifact)"}\`, then call \`flywheel_approve_beads\` to return to the workflow menus.`,
                   }],
                   details: { review: { beadId: params.beadId, passed: true }, spaceViolation: true, regression: "planning" },
                 };
@@ -529,7 +528,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
               content: [
                 {
                   type: "text",
-                  text: `## ⚠️ Automatic Review Pass Blocked — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${reviewLaunchSafetyText}\n\nNo peer reviewers were launched. Retry after repairing provider/auth, explicitly accept degraded reviewer capacity, or switch to a launchable provider before calling \`orch_review\` again.`,
+                  text: `## ⚠️ Automatic Review Pass Blocked — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${reviewLaunchSafetyText}\n\nNo peer reviewers were launched. Retry after repairing provider/auth, explicitly accept degraded reviewer capacity, or switch to a launchable provider before calling \`flywheel_review\` again.`,
                 },
               ],
               details: { review: { beadId: params.beadId, passed: false }, hitMe: true, round, bead: params.beadId, providerPreflight: reviewProviderPreflight, reviewLaunchSafety, ...sourceResearchDetails },
@@ -561,7 +560,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             };
             oc.persistState();
 
-            const emptyText = `## ⚠️ Review Pass Blocked — No Peer-Review Findings\n\nBead ${params.beadId} (${bead.title}) passed self-review, but all ${peerReviewCount} peer-review agent(s) returned empty output (${hitMeResults.emptyOutputCount} empty). This is NOT a clean pass — peer review produced no findings, so auto-advancing/auto-closing is blocked.\n\n### What to do\n- Run the verification contract commands and cite exact output in \`orch_review\`.\n- If peer reviewers cannot produce output in this environment (e.g. no mux / agent-mail), state the expected-command evidence explicitly (\`npm run build\`, \`npm test\`, focused tests) and confirm they ran with exit 0.${degradedReviewText}`;
+            const emptyText = `## ⚠️ Review Pass Blocked — No Peer-Review Findings\n\nBead ${params.beadId} (${bead.title}) passed self-review, but all ${peerReviewCount} peer-review agent(s) returned empty output (${hitMeResults.emptyOutputCount} empty). This is NOT a clean pass — peer review produced no findings, so auto-advancing/auto-closing is blocked.\n\n### What to do\n- Run the verification contract commands and cite exact output in \`flywheel_review\`.\n- If peer reviewers cannot produce output in this environment (e.g. no mux / agent-mail), state the expected-command evidence explicitly (\`npm run build\`, \`npm test\`, focused tests) and confirm they ran with exit 0.${degradedReviewText}`;
 
             return {
               content: [{ type: "text", text: emptyText }],
@@ -582,7 +581,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             content: [
               {
                 type: "text",
-                text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}${degradedReviewText}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`orch_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
+                text: `## 🔥 Automatic Review Pass — Bead ${params.beadId} (${bead.title}), Round ${round}\n\n${hitMeResults.text}${degradedReviewText}\n\n${hitMeResults.diff ? `### Diff\n\`\`\`diff\n${hitMeResults.diff}\n\`\`\`\n\n` : ""}Review findings were generated automatically. Call \`flywheel_review\` again for bead ${params.beadId} with what was fixed to stay inside the review workflow.`,
               },
             ],
             details: { review: { beadId: params.beadId, passed: true }, hitMe: true, round, bead: params.beadId, providerPreflight: reviewProviderPreflight, reviewLaunchSafety, peerReview: { hadOutputCount: hitMeResults.hadOutputCount, emptyOutputCount: hitMeResults.emptyOutputCount, reviewerCount: peerReviewCount }, ...sourceResearchDetails },
@@ -797,7 +796,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
             });
             const report = writeSwarmForecastReport({
               input: forecastInput,
-              source: { kind: "implementation-mode", generated_by: "orch_review" },
+              source: { kind: "implementation-mode", generated_by: "flywheel_review" },
               outputDir: `${ctx.cwd}/.pi-agent-flywheel/swarm-forecast`,
               basename: "latest",
             });
@@ -855,7 +854,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
               state: oc.state,
               reason: `review failed ${oc.state.retryCount} times for ${params.beadId}`,
               blockers: [params.revisionInstructions ?? params.feedback],
-              nextSteps: [`Rework bead ${params.beadId}, then call orch_review again with exact verification evidence.`],
+              nextSteps: [`Rework bead ${params.beadId}, then call flywheel_review again with exact verification evidence.`],
               suggestedSkills: ["codebase-archaeology", "triage-issue", "tdd"],
             });
           }
@@ -958,7 +957,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
           content: [
             {
               type: "text",
-              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}${remediationPlanText}${handoffPath ? `\n\nHandoff artifact: ${handoffPath}` : ""}\n\nSend these revision instructions to the responsible implementation worker (or launch a fresh clear-context pi-subagent for this bead) rather than fixing inline, then call \`orch_review\` again to stay inside the review workflow.`, 
+              text: `❌ Bead ${params.beadId} (${bead.title}) did not pass review (attempt ${oc.state.retryCount}/${oc.state.maxRetries}).\n\nRevision needed: ${params.revisionInstructions ?? params.feedback}${remediationPlanText}${handoffPath ? `\n\nHandoff artifact: ${handoffPath}` : ""}\n\nSend these revision instructions to the responsible implementation worker (or launch a fresh clear-context pi-subagent for this bead) rather than fixing inline, then call \`flywheel_review\` again to stay inside the review workflow.`, 
             },
           ],
           details: { review, retryCount: oc.state.retryCount, handoffPath },
@@ -970,7 +969,7 @@ export function registerReviewTool(oc: OrchestratorContext) {
       const a = args as any;
       const icon = a.verdict === "pass" ? "✅" : "❌";
       return new Text(
-        theme.fg("toolTitle", theme.bold("orch_review ")) +
+        theme.fg("toolTitle", theme.bold("flywheel_review ")) +
           theme.fg("dim", `bead ${a.beadId} ${icon}`),
         0, 0
       );

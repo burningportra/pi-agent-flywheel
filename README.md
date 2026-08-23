@@ -522,9 +522,9 @@ Stop swarm monitoring and print landing guidance.
 /agent-flywheel-swarm-stop
 ```
 
-### Legacy aliases
+### Compatibility aliases
 
-Older sessions may still use `/orchestrate*` or `/flywheel*` commands. They remain registered for compatibility, but new docs and workflows use `/agent-flywheel*`.
+`/flywheel*` and `/agent-flywheel*` are both supported. The former `/orchestrate*` commands have been removed — use `/flywheel*` or `/agent-flywheel*` instead.
 
 ### Tool names exposed to pi
 
@@ -857,9 +857,9 @@ The workflow can guide implementation and review, but you should inspect the fin
 
 The extension checkpoints phase state. Restart `/agent-flywheel`; when a resumable checkpoint exists, it offers to continue from the saved state.
 
-### Why are legacy `/orchestrate*` aliases still present?
+### What happened to the `/orchestrate*` commands?
 
-Earlier versions used orchestrator/flywheel naming. The aliases avoid breaking existing sessions, but new usage should prefer `/agent-flywheel*`.
+They were removed. This plugin uses `/flywheel*` (canonical) with `/agent-flywheel*` as aliases for the older AgentFlywheel naming.
 
 ---
 

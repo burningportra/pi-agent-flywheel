@@ -34,9 +34,9 @@ describe("R-003: flywheel_robot_docs handbook", () => {
     expect(docs).toContain("after reload, compaction, or handoff");
   });
 
-  it("documents both deprecation env vars", () => {
+  it("docs drop the removed FLYWHEEL_SUPPRESS_DEPRECATION env var", () => {
     const docs = buildRobotDocs();
-    expect(docs).toContain("FLYWHEEL_SUPPRESS_DEPRECATION");
+    expect(docs).not.toContain("FLYWHEEL_SUPPRESS_DEPRECATION");
     expect(docs).toContain("FLYWHEEL_CHECKPOINT_TTL_DAYS");
   });
 
@@ -69,7 +69,7 @@ describe("R-003: flywheel_robot_docs handbook", () => {
     const docs = buildRobotDocs();
     expect(docs).toContain("/flywheel-release-checklist        # canonical");
     expect(docs).toContain("/agent-flywheel-release-checklist  # legacy alias");
-    expect(docs).toContain("/orchestrate-release-checklist     # legacy alias");
+    expect(docs).not.toContain("/orchestrate-release-checklist");
     expect(docs).toContain("package.json/package-lock consistency");
     expect(docs).toContain("dirty scope unknown");
     expect(docs).toContain("build/test/UBS");

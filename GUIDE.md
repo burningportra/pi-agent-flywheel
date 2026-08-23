@@ -4,7 +4,7 @@
 
 ### Overview
 
-The orchestrator now displays a real-time monitoring dashboard during `/orchestrate` runs. It replaces the old 4-line status widget with a richer, width-aware TUI component that shows bead statuses, progress, and agent activity.
+The orchestrator now displays a real-time monitoring dashboard during `/flywheel-start` runs. It replaces the old 4-line status widget with a richer, width-aware TUI component that shows bead statuses, progress, and agent activity.
 
 ### What it shows
 
@@ -25,7 +25,7 @@ The orchestrator now displays a real-time monitoring dashboard during `/orchestr
 
 The dashboard is fully automatic — no commands to run:
 
-1. When `/orchestrate` enters an active phase, a `DashboardController` starts polling bead data every 3 seconds (active phases) or 6 seconds (planning phases).
+1. When `/flywheel-start` enters an active phase, a `DashboardController` starts polling bead data every 3 seconds (active phases) or 6 seconds (planning phases).
 2. Each refresh builds an immutable `DashboardSnapshot` from orchestrator state + live bead reads + tender summary.
 3. The snapshot is rendered via pure functions into width-aware string lines.
 4. The widget uses pi-tui's Component factory (`render(width)`) for responsive layout.

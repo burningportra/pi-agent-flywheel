@@ -7,7 +7,6 @@ import { AGENT_MAIL_URL, agentMailRPC } from "../agent-mail.js";
 import { brExec } from "../cli-exec.js";
 import { providerPreflightRepairGuidance } from "../provider-preflight.js";
 
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 export type DoctorSeverity = "green" | "yellow" | "red";
 
 export interface DoctorCheck {
@@ -166,7 +165,7 @@ export async function runDoctorChecks(pi: ExtensionAPI, cwd: string): Promise<Do
       return {
         severity: dirty > 0 ? "red" : "yellow",
         message: `${orphans.length} orphaned worktree(s)${dirty ? `, ${dirty} dirty` : ""}`,
-        hint: "Run /flywheel-cleanup (alias of /orchestrate-cleanup) to remove orphaned worktrees safely.",
+        hint: "Run /flywheel-cleanup to remove orphaned worktrees safely.",
       };
     }),
   ]);
@@ -233,7 +232,6 @@ export function registerDoctorTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("doctor"));
       const report = await runDoctorChecks(oc.pi, ctx.cwd);
       return {
         content: [{ type: "text", text: formatDoctorReport(report) }],

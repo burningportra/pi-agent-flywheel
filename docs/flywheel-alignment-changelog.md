@@ -92,7 +92,7 @@ This matters because the flywheel strongly prefers fungible agents. The orchestr
 ### The orchestrator has three planning paths
 This is now the most important conceptual change.
 
-A contributor should think about `/orchestrate` as having three valid routes after goal selection:
+A contributor should think about `/flywheel-start` as having three valid routes after goal selection:
 
 1. **Plan first**
    - best for large or architectural work

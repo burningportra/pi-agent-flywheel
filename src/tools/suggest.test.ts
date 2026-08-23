@@ -15,7 +15,7 @@ describe("R-007: flywheel_suggest typo / wrong-prefix correction", () => {
     expect(r.canonical).toBe("flywheel_doctor");
     expect(r.is_registered).toBe(true);
     expect(r.is_legacy_alias).toBe(true);
-    expect(r.hint).toContain("legacy alias");
+    expect(r.hint).toContain("alias");
   });
 
   it("typo (drop char) suggests the correct canonical", () => {
@@ -44,7 +44,11 @@ describe("R-007: flywheel_suggest typo / wrong-prefix correction", () => {
     expect(findClosestToolName("orch_discover").canonical).toBe("flywheel_discover");
   });
 
-  it("allRegisteredToolNames contains every legacy + canonical name (>= 30 entries)", () => {
-    expect(allRegisteredToolNames().length).toBeGreaterThanOrEqual(30);
+  it("allRegisteredToolNames contains the canonical flywheel_ names", () => {
+    const names = allRegisteredToolNames();
+    expect(names.length).toBeGreaterThanOrEqual(15);
+    expect(names).toContain("flywheel_profile");
+    expect(names).toContain("flywheel_doctor");
+    expect(names).toHaveLength(new Set(names).size); // no duplicates
   });
 });

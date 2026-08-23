@@ -19,7 +19,6 @@ import { getDeepPlanModels, detectAvailableModels, formatDetectedModels } from "
 import { enforceGoogleOpenRouterModel, launchModeForModel, providerPolicyNoteForModel } from "../model-policy.js";
 import { readMemory } from "../memory.js";
 
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { FlywheelError } from "../errors.js";
 import {
   checkPlanningToolOrdering,
@@ -218,7 +217,6 @@ export function registerPlanTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("plan"));
       if (!oc.state.selectedGoal || !oc.state.repoProfile) {
         throw new FlywheelError("NO_GOAL", "No selected goal or repo profile. Call flywheel_profile and flywheel_select first.");
       }

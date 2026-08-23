@@ -4,7 +4,6 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { brExec, resilientExec } from './cli-exec.js';
 import { prepareComplianceAuditPlan, type ComplianceAuditMode, type ComplianceRemediationPolicy } from './compliance-audit.js';
-import { emitSlashDeprecationWarning } from './tools/shared.js';
 import { buildWorkflowStatus, type WorkflowStatusOutput } from './workflow-status.js';
 
 /**
@@ -184,7 +183,7 @@ function pushPlanEntry(plans: SavedPlan[], fullPath: string, file: string, artif
 
 /**
  * Scan for saved plan documents from two sources:
- *  1. Session artifact directories under sessionDir (artifacts written by orch_plan)
+ *  1. Session artifact directories under sessionDir (artifacts written by flywheel_plan)
  *  2. The project’s own docs/ directory (any .md file in docs/ or docs/plans/)
  *
  * Sub-plan files (correctness / robustness / ergonomics) are excluded.
@@ -332,42 +331,9 @@ function parseComplianceAuditArgs(rawArgs?: string): {
 }
 
 /**
- * Register all slash-commands (/orchestrate, /orchestrate-stop,
- * /orchestrate-status, /memory) on the pi extension API.
+ * Register all slash-commands (/agent-flywheel, /flywheel-status, /memory) on the pi extension API.
  */
 export function registerCommands(oc: OrchestratorContext) {
-
-  // R-005: wrap registerCommand to emit slash deprecation warnings.
-  // Each legacy alias (mapped in SLASH_CANONICAL) emits a one-shot warning when invoked.
-  const __originalRegisterCommand = oc.pi.registerCommand.bind(oc.pi);
-  oc.pi.registerCommand = ((name: string, opts: any) => {
-    const opts2 = (() => {
-      if (!opts) return opts;
-      if (typeof opts.handler === 'function') {
-        const __originalHandler = opts.handler;
-        return {
-          ...opts,
-          handler: async function (this: any, args: string, ctx: any) {
-            emitSlashDeprecationWarning(name);
-            return __originalHandler.call(this, args, ctx);
-          },
-        };
-      }
-      if (typeof opts.run === 'function') {
-        const __originalRun = opts.run;
-        return {
-          ...opts,
-          run: async function (this: any, ctx: any) {
-            emitSlashDeprecationWarning(name);
-            return __originalRun.call(this, ctx);
-          },
-        };
-      }
-      return opts;
-    })();
-    return __originalRegisterCommand(name, opts2);
-  }) as typeof oc.pi.registerCommand;
-
 
   const { pi } = oc;
 
@@ -879,111 +845,9 @@ export function registerCommands(oc: OrchestratorContext) {
     handler: startHandler,
   });
 
-  pi.registerCommand("orchestrate", {
-    description:
-      "Legacy alias of /agent-flywheel",
-    handler: startHandler,
-  });
-
   pi.registerCommand("flywheel-start", {
     description: "Alias of /agent-flywheel",
     handler: startHandler,
-  });
-
-  // ─── Command: /orchestrate-stop ──────────────────────────────
-  pi.registerCommand("orchestrate-stop", {
-    description: "Stop the current orchestration",
-    handler: async (_args, ctx) => {
-      if (oc.orchestratorActive) {
-        if (oc.worktreePool) {
-          const summary = await oc.worktreePool.safeCleanup();
-          if (summary.autoCommitted > 0) {
-            ctx.ui.notify(
-              `💾 Auto-committed ${summary.autoCommitted} dirty worktree${summary.autoCommitted > 1 ? "s" : ""} before cleanup.`,
-              "info"
-            );
-          }
-          oc.worktreePool = undefined;
-        }
-        if (oc.swarmTender) { oc.swarmTender.stop(); oc.swarmTender = undefined; }
-        try {
-          const { shouldGenerateHandoff, writeHandoffArtifact } = await import("./handoff.js");
-          if (shouldGenerateHandoff({ event: "stop", state: oc.state })) {
-            const statusResult = await resilientExec(pi, "git", ["status", "--short"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
-            const changedFiles = statusResult.ok
-              ? statusResult.value.stdout.split("\n").map((line) => line.trim().split(/\s+/).at(-1)).filter((file): file is string => Boolean(file))
-              : [];
-            const handoffPath = writeHandoffArtifact({
-              cwd: ctx.cwd,
-              state: oc.state,
-              reason: "orchestrator stopped with active work",
-              changedFiles,
-              blockers: ["Orchestration was stopped before all active work completed."],
-            });
-            ctx.ui.notify(`🧾 Handoff artifact written: ${handoffPath}`, "info");
-          }
-        } catch { /* best-effort */ }
-        oc.orchestratorActive = false;
-        oc.setPhase("idle", ctx);
-        oc.persistState();
-        ctx.ui.notify("🛑 Orchestration stopped.", "warning");
-      } else {
-        ctx.ui.notify("No orchestration in progress.", "info");
-      }
-    },
-  });
-
-  // ─── Command: /orchestrate-cleanup ─────────────────────────────
-  pi.registerCommand("orchestrate-cleanup", {
-    description: "Clean up orphaned worktrees from previous sessions",
-    handler: async (_args, ctx) => {
-      const { findOrphanedWorktrees, cleanupOrphanedWorktrees } = await import("./worktree.js");
-
-      // If there's an active pool, confirm then use safeCleanup
-      if (oc.worktreePool) {
-        const poolCount = oc.worktreePool.getAll().length;
-        const confirmed = await ctx.ui.confirm(
-          "Clean up worktrees",
-          `Active worktree pool has ${poolCount} tracked worktree${poolCount !== 1 ? "s" : ""}. Dirty ones will be auto-committed before removal. Proceed?`
-        );
-        if (!confirmed) {
-          ctx.ui.notify("Cleanup cancelled.", "info");
-          return;
-        }
-        const summary = await oc.worktreePool.safeCleanup();
-        oc.worktreePool = undefined;
-        oc.persistState();
-        const parts: string[] = [`🧹 Cleaned up ${summary.removed} worktree${summary.removed !== 1 ? "s" : ""}`];
-        if (summary.autoCommitted > 0) parts.push(`💾 Auto-committed ${summary.autoCommitted} with uncommitted changes`);
-        if (summary.errors.length > 0) parts.push(`⚠️ ${summary.errors.length} error${summary.errors.length !== 1 ? "s" : ""}: ${summary.errors.join(", ")}`);
-        ctx.ui.notify(parts.join("\n"), summary.errors.length > 0 ? "warning" : "info");
-        return;
-      }
-
-      // No active pool — scan for orphans directly
-      const orphans = await findOrphanedWorktrees(pi, ctx.cwd, []);
-      if (orphans.length === 0) {
-        ctx.ui.notify("✅ No orphaned worktrees found.", "info");
-        return;
-      }
-
-      const dirtyCount = orphans.filter(o => o.isDirty).length;
-      const dirtyNote = dirtyCount > 0 ? ` (${dirtyCount} with uncommitted changes — will auto-commit)` : "";
-      const confirmed = await ctx.ui.confirm(
-        "Clean up worktrees",
-        `Found ${orphans.length} orphaned worktree${orphans.length > 1 ? "s" : ""}${dirtyNote}. Remove them?`
-      );
-      if (!confirmed) {
-        ctx.ui.notify("Cleanup cancelled.", "info");
-        return;
-      }
-
-      const summary = await cleanupOrphanedWorktrees(pi, ctx.cwd, orphans);
-      const parts: string[] = [`🧹 Removed ${summary.removed} worktree${summary.removed !== 1 ? "s" : ""}`];
-      if (summary.autoCommitted > 0) parts.push(`💾 Auto-committed ${summary.autoCommitted} with uncommitted changes`);
-      if (summary.errors.length > 0) parts.push(`⚠️ ${summary.errors.length} error${summary.errors.length !== 1 ? "s" : ""}: ${summary.errors.join(", ")}`);
-      ctx.ui.notify(parts.join("\n"), summary.errors.length > 0 ? "warning" : "info");
-    },
   });
 
   // ─── Command: /flywheel-release-checklist ───────────────────
@@ -1016,16 +880,6 @@ export function registerCommands(oc: OrchestratorContext) {
     handler: releaseChecklistHandler,
   });
 
-  pi.registerCommand("orchestrate-release-checklist", {
-    description: "Legacy alias of /flywheel-release-checklist",
-    handler: releaseChecklistHandler,
-  });
-
-  // ─── Command: /orchestrate-status ────────────────────────────
-  pi.registerCommand("orchestrate-status", {
-    description: "Legacy alias of /flywheel-status",
-    handler: workflowStatusHandler,
-  });
 
   // ─── Command: /memory ──────────────────────────────────────────
   pi.registerCommand("memory", {
@@ -1150,203 +1004,6 @@ export function registerCommands(oc: OrchestratorContext) {
     },
   });
 
-  // ─── Command: /orchestrate-drift-check ─────────────────────
-  pi.registerCommand("orchestrate-drift-check", {
-    description: "Run strategic drift detection — check if the swarm is still converging on the goal",
-    handler: async (_args, ctx) => {
-      if (!oc.orchestratorActive || !oc.state.selectedGoal) {
-        ctx.ui.notify("No active orchestration with a selected goal.", "warning");
-        return;
-      }
-
-      const { readBeads } = await import("./beads.js");
-      const { strategicDriftCheckInstructions } = await import("./prompts.js");
-
-      const beads = await readBeads(pi, ctx.cwd);
-      const openBeads = beads.filter(b => b.status === "open" || b.status === "in_progress");
-      const closedBeads = beads.filter(b => b.status === "closed");
-      const results = Object.values(oc.state.beadResults ?? {});
-
-      const prompt = strategicDriftCheckInstructions(
-        oc.state.selectedGoal!,
-        beads,
-        results,
-        closedBeads.length,
-        beads.length
-      );
-
-      pi.sendUserMessage(prompt);
-    },
-  });
-
-  // ─── Command: /orchestrate-setup ─────────────────────────────
-  pi.registerCommand("orchestrate-setup", {
-    description: "Check and install orchestration prerequisites (beads, agent-mail)",
-    handler: async (_args, ctx) => {
-      const { detectCoordinationBackend, resetDetection } = await import("./coordination.js");
-      
-      // Force fresh detection
-      resetDetection();
-      const backend = await detectCoordinationBackend(pi, ctx.cwd);
-      
-      const checks = [
-        {
-          name: "beads (br)",
-          installed: false,
-          initialized: false,
-          installCmd: "cargo install beads-cli",
-          initCmd: "br init",
-          description: "Task lifecycle tracking with dependencies",
-        },
-        {
-          name: "agent-mail",
-          installed: false,
-          initialized: true, // no init needed
-          installCmd: "uv pip install mcp-agent-mail",
-          initCmd: null,
-          description: "Multi-agent coordination and file reservations",
-        },
-      ];
-      
-      // Check br
-      const brHelpResult = await brExec(pi, ["--help"], { timeout: 3000, cwd: ctx.cwd, maxRetries: 0, logWarnings: false });
-      checks[0].installed = brHelpResult.ok;
-      if (brHelpResult.ok) {
-        const { existsSync } = await import("fs");
-        const { join } = await import("path");
-        checks[0].initialized = existsSync(join(ctx.cwd, ".beads"));
-      }
-      
-      // Check agent-mail
-      checks[1].installed = backend.agentMail;
-      
-      // Build status display
-      const statusLines = checks.map(c => {
-        const installStatus = c.installed ? "✅" : "❌";
-        const initStatus = c.initialized ? "" : " (not initialized)";
-        return `${installStatus} **${c.name}**${c.installed ? initStatus : ""} — ${c.description}`;
-      });
-      
-      ctx.ui.notify(
-        `## Orchestrator Prerequisites\n\n${statusLines.join("\n")}\n\n` +
-        `Current strategy: **${backend.beads && backend.agentMail ? "beads+agentmail" : backend.beads ? "beads-only" : "bare worktrees"}**`,
-        "info"
-      );
-      
-      // Offer to install/init missing components
-      const missing = checks.filter(c => !c.installed || !c.initialized);
-      if (missing.length === 0) {
-        ctx.ui.notify("✅ All prerequisites satisfied!", "info");
-        return;
-      }
-      
-      for (const check of missing) {
-        if (!check.installed) {
-          const install = await ctx.ui.confirm(
-            `Install ${check.name}?`,
-            `Run: ${check.installCmd}`
-          );
-          if (install) {
-            ctx.ui.notify(`Running: ${check.installCmd}`, "info");
-            const installResult = await resilientExec(pi, "bash", ["-c", check.installCmd], { timeout: 120000, cwd: ctx.cwd, maxRetries: 0 });
-            if (installResult.ok) {
-              ctx.ui.notify(`✅ ${check.name} installed successfully.`, "info");
-              check.installed = true;
-            } else {
-              ctx.ui.notify(`❌ Installation failed: ${installResult.error.stderr || installResult.error.stdout}`, "error");
-            }
-          }
-        }
-        
-        if (check.installed && !check.initialized && check.initCmd) {
-          const init = await ctx.ui.confirm(
-            `Initialize ${check.name}?`,
-            `Run: ${check.initCmd}`
-          );
-          if (init) {
-            ctx.ui.notify(`Running: ${check.initCmd}`, "info");
-            const initResult = await resilientExec(pi, "bash", ["-c", check.initCmd], { timeout: 30000, cwd: ctx.cwd, maxRetries: 0 });
-            if (initResult.ok) {
-              ctx.ui.notify(`✅ ${check.name} initialized successfully.`, "info");
-            } else {
-              ctx.ui.notify(`❌ Initialization failed: ${initResult.error.stderr || initResult.error.stdout}`, "error");
-            }
-          }
-        }
-      }
-      
-      // Re-detect after setup
-      resetDetection();
-      const newBackend = await detectCoordinationBackend(pi, ctx.cwd);
-      ctx.ui.notify(
-        `\n🔄 Updated strategy: **${newBackend.beads && newBackend.agentMail ? "beads+agentmail" : newBackend.beads ? "beads-only" : "bare worktrees"}**`,
-        "info"
-      );
-    },
-  });
-
-  // ─── Command: /orchestrate-rollback ──────────────────────────
-  pi.registerCommand("orchestrate-rollback", {
-    description: "Revert the last completed bead and re-open it for re-implementation",
-    handler: async (_args, ctx) => {
-      const { readBeads } = await import("./beads.js");
-      
-      // Find last completed bead from state
-      const completedEntries = Object.entries(oc.state.beadResults ?? {})
-        .filter(([_, r]) => r.status === "success");
-      
-      if (completedEntries.length === 0) {
-        ctx.ui.notify("No completed beads to roll back.", "info");
-        return;
-      }
-      
-      // Get bead details
-      const beads = await readBeads(pi, ctx.cwd);
-      const beadChoices = completedEntries.map(([id, result]) => {
-        const bead = beads.find(b => b.id === id);
-        return `${id}: ${bead?.title ?? result.summary.slice(0, 50)}`;
-      });
-      
-      const selected = await ctx.ui.select("Select bead to roll back:", beadChoices);
-      if (!selected) {
-        ctx.ui.notify("Rollback cancelled.", "info");
-        return;
-      }
-      
-      const beadId = selected.split(":")[0];
-      const confirmed = await ctx.ui.confirm(
-        "Confirm Rollback",
-        `Revert bead ${beadId} to open status? This will NOT undo code changes automatically.`
-      );
-      
-      if (!confirmed) {
-        ctx.ui.notify("Rollback cancelled.", "info");
-        return;
-      }
-      
-      // Re-open the bead
-      const reopenResult = await brExec(pi, ["update", beadId, "--status", "open"], { cwd: ctx.cwd, timeout: 5000 });
-      if (!reopenResult.ok) {
-        ctx.ui.notify(`❌ Failed to update bead status: ${reopenResult.error.stderr || reopenResult.error.command}`, "error");
-        return;
-      }
-      
-      // Remove from results
-      if (oc.state.beadResults) {
-        delete oc.state.beadResults[beadId];
-      }
-      oc.persistState();
-      
-      ctx.ui.notify(
-        `↩️ Rolled back bead **${beadId}** to open status.\n\n` +
-        `To undo code changes, you can:\n` +
-        `• \`git revert HEAD\` — revert last commit\n` +
-        `• \`git checkout -- <files>\` — discard specific changes\n\n` +
-        `Run \`/orchestrate\` to resume and re-implement this bead.`,
-        "info"
-      );
-    },
-  });
 
   // ─── Command: /agent-flywheel-research ──────────────────────
   const researchHandler = async (args: string, ctx: any) => {
@@ -1581,17 +1238,12 @@ export function registerCommands(oc: OrchestratorContext) {
     handler: researchHandler,
   });
 
-  pi.registerCommand("orchestrate-research", {
-    description: "Legacy alias of /agent-flywheel-research",
-    handler: researchHandler,
-  });
-
   pi.registerCommand("flywheel-research", {
     description: "Alias of /agent-flywheel-research",
     handler: researchHandler,
   });
 
-  // ─── Command: /orchestrate-swarm ─────────────────────────
+  // ─── Command: /flywheel-swarm ─────────────────────────
   const launchSwarm = async (_args: string, ctx: any) => {
     if (!oc.state.selectedGoal) {
       ctx.ui.notify("No active orchestration with a goal. Run /flywheel-start first.", "warning");
@@ -1730,354 +1382,15 @@ export function registerCommands(oc: OrchestratorContext) {
     handler: launchSwarm,
   });
 
-  pi.registerCommand("orchestrate-swarm", {
-    description: "Launch a persistent agent swarm for parallel bead execution",
-    handler: launchSwarm,
-  });
-
   pi.registerCommand("agent-flywheel-swarm", {
     description: "Launch a persistent agent swarm for parallel bead execution",
     handler: launchSwarm,
   });
 
-  // ─── Command: /orchestrate-swarm-status ───────────────────
-  pi.registerCommand("orchestrate-swarm-status", {
-    description: "Show swarm health: active/idle/stuck agents, bead progress, conflicts",
-    handler: async (_args, ctx) => {
-      if (!oc.swarmTender) {
-        ctx.ui.notify("No swarm active. Launch one with /flywheel-swarm.", "info");
-        return;
-      }
 
-      const { formatSwarmStatus } = await import("./swarm.js");
-      const { readBeads } = await import("./beads.js");
 
-      const agents = oc.swarmTender.getStatus();
-      const beads = await readBeads(pi, ctx.cwd);
-      const status = formatSwarmStatus(agents, beads);
 
-      ctx.ui.notify(status, "info");
-    },
-  });
-
-  // ─── Command: /orchestrate-refine-skills ──────────────────
-  pi.registerCommand("orchestrate-refine-skills", {
-    description: "Mine CASS session history for planning patterns and produce a skill refinement report",
-    handler: async (args, ctx) => {
-      const { mineSkillGaps } = await import("./memory.js");
-      const topic = args.trim() || "planning beads orchestration";
-      const snippets = mineSkillGaps(ctx.cwd, topic);
-      if (!snippets) {
-        ctx.ui.notify(
-          "No CASS session data found for topic: " + topic +
-          ". Ensure cm is installed and sessions have been recorded.",
-          "info"
-        );
-        return;
-      }
-      const task = `## Skill Refinement via Session Mining
-
-You have access to snippets from past orchestration sessions. Analyze them for:
-1. **What worked well** — prompts, approaches, patterns that produced good results
-2. **What failed** — repeated mistakes, dead ends, confusing steps
-3. **Missing guidance** — things the current prompts don't address but sessions show are important
-4. **Proposed improvements** — specific changes to planning/beads/review prompts
-
-## Session Snippets
-${snippets}
-
-## Output
-Produce a concrete skill refinement report with:
-- 3-7 specific prompt improvements (old text → new text)
-- 2-3 new rules to add to AGENTS.md
-- Any anti-patterns to codify
-
-Use ultrathink. Be specific — vague suggestions are useless.`;
-      ctx.ui.notify("Mining CASS sessions and analysing patterns…", "info");
-      pi.sendUserMessage(task, { deliverAs: "followUp" });
-    },
-  });
-
-  // ─── Command: /orchestrate-refine-skill ───────────────────
-  pi.registerCommand("orchestrate-refine-skill", {
-    description: "Refine a specific skill file using CASS session evidence",
-    handler: async (args, ctx) => {
-      const { mineSkillGaps, skillRefinerPrompt } = await import("./memory.js");
-      const { readFileSync, existsSync } = await import("fs");
-      const { join } = await import("path");
-      const skillName = args.trim();
-      if (!skillName) {
-        ctx.ui.notify("Usage: /orchestrate-refine-skill <skill-name-or-path>", "info");
-        return;
-      }
-      // Try common skill locations — only use ~/.claude/skills (home directory)
-      const { homedir } = await import("os");
-      const candidates = [
-        skillName,
-        join(homedir(), ".claude", "skills", skillName, "SKILL.md"),
-        join(homedir(), ".claude", "skills", skillName),
-      ];
-      let skillContent: string | null = null;
-      for (const p of candidates) {
-        if (existsSync(p)) {
-          try { skillContent = readFileSync(p, "utf8"); break; } catch { /* continue */ }
-        }
-      }
-      if (!skillContent) {
-        ctx.ui.notify(`Could not find skill file for: ${skillName}`, "error");
-        return;
-      }
-      const sessionData = mineSkillGaps(ctx.cwd, skillName) ?? undefined;
-      const prompt = skillRefinerPrompt(skillContent, skillName, sessionData);
-      ctx.ui.notify(`Refining skill: ${skillName}…`, "info");
-      pi.sendUserMessage(prompt, { deliverAs: "followUp" });
-    },
-  });
-
-  // ─── Command: /orchestrate-tool-feedback ──────────────────
-  pi.registerCommand("orchestrate-tool-feedback", {
-    description: "Collect structured feedback on a tool via an agent survey",
-    handler: async (args, ctx) => {
-      const { toolFeedbackPrompt, parseToolFeedback, saveToolFeedback } = await import("./feedback.js");
-      const toolName = args.trim();
-      if (!toolName) {
-        ctx.ui.notify("Usage: /orchestrate-tool-feedback <tool-name>", "info");
-        return;
-      }
-      const prompt = toolFeedbackPrompt(toolName);
-      // We send the feedback survey as a followUp; the agent fills it out and we parse the result
-      ctx.ui.notify(
-        `Sending feedback survey for tool: ${toolName}. ` +
-        `The agent will evaluate the tool and return a structured JSON report. ` +
-        `Results will be saved to .pi-agent-flywheel-feedback/tools/${toolName}.jsonl`,
-        "info"
-      );
-      // Register a one-time result handler by passing a parse-and-save instruction
-      const resultTask = prompt + `\n\nAfter completing the survey, paste your JSON response above. ` +
-        `The feedback will be automatically parsed and saved.`;
-      pi.sendUserMessage(resultTask, { deliverAs: "followUp" });
-      // Note: in a real pipeline the result would be streamed back; here we expose
-      // the parsing utilities so the orchestrator extension can wire them up.
-      void parseToolFeedback; // exported for use by the extension host
-      void saveToolFeedback;
-    },
-  });
-
-  // ─── Command: /orchestrate-swarm-stop ─────────────────────
-  // ─── Command: /orchestrate-healthcheck ──────────────────────
-  pi.registerCommand("orchestrate-healthcheck", {
-    description: "Quick static health snapshot: UBS scan, TODO count, test ratio, deps — no agents, instant result",
-    handler: async (_args, ctx) => {
-      const { existsSync, readdirSync, readFileSync } = await import("fs");
-      const { join, extname } = await import("path");
-      const { detectUbs } = await import("./coordination.js");
-
-      ctx.ui.notify("🔍 Running health check...", "info");
-
-      // 1. Profile if needed
-      if (!oc.state.repoProfile) {
-        try {
-          const { profileRepo } = await import("./profiler.js");
-          oc.state.repoProfile = await profileRepo(pi, ctx.cwd);
-          oc.persistState();
-        } catch { /* best-effort */ }
-      }
-      const profile = oc.state.repoProfile;
-
-      const lines: string[] = ["## 🏥 Codebase Health Check\n"];
-
-      // 2. UBS scan
-      const ubsAvailable = await detectUbs(pi, ctx.cwd);
-      if (ubsAvailable) {
-        const ubsResult = await resilientExec(pi, "ubs", ["."], { cwd: ctx.cwd, timeout: 30000, maxRetries: 0 });
-        if (ubsResult.ok) {
-          const ubsOut = (ubsResult.value.stdout + ubsResult.value.stderr).trim();
-          const issueCount = (ubsOut.match(/^(ERROR|WARN|WARNING)/gmi) ?? []).length;
-          lines.push(issueCount === 0
-            ? `### 🔒 UBS Scan\n✅ Clean — no issues found`
-            : `### 🔒 UBS Scan\n⚠️ **${issueCount} issue(s) found**\n\`\`\`\n${ubsOut.slice(0, 1500)}\n\`\`\``);
-        } else {
-          lines.push("### 🔒 UBS Scan\n⏭️ Skipped (scan error)");
-        }
-      } else {
-        lines.push("### 🔒 UBS Scan\n⏭️ Not installed (`cargo install ubs` to enable)");
-      }
-
-      // 3. TODO/FIXME count
-      const todoItems = profile?.todos ?? [];
-      const todoCount = todoItems.length;
-      const hacksCount = todoItems.filter(t =>
-        /HACK|XXX|FIXME/i.test(t.text ?? "")
-      ).length;
-      lines.push(`### 📝 TODOs & Technical Debt\n` +
-        `- ${todoCount} TODO/FIXME comments${todoCount > 20 ? " ⚠️ high" : todoCount > 5 ? " 🟡 moderate" : " ✅"}`  +
-        (hacksCount > 0 ? `\n- ${hacksCount} HACK/XXX markers 🟠` : ""));
-
-      // 4. Test file ratio
-      const findTsResult = await resilientExec(pi, "find", [".", "-type", "f", "-name", "*.ts", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"], { cwd: ctx.cwd, timeout: 10000, maxRetries: 0 });
-      if (findTsResult.ok) {
-        const allTs = findTsResult.value.stdout.trim().split("\n").filter(Boolean);
-        const testFiles = allTs.filter(f => /\.test\.|spec\.|__tests__/.test(f));
-        const srcFiles = allTs.filter(f => !/\.test\.|spec\.|__tests__/.test(f));
-        const ratio = srcFiles.length > 0 ? (testFiles.length / srcFiles.length) : 0;
-        const ratioEmoji = ratio >= 0.5 ? "✅" : ratio >= 0.2 ? "🟡" : "🔴";
-        lines.push(`### 🧪 Test Coverage Estimate\n` +
-          `${ratioEmoji} ${testFiles.length} test files / ${srcFiles.length} source files (ratio: ${(ratio * 100).toFixed(0)}%)`);
-      } else {
-        lines.push("### 🧪 Test Coverage Estimate\n⏭️ Skipped");
-      }
-
-      // 5. Dependency vulnerabilities (npm audit if available)
-      const hasPackageJson = existsSync(join(ctx.cwd, "package.json"));
-      if (hasPackageJson) {
-        const auditResult = await resilientExec(pi, "npm", ["audit", "--json", "--audit-level=high"], { cwd: ctx.cwd, timeout: 30000, maxRetries: 0, isTransient: () => false, logWarnings: false });
-        // npm audit exits non-zero when vulns found, so read stdout from both ok and error
-        const auditStdout = auditResult.ok ? auditResult.value.stdout : auditResult.error.stdout;
-        if (auditStdout) {
-          try {
-            const data = JSON.parse(auditStdout);
-            const vulnCount = data?.metadata?.vulnerabilities;
-            const high = (vulnCount?.high ?? 0) + (vulnCount?.critical ?? 0);
-            const total = Object.values(vulnCount ?? {}).reduce((s: number, n) => s + (n as number), 0);
-            lines.push(`### 📦 Dependency Vulnerabilities\n` +
-              (high > 0
-                ? `🔴 **${high} high/critical** (${total} total) — run \`npm audit fix\``
-                : total > 0
-                ? `🟡 ${total} low/moderate issues`
-                : `✅ No known vulnerabilities`));
-          } catch {
-            lines.push("### 📦 Dependency Vulnerabilities\n⏭️ Skipped (npm audit unavailable)");
-          }
-        } else {
-          lines.push("### 📦 Dependency Vulnerabilities\n⏭️ Skipped (npm audit unavailable)");
-        }
-      }
-
-      // 6. Git health (uncommitted changes, stale branch)
-      const gitStatusResult = await resilientExec(pi, "git", ["status", "--porcelain"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
-      if (gitStatusResult.ok) {
-        const dirty = gitStatusResult.value.stdout.trim().split("\n").filter(Boolean);
-        lines.push(`### 🌿 Git Status\n` +
-          (dirty.length === 0 ? "✅ Working tree clean" : `🟡 ${dirty.length} uncommitted change(s)`));
-      } else {
-        lines.push("### 🌿 Git Status\n⏭️ Skipped");
-      }
-
-      // 7. Composite score
-      const scores = [
-        ubsAvailable ? 1 : 0.5,
-        todoCount < 5 ? 1 : todoCount < 20 ? 0.7 : 0.4,
-      ];
-      const score = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100);
-      const scoreEmoji = score >= 80 ? "🟢" : score >= 60 ? "🟡" : "🔴";
-      lines.push(`\n---\n### ${scoreEmoji} Health Score: ${score}/100`);
-
-      const report = lines.join("\n\n");
-      pi.sendUserMessage(report, { deliverAs: "followUp" });
-    },
-  });
-
-  // ─── Command: /orchestrate-fix ───────────────────────────────
-  pi.registerCommand("orchestrate-fix", {
-    description: "Fast path: skip planning, create one bead from a description and start implementing",
-    handler: async (args, ctx) => {
-      const description = args.trim();
-      if (!description) {
-        ctx.ui.notify(
-          "Usage: /orchestrate-fix <description>\n\nExample:\n  /orchestrate-fix The login form crashes when email contains a + character",
-          "info"
-        );
-        return;
-      }
-
-      // Ensure br is available
-      const brAvail = await brExec(pi, ["--help"], { cwd: ctx.cwd, timeout: 3000, maxRetries: 0, logWarnings: false });
-      if (!brAvail.ok) {
-        ctx.ui.notify("❌ `br` CLI not found. Run `/orchestrate-setup` to install it.", "error");
-        return;
-      }
-
-      // Ensure .beads is initialised
-      const { existsSync } = await import("fs");
-      const { join } = await import("path");
-      if (!existsSync(join(ctx.cwd, ".beads"))) {
-        const initResult = await brExec(pi, ["init"], { cwd: ctx.cwd, timeout: 10000 });
-        if (!initResult.ok) {
-          ctx.ui.notify("❌ Failed to initialise beads. Run `br init` manually.", "error");
-          return;
-        }
-      }
-
-      // Derive a short title from the description
-      const title = description.length > 72
-        ? description.slice(0, 69) + "..."
-        : description;
-
-      // Build a self-contained bead description
-      const beadDesc = `## Fix: ${title}
-
-### Problem
-${description}
-
-### Acceptance Criteria
-- [ ] The described problem no longer occurs
-- [ ] Existing tests still pass
-- [ ] No new regressions introduced
-
-### Files:
-(Identify the relevant files during implementation)`;
-
-      // Create the bead
-      ctx.ui.notify(`🔧 Creating fix bead...`, "info");
-      let beadId: string | undefined;
-      const createResult = await brExec(pi, [
-        "create",
-        "--title", `Fix: ${title}`,
-        "--description", beadDesc,
-        "--priority", "P1",
-      ], { cwd: ctx.cwd, timeout: 15000 });
-      if (createResult.ok) {
-        // Parse bead ID from output (br create prints "Created bead br-N")
-        const match = createResult.value.stdout.match(/([a-z][a-z0-9]*-\d+)/);
-        beadId = match?.[1];
-      } else {
-        ctx.ui.notify(`❌ Failed to create bead: ${createResult.error.stderr || createResult.error.command}`, "error");
-        return;
-      }
-
-      if (!beadId) {
-        ctx.ui.notify("⚠️ Bead created but could not parse ID from output. Run `br list` to find it.", "warning");
-        return;
-      }
-
-      // Set up orchestrator state
-      if (!oc.state.selectedGoal) {
-        oc.state.selectedGoal = `Fix: ${title}`;
-      }
-      if (!oc.state.activeBeadIds) oc.state.activeBeadIds = [];
-      oc.state.activeBeadIds.push(beadId);
-      oc.orchestratorActive = true;
-      oc.setPhase("implementing", ctx);
-      oc.persistState();
-
-      // Mark bead in_progress and send implementer instructions
-      await brExec(pi, ["update", beadId, "--status", "in_progress"], { cwd: ctx.cwd, timeout: 5000 });
-
-      const { implementerInstructions } = await import("./prompts.js");
-      const { readMemory } = await import("./memory.js");
-      const { formatBeadSkillRecommendations } = await import("./skill-awareness.js");
-      const profile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], keyFiles: {} as Record<string,string>, testFramework: undefined, ciSystem: undefined, packageManager: undefined, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false };
-      const bead = { id: beadId, title: `Fix: ${title}`, description: beadDesc, status: "in_progress" as const, priority: 1, parent: undefined, children: [], type: "task" as const, labels: [] };
-      const cassMemory = readMemory(ctx.cwd, title);
-      const skillRecs = formatBeadSkillRecommendations(beadDesc, [], ctx.cwd);
-      const instructions = implementerInstructions(bead, profile, [], cassMemory || undefined, skillRecs || undefined);
-
-      ctx.ui.notify(`✅ Created bead **${beadId}**: Fix: ${title}\n\nStarting implementation...`, "info");
-      pi.sendUserMessage(instructions, { deliverAs: "followUp" });
-    },
-  });
-
-  // ─── Command: /orchestrate-audit ─────────────────────────────
+  // ─── Command: /flywheel-audit ─────────────────────────────
   const codebaseAuditOptions = {
     description: "Full codebase audit: spin up parallel agents for bugs, security, tests, and dead code",
     handler: async (args: string, ctx: any) => {
@@ -2219,197 +1532,9 @@ ${description}
     },
   };
   pi.registerCommand("flywheel-audit", codebaseAuditOptions);
-  pi.registerCommand("orchestrate-audit", { ...codebaseAuditOptions, description: "Legacy alias of /flywheel-audit" });
   pi.registerCommand("agent-flywheel-audit", { ...codebaseAuditOptions, description: "Legacy alias of /flywheel-audit" });
 
-  // ─── Command: /orchestrate-scan ──────────────────────────────
-  pi.registerCommand("orchestrate-scan", {
-    description: "Targeted scan of specific files or subsystems — /orchestrate-scan [path] [focus]",
-    handler: async (args, ctx) => {
-      const { scanAgentPrompt, findingsToBeadsPrompt } = await import("./prompts.js");
-      const { getDomainChecklist, formatDomainBlunderItems } = await import("./domain-knowledge.js");
-      const { runDeepPlanAgents, } = await import("./deep-plan.js");
-      const { pickRefinementModel } = await import("./prompts.js");
 
-      // Profile if needed
-      if (!oc.state.repoProfile) {
-        try {
-          const { profileRepo } = await import("./profiler.js");
-          oc.state.repoProfile = await profileRepo(pi, ctx.cwd);
-          oc.persistState();
-        } catch { /* best-effort */ }
-      }
-      const profile = oc.state.repoProfile ?? { name: "", languages: [], frameworks: [], keyFiles: {} as Record<string,string>, testFramework: undefined, ciSystem: undefined, packageManager: undefined, hasGit: true, todos: [], recentCommits: [], entrypoints: [], structure: "", hasTests: false, hasDocs: false, hasCI: false };
-
-      // Parse args: /orchestrate-scan [path] [focus]
-      // Examples:
-      //   /orchestrate-scan src/auth security
-      //   /orchestrate-scan src/api bugs
-      //   /orchestrate-scan (interactive)
-      const parts = args.trim().split(/\s+/).filter(Boolean);
-      let pathFilter = parts[0] ?? "";
-      let focus = parts[1] ?? "";
-
-      // Interactive path picker if not provided
-      if (!pathFilter) {
-        // Collect top-level directories
-        let topDirs: string[] = [];
-        try {
-          const { readdirSync, statSync } = await import("fs");
-          const { join } = await import("path");
-          topDirs = readdirSync(ctx.cwd)
-            .filter(f => !f.startsWith(".") && !f.includes("node_modules"))
-            .filter(f => { try { return statSync(join(ctx.cwd, f)).isDirectory(); } catch { return false; } })
-            .slice(0, 12);
-        } catch { /* use empty */ }
-
-        const pathChoice = await ctx.ui.select(
-          "## 🎯 Targeted Scan\n\nWhich path to scan?",
-          [
-            "📁 Entire codebase",
-            ...topDirs.map(d => `📂 ${d}/`),
-            "✏️  Enter path manually",
-          ]
-        );
-        if (!pathChoice) return;
-        if (pathChoice.startsWith("📂")) {
-          pathFilter = pathChoice.replace("📂 ", "").replace("/", "");
-        } else if (pathChoice.startsWith("✏️")) {
-          pathFilter = "";
-        }
-      }
-
-      // Interactive focus picker if not provided
-      const focusOptions = [
-        "bugs — runtime errors, logic issues, null dereferences",
-        "security — injections, missing auth, hardcoded secrets",
-        "performance — hot paths, unnecessary allocations, N+1 queries",
-        "tests — missing coverage, fragile mocks, untested edge cases",
-        "dead-code — unused exports, unreachable branches, stale TODOs",
-        "types — unsafe casts, any types, missing type guards",
-        "docs — missing JSDoc, unclear error messages, stale comments",
-      ];
-      if (!focus) {
-        const focusChoice = await ctx.ui.select(
-          "What to focus on?",
-          focusOptions
-        );
-        if (!focusChoice) return;
-        focus = focusChoice.split(" ")[0];
-      }
-
-      // Collect files in scope
-      let files: string[] = [];
-      const findArgs = pathFilter
-        ? [pathFilter, "-type", "f", "-not", "-path", "*/node_modules/*"]
-        : [".", "-type", "f", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"];
-      const findResult = await resilientExec(pi, "find", findArgs, { cwd: ctx.cwd, timeout: 10000, maxRetries: 0 });
-      if (findResult.ok) {
-        const langs = profile.languages.map(l => l.toLowerCase());
-        const exts = langs.includes("typescript") || langs.includes("javascript")
-          ? [".ts", ".tsx", ".js", ".jsx"]
-          : langs.includes("rust") ? [".rs"]
-          : langs.includes("python") ? [".py"]
-          : langs.includes("go") ? [".go"]
-          : [".ts", ".js", ".py", ".rs", ".go"];
-        files = findResult.value.stdout.trim().split("\n")
-          .filter(f => f && exts.some(e => f.endsWith(e)))
-          .slice(0, 80);
-      } /* fallback: empty, agent explores */
-
-      if (files.length === 0 && !pathFilter) {
-        ctx.ui.notify("⚠️ No source files found. The agent will explore the codebase directly.", "warning");
-      }
-
-      const domainChecklist = getDomainChecklist(profile);
-      const domainExtras = domainChecklist ? formatDomainBlunderItems(domainChecklist) : undefined;
-      const scopeLabel = pathFilter ? `\`${pathFilter}/\`` : "entire codebase";
-
-      ctx.ui.notify(`🎯 Scanning ${scopeLabel} for **${focus}** issues (${files.length} files)...`, "info");
-
-      const agents = [{
-        name: `scan-${focus}`,
-        model: pickRefinementModel(0),
-        task: scanAgentPrompt(focus, files, ctx.cwd, domainExtras),
-      }];
-
-      let results: import("./deep-plan.js").DeepPlanResult[];
-      try {
-        results = await runDeepPlanAgents(pi, ctx.cwd, agents);
-      } catch (err: any) {
-        ctx.ui.notify(`❌ Scan agent failed: ${err.message ?? err}`, "error");
-        return;
-      }
-
-      const output = results[0]?.plan ?? "";
-      if (!output) {
-        ctx.ui.notify("⚠️ Scan agent produced no output.", "warning");
-        return;
-      }
-
-      // Parse findings
-      const findings: Array<{ severity: string; file: string; line: string; title: string; description: string; fix: string }> = [];
-      const jsonMatch = output.match(/```json\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        try { findings.push(...JSON.parse(jsonMatch[1])); } catch { /* ignore */ }
-      }
-
-      const sevEmoji = (s: string) =>
-        s === "critical" ? "🔴" : s === "high" ? "🟠" : s === "medium" ? "🟡" : "⚪";
-      const findingLines = findings.slice(0, 25).map(f =>
-        `${sevEmoji(f.severity)} ${f.file}:${f.line} — ${f.title}`
-      );
-      const prose = output.replace(/```json[\s\S]*?```/g, "").trim();
-
-      const report = [
-        `## 🎯 Scan Results — ${scopeLabel} / **${focus}**`,
-        `**${findings.length} finding(s)** | ${findings.filter(f => f.severity === "critical" || f.severity === "high").length} critical/high`,
-        "",
-        prose ? `### Summary\n${prose.slice(0, 600)}` : "",
-        findingLines.length > 0 ? `### Findings\n${findingLines.join("\n")}` : "✅ Nothing found.",
-      ].filter(Boolean).join("\n\n");
-
-      pi.sendUserMessage(report, { deliverAs: "followUp" });
-
-      if (findings.length === 0) return;
-
-      const createBeads = await ctx.ui.select(
-        `Create fix beads for the ${findings.length} finding(s)?`,
-        [
-          `📋 Yes — create ${findings.length} bead${findings.length !== 1 ? "s" : ""}`,
-          "⏭️  No — just the report",
-        ]
-      );
-      if (!createBeads || createBeads.startsWith("⏭️")) return;
-
-      const beadInstructions = findingsToBeadsPrompt(findings, ctx.cwd);
-      pi.sendUserMessage(
-        `Create fix beads for scan findings:\n\n${beadInstructions}`,
-        { deliverAs: "followUp" }
-      );
-    },
-  });
-
-  pi.registerCommand("orchestrate-swarm-stop", {
-    description: "Stop the swarm tender and send landing prompts",
-    handler: async (_args, ctx) => {
-      if (!oc.swarmTender) {
-        ctx.ui.notify("No swarm active.", "info");
-        return;
-      }
-
-      oc.swarmTender.stop();
-      oc.swarmTender = undefined;
-
-      const { landingChecklistInstructions } = await import("./prompts.js");
-      ctx.ui.notify(
-        `🛑 Swarm tender stopped.\n\n` +
-        `Agents may still be running in their terminals. Send each the landing checklist:\n\n` +
-        `${landingChecklistInstructions(ctx.cwd).slice(0, 500)}...`,
-        "info"
-      );
-    },
-  });
 
   const auditBeadsHandler = async (args: string, ctx: any) => {
     const parsed = parseComplianceAuditArgs(args);
@@ -2446,13 +1571,8 @@ ${description}
     handler: auditBeadsHandler,
   });
 
-  pi.registerCommand("orchestrate-audit-beads", {
-    description: "Legacy alias of /agent-flywheel-audit-beads",
-    handler: auditBeadsHandler,
-  });
-
   pi.registerCommand("flywheel-audit-beads", {
-    description: "Audit closed beads for actual completion (alias of /orchestrate-audit-beads)",
+    description: "Audit closed beads for actual completion with evidence packs",
     handler: auditBeadsHandler,
   });
 
@@ -2498,6 +1618,23 @@ ${description}
         oc.worktreePool = undefined;
       }
       if (oc.swarmTender) { oc.swarmTender.stop(); oc.swarmTender = undefined; }
+      try {
+        const { shouldGenerateHandoff, writeHandoffArtifact } = await import("./handoff.js");
+        if (shouldGenerateHandoff({ event: "stop", state: oc.state })) {
+          const statusResult = await resilientExec(pi, "git", ["status", "--short"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+          const changedFiles = statusResult.ok
+            ? statusResult.value.stdout.split("\n").map((line) => line.trim().split(/\s+/).at(-1)).filter((file): file is string => Boolean(file))
+            : [];
+          const handoffPath = writeHandoffArtifact({
+            cwd: ctx.cwd,
+            state: oc.state,
+            reason: "orchestrator stopped with active work",
+            changedFiles,
+            blockers: ["Orchestration was stopped before all active work completed."],
+          });
+          ctx.ui.notify(`🧾 Handoff artifact written: ${handoffPath}`, "info");
+        }
+      } catch { /* best-effort */ }
       oc.orchestratorActive = false;
       oc.setPhase("idle", ctx);
       oc.persistState();
@@ -2518,6 +1655,23 @@ ${description}
         oc.worktreePool = undefined;
       }
       if (oc.swarmTender) { oc.swarmTender.stop(); oc.swarmTender = undefined; }
+      try {
+        const { shouldGenerateHandoff, writeHandoffArtifact } = await import("./handoff.js");
+        if (shouldGenerateHandoff({ event: "stop", state: oc.state })) {
+          const statusResult = await resilientExec(pi, "git", ["status", "--short"], { cwd: ctx.cwd, timeout: 5000, maxRetries: 0 });
+          const changedFiles = statusResult.ok
+            ? statusResult.value.stdout.split("\n").map((line) => line.trim().split(/\s+/).at(-1)).filter((file): file is string => Boolean(file))
+            : [];
+          const handoffPath = writeHandoffArtifact({
+            cwd: ctx.cwd,
+            state: oc.state,
+            reason: "orchestrator stopped with active work",
+            changedFiles,
+            blockers: ["Orchestration was stopped before all active work completed."],
+          });
+          ctx.ui.notify(`🧾 Handoff artifact written: ${handoffPath}`, "info");
+        }
+      } catch { /* best-effort */ }
       oc.orchestratorActive = false;
       oc.setPhase("idle", ctx);
       oc.persistState();

@@ -5,7 +5,6 @@ import { formatRepoProfile, beadCreationPrompt } from "../prompts.js";
 import { runGoalRefinement, extractConstraints } from "../goal-refinement.js";
 import { initSuperpowersWorkflow } from "../workflows/superpowers.js";
 
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 import { FlywheelError } from "../errors.js";
 export function registerSelectTool(oc: OrchestratorContext) {
   for (const toolName of ["agent_flywheel_select", "orch_select", "flywheel_select"] as const) {
@@ -18,7 +17,6 @@ export function registerSelectTool(oc: OrchestratorContext) {
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("select"));
       if (!oc.state.candidateIdeas || oc.state.candidateIdeas.length === 0) {
         throw new FlywheelError("NO_IDEAS");
       }
@@ -187,7 +185,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
           content: [
             {
               type: "text",
-              text: `**NEXT: Call \`orch_plan\` with mode \`single_model\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nGenerate a detailed implementation plan as a markdown artifact. Stay inside the orchestrate workflow: after the plan is written, return to \`orch_approve_beads\` for plan approval before creating beads.`,
+              text: `**NEXT: Call \`flywheel_plan\` with mode \`single_model\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nGenerate a detailed implementation plan as a markdown artifact. Stay inside the flywheel workflow: after the plan is written, return to \`flywheel_approve_beads\` for plan approval before creating beads.`,
             },
           ],
           details: { selected: true, goal, constraints: oc.state.constraints, workflow: "plan_first" },
@@ -203,7 +201,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
           content: [
             {
               type: "text",
-              text: `**NEXT: Call \`orch_plan\` with mode \`multi_model\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nRun competing planners for correctness, robustness, and ergonomics, then synthesize them into one plan document artifact. Stay inside the orchestrate workflow: after synthesis, return to \`orch_approve_beads\` for plan approval before creating beads.`,
+              text: `**NEXT: Call \`flywheel_plan\` with mode \`multi_model\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nRun competing planners for correctness, robustness, and ergonomics, then synthesize them into one plan document artifact. Stay inside the flywheel workflow: after synthesis, return to \`flywheel_approve_beads\` for plan approval before creating beads.`,
             },
           ],
           details: { selected: true, goal, constraints: oc.state.constraints, workflow: "multi_model_plan" },
@@ -240,7 +238,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
           content: [
             {
               type: "text",
-              text: `**NEXT: Call \`orch_plan\` with mode \`superpowers\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nGenerate the Superpowers spec artifact (stored at \`planningWorkflow.specArtifact\`, NOT \`planDocument\`). After the spec is approved via \`orch_approve_beads\`, the implementation plan stage runs and only then are beads created.`,
+              text: `**NEXT: Call \`flywheel_plan\` with mode \`superpowers\` NOW.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nGenerate the Superpowers spec artifact (stored at \`planningWorkflow.specArtifact\`, NOT \`planDocument\`). After the spec is approved via \`flywheel_approve_beads\`, the implementation plan stage runs and only then are beads created.`,
             },
           ],
           details: {
@@ -262,7 +260,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
         content: [
           {
             type: "text",
-            text: `**NEXT: Draft a structured staged bead mutation plan for this goal, then call \`orch_approve_beads\` to validate/apply it before implementation.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nStay inside the orchestrate workflow: once the staged plan is ready, return to \`orch_approve_beads\` for validation and bead approval before implementation.\n\n---\n\n${instructions}`,
+            text: `**NEXT: Draft a structured staged bead mutation plan for this goal, then call \`flywheel_approve_beads\` to validate/apply it before implementation.**\n\nGoal: "${goal}"${oc.state.constraints.length > 0 ? `\nConstraints: ${oc.state.constraints.join(", ")}` : ""}\n\nStay inside the flywheel workflow: once the staged plan is ready, return to \`flywheel_approve_beads\` for validation and bead approval before implementation.\n\n---\n\n${instructions}`,
           },
         ],
         details: { selected: true, goal, constraints: oc.state.constraints, workflow: "direct" },
@@ -271,7 +269,7 @@ export function registerSelectTool(oc: OrchestratorContext) {
 
     renderCall(_args, theme) {
       return new Text(
-        theme.fg("toolTitle", theme.bold("orch_select ")) +
+        theme.fg("toolTitle", theme.bold("flywheel_select ")) +
           theme.fg("dim", "awaiting user selection..."),
         0, 0
       );

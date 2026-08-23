@@ -3,7 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext, Bead } from "../types.js";
 import { buildWorkflowStatus, type WorkflowStatusOutput } from "../workflow-status.js";
 import { brExecJson, type CliExecError } from "../cli-exec.js";
-import { TOOL_FAMILIES, canonicalName, emitToolDeprecationWarning } from "./shared.js";
+import { TOOL_FAMILIES } from "./shared.js";
 
 export interface FlywheelStatusResult {
   status: WorkflowStatusOutput;
@@ -53,7 +53,7 @@ export async function buildStatusResult(oc: OrchestratorContext, cwd: string): P
 }
 
 export function registerStatusTool(oc: OrchestratorContext) {
-  // Compatibility registrations: agent_flywheel_status, orch_status, flywheel_status.
+  // Registrations: agent_flywheel_status, orch_status, flywheel_status.
   for (const toolName of TOOL_FAMILIES.status) {
     oc.pi.registerTool({
       name: toolName,
@@ -63,7 +63,6 @@ export function registerStatusTool(oc: OrchestratorContext) {
       parameters: Type.Object({}),
 
       async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-        emitToolDeprecationWarning(toolName, canonicalName("status"));
         const result = await buildStatusResult(oc, ctx.cwd);
         return {
           content: [{ type: "text", text: JSON.stringify(result.status, null, 2) }],

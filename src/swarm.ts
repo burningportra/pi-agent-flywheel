@@ -363,7 +363,7 @@ export function formatNtmLaunchInstructions(options: NtmLaunchOptions): string {
     "",
     formatNtmRobotManagementLoopInstructions({ label, agentCount }),
     "",
-    "After panes finish, collect their summaries/commits and call `agent_flywheel_review`/`orch_review` for completed beads so AgentFlywheel state stays in sync.",
+    "After panes finish, collect their summaries/commits and call `agent_flywheel_review`/`flywheel_review` for completed beads so AgentFlywheel state stays in sync.",
   ].join("\n");
 }
 
@@ -397,8 +397,8 @@ export function formatLaunchInstructions(
   lines.push("- NTM handles visible panes and smart staggering; avoid launching hidden `subagent` workers for implementation swarms");
   lines.push("- Each agent should independently use `bv --robot-triage` / `bv --robot-next` to pick work");
   lines.push("- Agents coordinate via Agent Mail file reservations");
-  lines.push("- Manage the swarm with the full NTM robot loop above; `/orchestrate-swarm-status` is a dashboard shortcut, not a substitute for tending attention/tail/mail/health");
-  lines.push("- Stop with `/orchestrate-swarm-stop` only after robot-loop convergence checks pass");
+  lines.push("- Manage the swarm with the full NTM robot loop above; `/flywheel-swarm-status` is a dashboard shortcut, not a substitute for tending attention/tail/mail/health");
+  lines.push("- Stop with `/flywheel-swarm-stop` only after robot-loop convergence checks pass");
 
   return lines.join("\n");
 }

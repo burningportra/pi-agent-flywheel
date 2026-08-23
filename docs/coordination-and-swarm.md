@@ -4,7 +4,7 @@
 
 ## Overview
 
-When `/orchestrate` runs implementation steps, it needs to coordinate potentially many parallel agents working on the same codebase. The coordination system handles three concerns:
+When `/flywheel-start` runs implementation steps, it needs to coordinate potentially many parallel agents working on the same codebase. The coordination system handles three concerns:
 
 1. **Backend detection** — discover which tools are available (beads, Agent Mail)
 2. **Strategy selection** — pick the best coordination mode for the environment
@@ -184,7 +184,7 @@ When an agent completes its work, `removeAgent(stepIndex)` removes it from monit
 ## Architecture Diagram
 
 ```
-/orchestrate
+/flywheel-start
   │
   ├─ detectCoordinationBackend()     ← probes beads and agent-mail
   │    └─ selectStrategy()           ← picks beads+agentmail / worktrees

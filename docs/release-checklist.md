@@ -9,8 +9,8 @@ Use the release checklist before tagging, publishing, or handing release work to
 Legacy aliases:
 
 ```text
+/flywheel-release-checklist
 /agent-flywheel-release-checklist
-/orchestrate-release-checklist
 ```
 
 The command is advisory and non-mutating. It reads `package.json`, `package-lock.json`, and `git status --short`, then prints a short report and the verification commands to run next.

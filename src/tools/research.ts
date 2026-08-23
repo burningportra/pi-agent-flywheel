@@ -7,7 +7,6 @@ import { profileRepo } from "../profiler.js";
 import { sessionArtifactPath } from "../session-artifacts.js";
 import { researchHandoffPrompt } from "../prompts.js";
 import { extractProjectName, runResearchPhase } from "../research-pipeline.js";
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 
 const RESEARCH_PHASES: Array<{ phase: string; label: string; emoji: string }> = [
   { phase: "investigate",  label: "Investigating external project", emoji: "📚" },
@@ -35,7 +34,6 @@ export function registerResearchTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("research"));
       const url = normalizeResearchUrl(params.url);
       if (!url) {
         return {

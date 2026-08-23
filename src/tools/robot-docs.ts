@@ -31,9 +31,9 @@ export function buildRobotDocs(): string {
   lines.push("");
   lines.push("## 2. Tool naming convention");
   lines.push("");
-  lines.push("All flywheel tools use the canonical prefix `flywheel_`. The legacy `agent_flywheel_*` and `orch_*` prefixes still work but emit a one-shot deprecation warning per legacy name. They will be removed in v2.0.0.");
+  lines.push("All flywheel tools use the canonical prefix `flywheel_`.");
   lines.push("");
-  lines.push("Slash commands follow the same rule: canonical name is `/flywheel-X`. Legacy aliases `/agent-flywheel-X` and `/orchestrate-X` work but warn.");
+  lines.push("Slash commands follow the same rule: canonical name is `/flywheel-X`. `/agent-flywheel-X` is an alias that also works.");
   lines.push("");
   lines.push("## 3. Common errors and fixes");
   lines.push("");
@@ -60,11 +60,11 @@ export function buildRobotDocs(): string {
   lines.push("```");
   lines.push("flywheel_audit_beads  # one-shot bead-completion verification");
   lines.push("```");
-  lines.push("Equivalent slash command: `/flywheel-audit-beads` (legacy aliases: `/agent-flywheel-audit-beads`, `/orchestrate-audit-beads`).");
+  lines.push("Equivalent slash command: `/flywheel-audit-beads` (legacy alias: `/agent-flywheel-audit-beads`).");
   lines.push("");
   lines.push("**4.3 Audit codebase (NOT bead audit).**");
   lines.push("```");
-  lines.push("/flywheel-audit       # codebase audit (legacy aliases: /agent-flywheel-audit, /orchestrate-audit)");
+  lines.push("/flywheel-audit       # codebase audit (legacy alias: /agent-flywheel-audit)");
   lines.push("```");
   lines.push("Distinct from `/flywheel-audit-beads`: codebase audit spawns parallel agents for bugs/security/tests/dead-code; bead audit verifies completion claims.");
   lines.push("");
@@ -85,7 +85,6 @@ export function buildRobotDocs(): string {
   lines.push("```");
   lines.push("/flywheel-release-checklist        # canonical: package versions, dirty scope, build/test/UBS next steps");
   lines.push("/agent-flywheel-release-checklist  # legacy alias");
-  lines.push("/orchestrate-release-checklist     # legacy alias");
   lines.push("```");
   lines.push("Run this after implementation/review and before tagging, publishing, or handing a release to another agent. The checklist is advisory: it reads package.json, package-lock.json, and git status; reports package.json/package-lock consistency, dirty-file groups (or explicitly marks dirty scope unknown if git status cannot be read), and recommended build/test/UBS commands; and never commits, tags, publishes, bumps versions, resets, cleans, or mutates files. It also does not update versions or stash changes. See docs/release-checklist.md for the full workflow.");
   lines.push("");
@@ -99,7 +98,6 @@ export function buildRobotDocs(): string {
   lines.push("");
   lines.push("## 6. Environment variables");
   lines.push("");
-  lines.push("- `FLYWHEEL_SUPPRESS_DEPRECATION=1` — suppress legacy-alias warnings (CI use).");
   lines.push("- `FLYWHEEL_CHECKPOINT_TTL_DAYS=N` — override stale-checkpoint threshold (default 7).");
   lines.push("- `FLYWHEEL_SUPPRESS_SOURCE_RESEARCH` — suppress the Source Research Card completion warning during review (quiet false-positive notices on local-only work).");
   lines.push("- `FLYWHEEL_CLAUDE_CODE=0|1` — force the Claude Code CLI availability probe used for model selection. 1 prefers Claude, 0 forces the open-weight-via-OpenRouter fallback (deterministic tests/CI).");
@@ -114,10 +112,6 @@ export function buildRobotDocs(): string {
   lines.push("- OpenAI/Codex → `--cod`");
   lines.push("- Google/Gemini ergonomics → `--cursor` NTM panes backed by the official Cursor Agent CLI command `agent` (preferred over `--gmi`)");
   lines.push("- Default swarms: mixed `--cc`, `--cod`, and `--cursor`");
-  lines.push("");
-  lines.push("## 8. Deprecation policy");
-  lines.push("");
-  lines.push("Legacy tool/command names emit a one-shot warning per legacy name per process. They will be removed in v2.0.0. Use `flywheel_capabilities.tools[].deprecated_aliases` to enumerate legacy names from the runtime contract.");
   return lines.join("\n");
 }
 

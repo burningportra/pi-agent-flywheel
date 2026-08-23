@@ -2163,7 +2163,7 @@ export function formatBeadQualityAudit(results: BeadQualityAuditResult[]): strin
 // ─── Existing-Codebase Maintenance Prompts ────────────────────────────────
 
 /**
- * Full codebase audit prompt — used by /orchestrate-audit.
+ * Full codebase audit prompt — used by /flywheel-audit.
  * Spawned as parallel agents: bugs, security, tests, dead-code.
  */
 export function auditAgentPrompt(
@@ -2249,7 +2249,7 @@ cd ${cwd}`;
 }
 
 /**
- * Targeted scan prompt — used by /orchestrate-scan.
+ * Targeted scan prompt.
  * Scoped to specific files/paths and one focus area.
  */
 export function scanAgentPrompt(

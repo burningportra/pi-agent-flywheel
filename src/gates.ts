@@ -209,7 +209,7 @@ export async function runGuidedGates(
   if (chosen.startsWith("🧪")) {
     const ubsAvailable = await detectUbs(oc.pi, ctx.cwd);
     const ubsRequired = ubsAvailable
-      ? `\n\n**Required:** Run \`ubs <changed-files>\` and fix ALL issues before calling orch_review.`
+      ? `\n\n**Required:** Run \`ubs <changed-files>\` and fix ALL issues before calling flywheel_review.`
       : "";
     return {
       content: [

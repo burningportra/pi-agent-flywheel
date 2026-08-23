@@ -249,8 +249,8 @@ describe("formatLaunchInstructions", () => {
     expect(instructions).toContain("bv --robot-triage");
     expect(instructions).toContain("Agent Mail");
     expect(instructions).toContain("avoid launching hidden `subagent` workers");
-    expect(instructions).toContain("/orchestrate-swarm-status");
-    expect(instructions).toContain("/orchestrate-swarm-stop");
+    expect(instructions).toContain("/flywheel-swarm-status");
+    expect(instructions).toContain("/flywheel-swarm-stop");
   });
 
   it("includes stagger delay value", () => {

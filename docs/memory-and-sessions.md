@@ -171,7 +171,7 @@ The returned `SessionStage` contains everything needed to resume:
 
 ### Formatting Helpers
 
-- `formatSessionContext(stage)` — builds the multi-line status display shown in the `/orchestrate` menu
+- `formatSessionContext(stage)` — builds the multi-line status display shown in the `/flywheel-start` menu
 - `buildResumeLabel(stage)` — builds the "📂 Resume implementing — br-5 in-progress, 2 more queued" label
 
 ---
@@ -228,7 +228,7 @@ The profile feeds into discovery (idea generation) and planning prompts, giving 
 
 ## Scanning
 
-`src/scan.ts` orchestrates the scan phase, which is the first step of every `/orchestrate` run.
+`src/scan.ts` orchestrates the scan phase, which is the first step of every `/flywheel-start` run.
 
 ### Two-Provider Architecture
 

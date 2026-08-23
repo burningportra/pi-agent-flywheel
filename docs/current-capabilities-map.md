@@ -6,14 +6,14 @@ Maps pi-agent-flywheel's existing capabilities to the 10 sections of the [Agenti
 
 ## 1. Complete Workflow
 
-The orchestrator provides an end-to-end `/orchestrate` command that moves through Discovery → Planning → Implementation → Review → Completion phases.
+The orchestrator provides an end-to-end `/flywheel-start` command that moves through Discovery → Planning → Implementation → Review → Completion phases.
 
 | Capability | Source | Details |
 |------------|--------|---------|
 | Phase state machine | `src/index.ts` — `OrchestratorPhase` type, `setPhase()` | 13 phases: idle → profiling → discovering → awaiting_selection → planning → creating_beads → refining_beads → awaiting_bead_approval → implementing → reviewing → iterating → complete |
 | Session persistence & restore | `src/index.ts` — `session_start` handler, `persistState()` | Survives session restarts; re-detects coordination backends, restores worktree pool and bead progress |
 | Status widget | `src/index.ts` — `updateWidget()` | Live status bar showing phase, repo, goal, bead progress, tender state |
-| Commands | `src/commands.ts` — `registerCommands()` | `/orchestrate`, `/orchestrate-status`, `/orchestrate-reset` |
+| Commands | `src/commands.ts` — `registerCommands()` | `/flywheel-start`, `/flywheel-status`, `/flywheel-stop` |
 
 ## 2. Planning (85%)
 

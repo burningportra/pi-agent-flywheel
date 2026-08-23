@@ -10,7 +10,6 @@ import {
   type ComplianceRemediationPolicy,
 } from "../compliance-audit.js";
 
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 const MODES = [
   "triage",
   "standard",
@@ -66,7 +65,6 @@ export function registerComplianceAuditTool(oc: OrchestratorContext) {
       }),
 
       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("audit_beads"));
         const result = await prepareComplianceAuditPlan(oc.pi, ctx.cwd, {
           mode: params.mode as ComplianceAuditMode | undefined,
           threshold: params.threshold as number | undefined,

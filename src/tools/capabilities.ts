@@ -6,7 +6,7 @@ import { TOOL_CANONICAL_PREFIX, TOOL_FAMILIES, canonicalName } from "./shared.js
 /**
  * R-002: flywheel_capabilities — machine-readable contract for the pi-agent-flywheel
  * tool surface. Agents call this once to discover the tool list, canonical names,
- * deprecated aliases, orchestration phase order, env vars, and error categories
+ * orchestration phase order, env vars, and error categories
  * — instead of reading source.
  *
  * The output schema is contract_version-stable; breaking changes bump contract_version.
@@ -106,7 +106,6 @@ export const ERROR_CATEGORIES: Record<string, ErrorCategory> = {
 };
 
 export const ENV_VARS: EnvVarDefinition[] = [
-  { name: "FLYWHEEL_SUPPRESS_DEPRECATION", effect: "If set, suppresses deprecation warnings emitted when calling agent_flywheel_*/orch_* legacy tool names. Use in CI to reduce log noise." },
   { name: "FLYWHEEL_CHECKPOINT_TTL_DAYS", effect: "Override stale-checkpoint threshold (default: 7). Used by R-012 doctor recovery menu." },
   { name: "FLYWHEEL_SUPPRESS_SOURCE_RESEARCH", effect: "If set, suppresses the Source Research Card completion warning emitted during review for integration-heavy beads. Set when you want to quiet false-positive notices on local-only work." },
   { name: "FLYWHEEL_CLAUDE_CODE", effect: "Forces the Claude Code CLI availability probe used for model selection. Set \"1\" to prefer Claude, \"0\" to force the open-weight-via-OpenRouter fallback. Useful for deterministic tests/CI." },
@@ -134,14 +133,12 @@ const TOOL_DESCRIPTIONS: Record<string, { description: string; phase_position: n
 
 export function buildCapabilities(version: string): FlywheelCapabilities {
   const tools: ToolCapability[] = (Object.keys(TOOL_FAMILIES) as (keyof typeof TOOL_FAMILIES)[]).map((family) => {
-    const names = TOOL_FAMILIES[family];
     const canonical = canonicalName(family);
-    const deprecated = names.filter((n) => n !== canonical);
     const meta = TOOL_DESCRIPTIONS[family] ?? { description: family, phase_position: null, prereq: null, next: null };
     return {
       family,
       canonical_name: canonical,
-      deprecated_aliases: deprecated,
+      deprecated_aliases: [],
       description: meta.description,
       phase_position: meta.phase_position,
       prereq_tool: meta.prereq,
@@ -169,7 +166,7 @@ export function registerCapabilitiesTool(oc: OrchestratorContext, packageVersion
   oc.pi.registerTool({
     name: canonicalName("capabilities"),
     label: "Flywheel Capabilities",
-    description: "Return the machine-readable tool contract for pi-agent-flywheel: canonical names, deprecated aliases, phase order, error codes, env vars. Call this first to discover the tool surface without reading source.",
+    description: "Return the machine-readable tool contract for pi-agent-flywheel: canonical names, phase order, error codes, env vars. Call this first to discover the tool surface without reading source.",
     promptSnippet: "Return pi-agent-flywheel tool contract (machine-readable)",
     parameters: Type.Object({}),
 

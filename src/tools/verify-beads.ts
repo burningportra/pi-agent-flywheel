@@ -3,7 +3,6 @@ import { Text } from "@earendil-works/pi-tui";
 import type { OrchestratorContext } from "../types.js";
 import { getBeadById, updateBeadStatus } from "../beads.js";
 
-import { emitToolDeprecationWarning, canonicalName } from "./shared.js";
 interface VerifyOutcome {
   verified: string[];
   autoClosed: Array<{ beadId: string; commit: string }>;
@@ -41,7 +40,7 @@ function renderOutcome(outcome: VerifyOutcome, total: number): string {
 }
 
 export function registerVerifyBeadsTool(oc: OrchestratorContext) {
-  for (const toolName of ["agent_flywheel_verify_beads", "flywheel_verify_beads", "orch_verify_beads"] as const) {
+  for (const toolName of ["agent_flywheel_verify_beads", "orch_verify_beads", "flywheel_verify_beads"] as const) {
   oc.pi.registerTool({
     name: toolName,
     label: "Verify Beads",
@@ -52,7 +51,6 @@ export function registerVerifyBeadsTool(oc: OrchestratorContext) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      emitToolDeprecationWarning(toolName, canonicalName("verify_beads"));
       const beadIds = Array.isArray(params.beadIds) ? params.beadIds as string[] : [];
       if (beadIds.length === 0) {
         return {
