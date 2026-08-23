@@ -103,6 +103,8 @@ export function buildRobotDocs(): string {
   lines.push("- `FLYWHEEL_CHECKPOINT_TTL_DAYS=N` — override stale-checkpoint threshold (default 7).");
   lines.push("- `FLYWHEEL_SUPPRESS_SOURCE_RESEARCH` — suppress the Source Research Card completion warning during review (quiet false-positive notices on local-only work).");
   lines.push("- `FLYWHEEL_CLAUDE_CODE=0|1` — force the Claude Code CLI availability probe used for model selection. 1 prefers Claude, 0 forces the open-weight-via-OpenRouter fallback (deterministic tests/CI).");
+  lines.push("- `FLYWHEEL_SWARM_AUTO_TICK=0` — disable the automatic swarm tick loop (idle-agent instruct, stalled-bead reopen, anti-slop cadence). Default: enabled.");
+  lines.push("- `FLYWHEEL_SWARM_AUTO_REOPEN=0` — disable SwarmTender auto-reopening clearly-stalled in_progress beads. Default: enabled.");
   lines.push("");
   lines.push("## 7. NTM implementation panes");
   lines.push("");

@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
+import { selectStalledBeads, antiSlopDue } from "./tender.js";
 
 const tenderSource = readFileSync(join(__dirname, "tender.ts"), "utf8");
 
@@ -29,5 +30,50 @@ describe("SwarmTender cadence checklist", () => {
     expect(tenderSource).toContain("convergence triple-check");
     expect(tenderSource).toContain("ready queue empty AND no in-flight work AND no expected upstream signals");
     expect(tenderSource).toContain("escalate to smart-restart, not another nudge");
+  });
+});
+
+describe("selectStalledBeads", () => {
+  const now = Date.parse("2026-08-22T12:00:00Z");
+  const hour = 60 * 60 * 1000;
+
+  it("reopens only in_progress beads that are older than the threshold", () => {
+    const beads = [
+      { id: "pi-old", status: "in_progress", updated_at: "2026-08-22T10:00:00Z" },
+      { id: "pi-fresh", status: "in_progress", updated_at: "2026-08-22T11:55:00Z" },
+      { id: "pi-open", status: "open", updated_at: "2026-08-22T01:00:00Z" },
+      { id: "pi-closed", status: "closed", updated_at: "2026-08-22T01:00:00Z" },
+    ];
+    expect(selectStalledBeads(beads, now, hour)).toEqual(["pi-old"]);
+  });
+
+  it("handles numeric (epoch ms) updated_at", () => {
+    const old = now - 2 * hour;
+    const beads = [{ id: "pi-x", status: "in_progress", updated_at: old }];
+    expect(selectStalledBeads(beads, now, hour)).toEqual(["pi-x"]);
+  });
+
+  it("ignores malformed updated_at and returns nothing for empty input", () => {
+    expect(selectStalledBeads([], now, hour)).toEqual([]);
+    expect(selectStalledBeads([{ id: "pi-bad", status: "in_progress", updated_at: "nonsense" }], now, hour)).toEqual([]);
+  });
+
+  it("returns nothing when all in_progress beads are recent", () => {
+    const beads = [{ id: "pi-now", status: "in_progress", updated_at: "2026-08-22T11:59:00Z" }];
+    expect(selectStalledBeads(beads, now, hour)).toEqual([]);
+  });
+});
+
+describe("antiSlopDue", () => {
+  it("is not due until a baseline commit count is established", () => {
+    expect(antiSlopDue(10, 0, 6)).toEqual({ due: false, since: 0 });
+  });
+
+  it("fires once the cadence is reached", () => {
+    expect(antiSlopDue(12, 6, 6)).toEqual({ due: true, since: 6 });
+  });
+
+  it("is not due before the cadence", () => {
+    expect(antiSlopDue(8, 6, 6)).toEqual({ due: false, since: 2 });
   });
 });

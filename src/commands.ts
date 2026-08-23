@@ -1636,11 +1636,39 @@ export function registerCommands(oc: OrchestratorContext) {
     composition.modelOverride = modelOverride;
 
     const configs = generateAgentConfigs(count, ctx.cwd, composition);
-    const instructions = formatLaunchInstructions(configs, composition);
+    const workerNameByIndex = new Map(configs.map((c, i) => [i, c.name]));
+
+    // Launch mode: default NTM panes, but offer Herdr pi agents when inside Herdr.
+    let launchMode: "ntm" | "pi" = "ntm";
+    const { isInsideHerdr, formatPiSwarmLaunchInstructions } = await import("./pi-swarm.js");
+    if (isInsideHerdr()) {
+      const modeInput = await ctx.ui.input(
+        `Swarm launch mode? (ntm = NTM panes [default], pi = Herdr pi agents)`,
+        "ntm"
+      );
+      launchMode = modeInput.trim().toLowerCase() === "pi" ? "pi" : "ntm";
+    }
+
+    let instructions: string;
+    if (launchMode === "pi") {
+      const { swarmMarchingOrders } = await import("./prompts.js");
+      const prompt = configs[0]?.task ?? swarmMarchingOrders(ctx.cwd);
+      instructions = formatPiSwarmLaunchInstructions({
+        cwd: ctx.cwd,
+        agentCount: count,
+        prompt,
+        label: "swarm",
+        model: modelOverride,
+        workerNames: configs.map((c) => c.name),
+      });
+    } else {
+      instructions = formatLaunchInstructions(configs, composition);
+    }
 
     // Start SwarmTender for monitoring
     const { SwarmTender } = await import("./tender.js");
-    const worktrees = configs.map((c, i) => ({ path: ctx.cwd, stepIndex: i }));
+    const worktrees = configs.map((c, i) => ({ path: ctx.cwd, stepIndex: i, agentName: c.name }));
+    const ntmSession = `${basename(ctx.cwd)}--swarm`;
     oc.swarmTender = new SwarmTender(pi, ctx.cwd, worktrees, {
       config: {
         pollInterval: 60_000,
@@ -1660,12 +1688,38 @@ export function registerCommands(oc: OrchestratorContext) {
           "error"
         );
       },
+      onIdleInstruct: (idleAgents, readyBead) => {
+        const panes = idleAgents.map((a) => `#${a.stepIndex + 1}`).join(", ");
+        // Best-effort nudge: NTM panes via ntm send, Herdr pi agents via agent prompt.
+        for (const a of idleAgents) {
+          const name = workerNameByIndex.get(a.stepIndex) ?? `swarm-${a.stepIndex + 1}`;
+          if (launchMode === "pi") {
+            pi.exec("herdr", ["agent", "prompt", name, `Pick up: ${readyBead}`]).catch(() => undefined);
+          } else {
+            pi.exec("ntm", ["send", ntmSession, "--pane", String(a.stepIndex + 1), `Pick up: ${readyBead}`]).catch(() => undefined);
+          }
+        }
+        ctx.ui.notify(
+          `🤖 Idle panes ${panes}: auto-instructed with ${readyBead}. ` +
+            (launchMode === "pi" ? "Sent via herdr agent prompt." : `NTM session "${ntmSession}".`),
+          "info"
+        );
+      },
+      onStalledBeadReopened: (ids) => {
+        ctx.ui.notify(`♻️ Reopened clearly-stalled beads: ${ids.join(", ")}`, "info");
+      },
+      onAntiSlopDue: (commits) => {
+        ctx.ui.notify(
+          `🧹 Anti-slop cadence reached (${commits} commits). Run the de-slopify skill + a fresh-eyes pass and add follow-up beads for any findings.`,
+          "info"
+        );
+      },
     });
     oc.swarmTender.start();
 
     pi.sendUserMessage(
       `${instructions}\n\n` +
-        `**NEXT: Run the NTM launch command above. Do not implement inline in the current chat.**\n\n` +
+        `**NEXT: Run the ${launchMode === "pi" ? "Herdr" : "NTM"} launch command above. Do not implement inline in the current chat.**\n\n` +
         `SwarmTender is monitoring. Use \`/flywheel-swarm-status\` to check health.`,
       { deliverAs: "followUp" }
     );

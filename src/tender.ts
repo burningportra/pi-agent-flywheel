@@ -18,6 +18,8 @@ export interface AgentStatus {
   health: AgentHealth;
   lastActivity: number; // timestamp ms
   changedFiles: string[];
+  /** Agent name (e.g. swarm-1-... ) for Agent Mail addressing. */
+  agentName?: string;
 }
 
 export interface TenderConfig {
@@ -29,6 +31,12 @@ export interface TenderConfig {
   idleThreshold: number;
   /** Cadence check interval in ms (default 20 * 60 * 1000 = 20 min) */
   cadenceIntervalMs: number;
+  /** Auto-tick interval for idle-instruct / stalled-beed reopen / anti-slop (default 4 min). */
+  autoTickIntervalMs: number;
+  /** An in_progress bead with updated_at older than this (ms) counts as stalled (default 60 min). */
+  stalledBeadThresholdMs: number;
+  /** Invoke the anti-slop check every this many commits (default 6). */
+  antiSlopCommitCadence: number;
 }
 
 export interface ConflictAlert {
@@ -42,6 +50,9 @@ const DEFAULT_CONFIG: TenderConfig = {
   stuckThreshold: 300_000,
   idleThreshold: 120_000,
   cadenceIntervalMs: 20 * 60 * 1000,
+  autoTickIntervalMs: 4 * 60 * 1000,
+  stalledBeadThresholdMs: 60 * 60 * 1000,
+  antiSlopCommitCadence: 6,
 };
 
 const CADENCE_CHECKLIST = `## 👷 Operator Cadence Check (every ~20 min (configurable via cadenceIntervalMs))
@@ -77,6 +88,40 @@ Declare done only when ready queue empty AND no in-flight work AND no expected u
 ### Anti-pattern
 If you find yourself sending the same nudge twice without movement, escalate to smart-restart, not another nudge.`;
 
+// ─── Pure decision helpers (unit-testable) ────────────────────
+
+/**
+ * Return ids of `in_progress` beads whose `updated_at` is at least `thresholdMs`
+ * old. This is the evidence-based stale-bead signal used by the auto-tick reopen.
+ */
+export function selectStalledBeads(
+  beads: Array<{ id: string; status: string; updated_at?: string | number }>,
+  now: number,
+  thresholdMs: number
+): string[] {
+  return beads
+    .filter((b) => b.status === "in_progress")
+    .filter((b) => {
+      const ts = typeof b.updated_at === "number" ? b.updated_at : Date.parse(String(b.updated_at ?? ""));
+      return !Number.isNaN(ts) && now - ts >= thresholdMs;
+    })
+    .map((b) => b.id);
+}
+
+/**
+ * Decide whether the anti-slop commit cadence has been reached.
+ * `lastCount === 0` means we have not yet established a baseline, so nothing is due.
+ */
+export function antiSlopDue(
+  commitCount: number,
+  lastCount: number,
+  cadence: number
+): { due: boolean; since: number } {
+  if (lastCount === 0) return { due: false, since: 0 };
+  const since = commitCount - lastCount;
+  return { due: since >= cadence, since };
+}
+
 // ─── SwarmTender ───────────────────────────────────────────────
 
 export interface SwarmTenderOptions {
@@ -88,6 +133,12 @@ export interface SwarmTenderOptions {
   onCadenceCheck?: (checklist: string) => void;
   /** Agent Mail orchestrator identity (for sending stuck-agent messages). */
   orchestratorAgentName?: string;
+  /** Fired when idle/stuck agents exist and the auto-tick interval elapses, with a bv-guided ready bead. */
+  onIdleInstruct?: (idleAgents: AgentStatus[], readyBead: string) => void;
+  /** Fired after the tender auto-reopens clearly-stalled in_progress beads. */
+  onStalledBeadReopened?: (reopenedBeadIds: string[]) => void;
+  /** Fired when the anti-slop commit cadence is reached. */
+  onAntiSlopDue?: (commitsSinceLast: number) => void;
 }
 
 export class SwarmTender {
@@ -100,13 +151,18 @@ export class SwarmTender {
   private onConflict?: (conflict: ConflictAlert) => void;
   private onTick?: (statuses: AgentStatus[]) => void;
   private onCadenceCheck?: (checklist: string) => void;
+  private onIdleInstruct?: (idleAgents: AgentStatus[], readyBead: string) => void;
+  private onStalledBeadReopened?: (reopenedBeadIds: string[]) => void;
+  private onAntiSlopDue?: (commitsSinceLast: number) => void;
   private lastCadencePromptAt: number = Date.now();
+  private lastAutoTickAt: number = Date.now();
+  private lastAntiSlopCommitCount = 0;
   private orchestratorAgentName?: string;
 
   constructor(
     pi: ExtensionAPI,
     cwd: string,
-    worktrees: { path: string; stepIndex: number }[],
+    worktrees: { path: string; stepIndex: number; agentName?: string }[],
     options?: SwarmTenderOptions
   ) {
     this.pi = pi;
@@ -116,6 +172,9 @@ export class SwarmTender {
     this.onConflict = options?.onConflict;
     this.onTick = options?.onTick;
     this.onCadenceCheck = options?.onCadenceCheck;
+    this.onIdleInstruct = options?.onIdleInstruct;
+    this.onStalledBeadReopened = options?.onStalledBeadReopened;
+    this.onAntiSlopDue = options?.onAntiSlopDue;
     this.orchestratorAgentName = options?.orchestratorAgentName;
 
     this.agents = new Map();
@@ -126,6 +185,7 @@ export class SwarmTender {
         health: "active",
         lastActivity: Date.now(),
         changedFiles: [],
+        agentName: wt.agentName,
       });
     }
   }
@@ -232,11 +292,111 @@ export class SwarmTender {
 
     this.onTick?.(this.getStatus());
 
+    // Auto-tick: idle-instruct, stalled-bead reopen, anti-slop cadence.
+    if (now - this.lastAutoTickAt >= this.config.autoTickIntervalMs && process.env.FLYWHEEL_SWARM_AUTO_TICK !== "0") {
+      await this.maybeAutoTick(this.getStatus().filter((a) => a.health !== "active"));
+    }
+
     // Cadence check: fire if the interval has elapsed
     if (now - this.lastCadencePromptAt >= this.config.cadenceIntervalMs) {
       this.lastCadencePromptAt = now;
       this.onCadenceCheck?.(CADENCE_CHECKLIST);
     }
+  }
+
+  /**
+   * Auto-tick pass: instruct idle agents, reopen clearly-stalled beads, and
+   * flag the anti-slop commit cadence. Guarded by env toggles (run the three
+   * checks only when enabled) and by evidence (never disrupt active work).
+   */
+  async maybeAutoTick(idleAgents: AgentStatus[]): Promise<void> {
+    this.lastAutoTickAt = Date.now();
+
+    // Idle-instruct: pick a ready bead and hand it to idle agents.
+    const readyBead = await this._pickReadyBead();
+    if (idleAgents.length > 0 && readyBead) {
+      this.onIdleInstruct?.(idleAgents, readyBead);
+      for (const a of idleAgents) {
+        if (a.agentName) await this._sendIdleInstruct(a.agentName, readyBead);
+      }
+    }
+
+    // Stalled-bead reopen: do not disrupt active work.
+    if (process.env.FLYWHEEL_SWARM_AUTO_REOPEN !== "0") {
+      const reopened = await this.reopenStalledBeads();
+      if (reopened.length > 0) this.onStalledBeadReopened?.(reopened);
+    }
+
+    // Anti-slop cadence.
+    await this._antiSlopCadence();
+  }
+
+  /** Best-effort: run `bv --robot-next` and return a ready-bead hint line. */
+  private async _pickReadyBead(): Promise<string> {
+    try {
+      const res = await this.pi.exec("bv", ["--robot-next"], { timeout: 5000, cwd: this.cwd });
+      if (res.code === 0 && res.stdout.trim()) return res.stdout.trim();
+    } catch { /* bv may be unavailable */ }
+    return "";
+  }
+
+  /**
+   * Reopen `in_progress` beads whose `updated_at` is older than
+   * `stalledBeadThresholdMs`. Only reopens when no agent is actively working
+   * (health === active), so it never disrupts in-flight work.
+   */
+  async reopenStalledBeads(): Promise<string[]> {
+    const reopened: string[] = [];
+    const anyActive = [...this.agents.values()].some((a) => a.health === "active");
+    if (anyActive) return reopened;
+
+    try {
+      const res = await this.pi.exec("br", ["list", "--json"], { timeout: 5000, cwd: this.cwd });
+      if (res.code !== 0) return reopened;
+      const parsed = JSON.parse(res.stdout);
+      const issues: any[] = Array.isArray(parsed) ? parsed : parsed.issues ?? [];
+      const toReopen = selectStalledBeads(issues, Date.now(), this.config.stalledBeadThresholdMs);
+      for (const id of toReopen) {
+        try {
+          const upd = await this.pi.exec("br", ["update", id, "--status", "open"], { timeout: 5000, cwd: this.cwd });
+          if (upd.code === 0) reopened.push(id);
+        } catch { /* ignore per-bead failures */ }
+      }
+      if (reopened.length > 0) {
+        await this.pi.exec("br", ["sync", "--flush-only"], { timeout: 5000, cwd: this.cwd });
+      }
+    } catch { /* br may be unavailable */ }
+    return reopened;
+  }
+
+  /** Count repo commits and fire onAntiSlopDue when the cadence is reached. */
+  private async _antiSlopCadence(): Promise<void> {
+    try {
+      const res = await this.pi.exec("git", ["rev-list", "--count", "HEAD"], { timeout: 5000, cwd: this.cwd });
+      if (res.code !== 0) return;
+      const count = parseInt(res.stdout.trim(), 10);
+      if (Number.isNaN(count)) return;
+      const { due, since } = antiSlopDue(count, this.lastAntiSlopCommitCount, this.config.antiSlopCommitCadence);
+      if (due) {
+        this.lastAntiSlopCommitCount = count;
+        this.onAntiSlopDue?.(since);
+      }
+    } catch { /* git may be unavailable */ }
+  }
+
+  /** Send a fresh bv-guided marching-orders message to an idle named agent. */
+  private async _sendIdleInstruct(agentName: string, readyBead: string): Promise<void> {
+    if (!this.orchestratorAgentName || !agentName) return;
+    const exec = this.pi.exec as unknown as ExecFn;
+    try {
+      await sendMessage(exec, this.cwd, this.orchestratorAgentName, [agentName],
+        "[SwarmTender] Idle — next bead",
+        `You have been idle. Pick up a fresh ready bead and start: ${readyBead}\n\n` +
+          `- Claim it with \`br update <id> --status in_progress\` and read \`br show <id>\`.\n` +
+          `- Keep edits within its ### Files: scope, follow AGENTS.md, register with Agent Mail if needed, and coordinate on the bead thread.`, 
+        { threadId: "general", importance: "normal" }
+      );
+    } catch { /* agent may not be an agent-mail agent */ }
   }
 
   /** Remove an agent from monitoring (e.g., step completed). */
